@@ -1,0 +1,146 @@
+__LAST_PROCESSED_HEIGHT__: 1355509
+
+Balances:BalanceSet
+  who: 5DXCUY5p5Hfm5eSP32pvG3c5Uu34peNBtGjBa2x2Z8fPkNg9
+  free: 0
+
+Balances:Deposit
+  who: 5FQpgX2UGU3dKdxAJKhyd5o7oubuGwQHVw6Nxc31V6NyDKBj
+  amount: 192131432834800
+
+Balances:DustLost
+  account: 5Dd2so8cCEPc68xxajLqdomukz6C6TTRZjpPmryxwAvMXEd9
+  amount: 823667829644
+
+Balances:Endowed
+  account: 5HgRCyKArPvWxYn9kmLmbRu6Yb9CjxprMat2mKF4qKtKLHud
+  free_balance: 1000000000000000000
+
+Balances:Issued
+  amount: 10000000000000000000000
+
+Balances:Rescinded
+  amount: 1000000000000000000000
+
+Balances:Reserved
+  who: 5FQpgX2UGU3dKdxAJKhyd5o7oubuGwQHVw6Nxc31V6NyDKBj
+  amount: 2520000000000000000
+
+Balances:Transfer
+  from: 5CqxBDNzFB9fzAR3T8Fn2BeEhfzBr5s7vZkXYmYg83Uyqqpw
+  to: 5HgRCyKArPvWxYn9kmLmbRu6Yb9CjxprMat2mKF4qKtKLHud
+  amount: 1000000000000000000
+
+Balances:Unreserved
+  who: 5FQpgX2UGU3dKdxAJKhyd5o7oubuGwQHVw6Nxc31V6NyDKBj
+  amount: 2520000000000000000
+
+Balances:Withdraw
+  who: 5FKxYSMGpuAXUFoRnnNkRxKGqVeGgiAUidYxp9ZAmbHj73jU
+  amount: 149442879641600
+
+EVM:Log
+  log: {"address": "0x2f2afae1139ce54fefc03593fee8ab2adf4a85a7", "topics": ["0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0", "0x0000000000000000000000000000000000000000000000000000000000000000", "0x000000000000000000000000a7eccdb9be08178f896c26b7bbd8c3d4e844d9ba"], "data": ""}
+
+Emission0:DelegatedWeightControl
+  0: 5GvBntw5j45K7kMwj9XahfwEW7ByJHRNPrSFmBzUyHcnaYNT
+  1: 5DoVVgN7R6vHw4mvPX8s4EkkR8fgN1UJ5TDfKzab8eW9z89b
+
+Emission0:WeightsSet
+  value: 5DoVVgN7R6vHw4mvPX8s4EkkR8fgN1UJ5TDfKzab8eW9z89b
+
+Ethereum:Executed
+  from: 0xa7eccdb9be08178f896c26b7bbd8c3d4e844d9ba
+  to: 0x2c1fabecd7bfbdebf27ccdb67baadb38b6df90fc
+  transaction_hash: 0xba3393a4fcba8467b65ac5491921ffdd92a8ee894986d5ad856f3b84dbf54d57
+  exit_reason: {"Succeed": "Returned"}
+  extra_data: 
+
+Governance:ApplicationAccepted
+  value: 1
+
+Governance:ApplicationCreated
+  value: 0
+
+Governance:ApplicationExpired
+  value: 6
+
+Governance:ProposalAccepted
+  value: 0
+
+Governance:WhitelistAdded
+  value: 5DoVVgN7R6vHw4mvPX8s4EkkR8fgN1UJ5TDfKzab8eW9z89b
+
+Governance:WhitelistRemoved
+  value: 5DoVVgN7R6vHw4mvPX8s4EkkR8fgN1UJ5TDfKzab8eW9z89b
+
+Multisig:MultisigApproval
+  approving: 5HmAMPi6Koo34Sy5oyHgqwv6MM7B9JHVfda5LHi1atVmfX3m
+  timepoint: {"height": 53500, "index": 1}
+  multisig: 5HheRfpDjgQ3ddiK49kYrX4R7jPHPVSd3V7UVzG9wjFSyLY2
+  call_hash: 0xadfa1913aa9d989f1b98cd3267b9769f1c267d850ea950ead4e327dc4c11bcdb
+
+Multisig:MultisigCancelled
+  cancelling: 5FQpgX2UGU3dKdxAJKhyd5o7oubuGwQHVw6Nxc31V6NyDKBj
+  timepoint: {"height": 53500, "index": 1}
+  multisig: 5HheRfpDjgQ3ddiK49kYrX4R7jPHPVSd3V7UVzG9wjFSyLY2
+  call_hash: 0xadfa1913aa9d989f1b98cd3267b9769f1c267d850ea950ead4e327dc4c11bcdb
+
+Multisig:MultisigExecuted
+  approving: 5HmAMPi6Koo34Sy5oyHgqwv6MM7B9JHVfda5LHi1atVmfX3m
+  timepoint: {"height": 53639, "index": 1}
+  multisig: 5HheRfpDjgQ3ddiK49kYrX4R7jPHPVSd3V7UVzG9wjFSyLY2
+  call_hash: 0x89eb2a29b54c656424bebb60bafd25e8ae5e047bdb89d7ca27976d0448866bd2
+  result: {"Ok": []}
+
+Multisig:NewMultisig
+  approving: 5FQpgX2UGU3dKdxAJKhyd5o7oubuGwQHVw6Nxc31V6NyDKBj
+  multisig: 5HheRfpDjgQ3ddiK49kYrX4R7jPHPVSd3V7UVzG9wjFSyLY2
+  call_hash: 0xadfa1913aa9d989f1b98cd3267b9769f1c267d850ea950ead4e327dc4c11bcdb
+
+Sudo:KeyChanged
+  old: 5FQpgX2UGU3dKdxAJKhyd5o7oubuGwQHVw6Nxc31V6NyDKBj
+  new: 5GLSNPHqPdrPgh8MifgDawWGATSrsEQCSFXQRN7aQDFcA2ps
+
+Sudo:Sudid
+  sudo_result: {"Ok": []}
+
+System:CodeUpdated
+  value: None
+
+System:ExtrinsicFailed
+  dispatch_error: {"Module": {"index": 12, "error": "0x00000000"}}
+  dispatch_info: {"weight": {"ref_time": 107074000, "proof_size": 0}, "class": "Normal", "pays_fee": "Yes"}
+
+System:ExtrinsicSuccess
+  dispatch_info: {"weight": {"ref_time": 265758000, "proof_size": 1493}, "class": "Mandatory", "pays_fee": "Yes"}
+
+System:KilledAccount
+  account: 5Dd2so8cCEPc68xxajLqdomukz6C6TTRZjpPmryxwAvMXEd9
+
+System:NewAccount
+  account: 5HgRCyKArPvWxYn9kmLmbRu6Yb9CjxprMat2mKF4qKtKLHud
+
+Torus0:AgentRegistered
+  value: 5EYCAe5jXm8DLvvQ2YjbsmnoMpDHAfokKZfg12KzGSSAzM4D
+
+Torus0:StakeAdded
+  0: 5CoS1LXeGQDiXxZ8TcdiMuzyFKu9Ku7XAihu9iS2tCACxf4n
+  1: 5DoVVgN7R6vHw4mvPX8s4EkkR8fgN1UJ5TDfKzab8eW9z89b
+  2: 13000340975772328810068
+
+Torus0:StakeRemoved
+  0: 5C5GqWeoQmAHGXR28G6NmzMUDdexa9K12EAtkWRr4GbajvBH
+  1: 5EYCAe5jXm8DLvvQ2YjbsmnoMpDHAfokKZfg12KzGSSAzM4D
+  2: 1066449697125383123968
+
+TransactionPayment:TransactionFeePaid
+  who: 5FKxYSMGpuAXUFoRnnNkRxKGqVeGgiAUidYxp9ZAmbHj73jU
+  actual_fee: 149442879641600
+  tip: 0
+
+__METADATA__
+  last_processed_height: 1355509
+  processed_blocks: 1355513
+  unique_events: 35
+

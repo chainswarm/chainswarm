@@ -1,0 +1,129 @@
+services:
+  infra-torus-memgraph:
+    container_name: infra-money-flow-torus-memgraph
+    image: memgraph/memgraph-mage:latest
+    ports:
+      - "17687:7687"
+      - "17444:7444"
+    environment:
+      - MEMGRAPH_USER=${TORUS_MEMGRAPH_USER:-mario}
+      - MEMGRAPH_PASSWORD=${TORUS_MEMGRAPH_PASSWORD:-Mario667!}
+    command:
+      - "--storage-properties-on-edges=true"
+      - "--storage-enable-schema-metadata=true"
+    volumes:
+      - infra-torus-memgraph-data:/var/lib/memgraph
+      - infra-torus-memgraph-log:/var/log/memgraph
+      - infra-torus-memgraph-etc:/etc/memgraph
+    restart: unless-stopped
+    networks:
+      - torus-network
+
+  infra-torus-neo4j:
+    container_name: infra-money-flow-torus-neo4j
+    image: neo4j:latest
+    ports:
+      - "27687:7687"  # Using a different port than Memgraph
+      - "27474:7474"  # Neo4j Browser
+      - "27473:7473"  # Neo4j Browser HTTPS
+    environment:
+      - NEO4J_AUTH=${TORUS_NEO4J_USER:-neo4j}/${TORUS_NEO4J_PASSWORD:-neo4j}
+      - NEO4J_dbms_read__only=true
+    volumes:
+      - infra-torus-neo4j-data:/data
+      - infra-torus-neo4j-logs:/logs
+    restart: unless-stopped
+    networks:
+      - torus-network
+
+  infra-memgraph-lab:
+    image: memgraph/lab:latest
+    container_name: infra-memgraph-lab
+    ports:
+      - "3005:3000"
+    environment:
+      - QUICK_CONNECT_MG_HOST=infra-torus-memgraph
+      - QUICK_CONNECT_MG_PORT=17687
+    networks:
+      - torus-network
+
+  infra-torus-clickhouse:
+    container_name: infra-torus-clickhouse
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+      - "9009:9009"
+    volumes:
+      - infra-torus-clickhouse-data:/var/lib/clickhouse
+      - infra-torus-clickhouse-logs:/var/log/clickhouse-server
+    environment:
+      - CLICKHOUSE_DB=${TORUS_CLICKHOUSE_DB:-default}
+      - CLICKHOUSE_USER=${TORUS_CLICKHOUSE_USER:-default}
+      - CLICKHOUSE_PASSWORD=${TORUS_CLICKHOUSE_PASSWORD:-changeit456$}
+    restart: unless-stopped
+    networks:
+      - torus-network
+
+  infra-console-clickhouse:
+    container_name: infra-console-clickhouse
+    image: ghcr.io/caioricciuti/ch-ui:latest
+    restart: always
+    ports:
+      - "${CH_UI_PORT:-5521}:5521"
+    environment:
+      - VITE_CLICKHOUSE_URL=http://${TORUS_CLICKHOUSE_USER:-default}:${TORUS_CLICKHOUSE_PASSWORD:-changeit456$}@infra-torus-clickhouse:8123/default
+      - VITE_CLICKHOUSE_USER=${TORUS_CLICKHOUSE_USER:-default}
+      - VITE_CLICKHOUSE_PASS=${TORUS_CLICKHOUSE_PASSWORD:-changeit456$}
+    depends_on:
+      - infra-torus-clickhouse
+    networks:
+      - torus-network
+
+  infra-logger:
+    container_name: infra-logger
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8888:8080"
+    networks:
+      - torus-network
+
+  infra-docker-manager:
+    container_name: infra-docker-manager
+    image: portainer/portainer-ce:latest
+    ports:
+      - "9015:9000"
+    volumes:
+      - infra-docker-manager-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - torus-network
+
+networks:
+    torus-network:
+        external: true
+
+volumes:
+  infra-torus-memgraph-data:
+    name: infra-torus-memgraph-data
+  infra-torus-memgraph-log:
+    name: infra-torus-memgraph-log
+  infra-torus-memgraph-etc:
+    name: infra-torus-memgraph-etc
+
+  infra-torus-neo4j-data:
+    name: infra-torus-neo4j-data
+  infra-torus-neo4j-logs:
+    name: infra-torus-neo4j-logs
+
+  infra-torus-clickhouse-data:
+    name: infra-torus-clickhouse-data
+  infra-torus-clickhouse-logs:
+    name: infra-torus-clickhouse-logs
+
+  infra-docker-manager-data:
+    name: infra-docker-manager-data
+

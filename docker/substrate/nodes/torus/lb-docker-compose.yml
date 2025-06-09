@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  infra-torus-node1:
+    container_name: infra-torus-node1
+    image: ghcr.io/renlabs-dev/torus-substrate:b1402c9
+    restart: unless-stopped
+    ports:
+      - "30333:30333"  # P2P Port (Node 1)
+    command:
+      - torus-node
+      - --base-path=/chain-data
+      - --keystore-path=/keystore
+      - --chain=/chain-data/specs/chainspec.json
+      - --prometheus-external
+      - --prometheus-port=9615
+      - --unsafe-rpc-external
+      - --rpc-port=9944
+      - --rpc-cors=all
+      - --rpc-methods=unsafe
+      - --in-peers=64
+      - --rpc-max-connections=100000
+      - --rpc-max-response-size=20480
+      - --public-addr=/dns4/infra-torus-node1/tcp/30333
+      - --listen-addr=/ip4/0.0.0.0/tcp/30333
+      - --pruning=archive
+    volumes:
+      - ./torus-specs-mainnet:/chain-data/specs
+      - infra-torus-chain-data-node1:/chain-data
+      - infra-torus-keystore-node1:/keystore
+    networks:
+      - torus-network
+
+  infra-torus-node2:
+    container_name: infra-torus-node2
+    image: ghcr.io/renlabs-dev/torus-substrate:b1402c9
+    restart: unless-stopped
+    ports:
+      - "30334:30333"  # P2P Port (Node 2)
+    command:
+      - torus-node
+      - --base-path=/chain-data
+      - --keystore-path=/keystore
+      - --chain=/chain-data/specs/chainspec.json
+      - --prometheus-external
+      - --prometheus-port=9615
+      - --unsafe-rpc-external
+      - --rpc-port=9944
+      - --rpc-cors=all
+      - --rpc-methods=unsafe
+      - --in-peers=64
+      - --rpc-max-connections=100000
+      - --rpc-max-response-size=20480
+      - --public-addr=/dns4/infra-torus-node2/tcp/30333
+      - --listen-addr=/ip4/0.0.0.0/tcp/30333
+      - --pruning=archive
+    volumes:
+      - ./torus-specs-mainnet:/chain-data/specs
+      - infra-torus-chain-data-node2:/chain-data
+      - infra-torus-keystore-node2:/keystore
+    networks:
+      - torus-network
+
+  infra-torus-node3:
+    container_name: infra-torus-node3
+    image: ghcr.io/renlabs-dev/torus-substrate:b1402c9
+    restart: unless-stopped
+    ports:
+      - "30335:30333"  # P2P Port (Node 3)
+    command:
+      - torus-node
+      - --base-path=/chain-data
+      - --keystore-path=/keystore
+      - --chain=/chain-data/specs/chainspec.json
+      - --prometheus-external
+      - --prometheus-port=9615
+      - --unsafe-rpc-external
+      - --rpc-port=9944
+      - --rpc-cors=all
+      - --rpc-methods=unsafe
+      - --in-peers=64
+      - --rpc-max-connections=100000
+      - --rpc-max-response-size=20480
+      - --public-addr=/dns4/infra-torus-node3/tcp/30333
+      - --listen-addr=/ip4/0.0.0.0/tcp/30333
+      - --pruning=archive
+    volumes:
+      - ./torus-specs-mainnet:/chain-data/specs
+      - infra-torus-chain-data-node3:/chain-data
+      - infra-torus-keystore-node3:/keystore
+    networks:
+      - torus-network
+
+  infra-torus-node4:
+    container_name: infra-torus-node4
+    image: ghcr.io/renlabs-dev/torus-substrate:b1402c9
+    restart: unless-stopped
+    ports:
+      - "30336:30333"  # P2P Port (Node 4)
+    command:
+      - torus-node
+      - --base-path=/chain-data
+      - --keystore-path=/keystore
+      - --chain=/chain-data/specs/chainspec.json
+      - --prometheus-external
+      - --prometheus-port=9615
+      - --unsafe-rpc-external
+      - --rpc-port=9944
+      - --rpc-cors=all
+      - --rpc-methods=unsafe
+      - --in-peers=64
+      - --rpc-max-connections=100000
+      - --rpc-max-response-size=20480
+      - --public-addr=/dns4/infra-torus-node4/tcp/30333
+      - --listen-addr=/ip4/0.0.0.0/tcp/30333
+      - --pruning=archive
+    volumes:
+      - ./torus-specs-mainnet:/chain-data/specs
+      - infra-torus-chain-data-node4:/chain-data
+      - infra-torus-keystore-node4:/keystore
+    networks:
+      - torus-network
+
+  nginx-lb:
+    image: nginx:latest
+    container_name: torus-rpc-lb
+    ports:
+      - "9944:80"  # Expose load balancer on host port 9944
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - torus-network
+    depends_on:
+      - infra-torus-node1
+      - infra-torus-node2
+      - infra-torus-node3
+      - infra-torus-node4
+
+volumes:
+  infra-torus-chain-data-node1:
+  infra-torus-keystore-node1:
+  infra-torus-chain-data-node2:
+  infra-torus-keystore-node2:
+  infra-torus-chain-data-node3:
+  infra-torus-keystore-node3:
+  infra-torus-chain-data-node4:
+  infra-torus-keystore-node4:
+
+networks:
+  torus-network:
+    driver: bridge

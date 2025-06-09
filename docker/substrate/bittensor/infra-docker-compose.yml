@@ -1,0 +1,123 @@
+services:
+  infra-bittensor-memgraph:
+    container_name: infra-money-flow-bittensor-memgraph
+    image: memgraph/memgraph-mage:latest
+    ports:
+      - "17687:7687"
+      - "17444:7444"
+    environment:
+      - MEMGRAPH_USER=${BITTENSOR_MEMGRAPH_USER:-mario}
+      - MEMGRAPH_PASSWORD=${BITTENSOR_MEMGRAPH_PASSWORD:-Mario667!}
+    command:
+      - "--storage-properties-on-edges=true"
+      - "--storage-enable-schema-metadata=true"
+    volumes:
+      - infra-bittensor-memgraph-data:/var/lib/memgraph
+      - infra-bittensor-memgraph-log:/var/log/memgraph
+      - infra-bittensor-memgraph-etc:/etc/memgraph
+    restart: unless-stopped
+    networks:
+      - bittensor-network
+
+  infra-bittensor-neo4j:
+    container_name: infra-money-flow-bittensor-neo4j
+    image: neo4j:latest
+    ports:
+      - "27687:7687"  # Using a different port than Memgraph
+      - "27474:7474"  # Neo4j Browser
+      - "27473:7473"  # Neo4j Browser HTTPS
+    environment:
+      - NEO4J_AUTH=${BITTENSOR_NEO4J_USER:-neo4j}/${BITTENSOR_NEO4J_PASSWORD:-neo4j}
+      - NEO4J_dbms_read__only=true
+    volumes:
+      - infra-bittensor-neo4j-data:/data
+      - infra-bittensor-neo4j-logs:/logs
+    restart: unless-stopped
+    networks:
+      - bittensor-network
+
+  infra-memgraph-lab:
+    image: memgraph/lab:latest
+    container_name: infra-memgraph-lab
+    ports:
+      - "3000:3000"
+    environment:
+      - QUICK_CONNECT_MG_HOST=infra-bittensor-memgraph
+      - QUICK_CONNECT_MG_PORT=17687
+    networks:
+      - bittensor-network
+
+  infra-bittensor-clickhouse:
+    container_name: infra-bittensor-clickhouse
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+      - "9009:9009"
+    volumes:
+      - infra-bittensor-clickhouse-data:/var/lib/clickhouse
+      - infra-bittensor-clickhouse-logs:/var/log/clickhouse-server
+    environment:
+      - CLICKHOUSE_DB=${BITTENSOR_CLICKHOUSE_DB:-default}
+      - CLICKHOUSE_USER=${BITTENSOR_CLICKHOUSE_USER:-default}
+      - CLICKHOUSE_PASSWORD=${BITTENSOR_CLICKHOUSE_PASSWORD:-changeit456$}
+    restart: unless-stopped
+    networks:
+      - bittensor-network
+
+  infra-console-clickhouse:
+    container_name: infra-console-clickhouse
+    image: ghcr.io/caioricciuti/ch-ui:latest
+    restart: always
+    ports:
+      - "${CH_UI_PORT:-5521}:5521"
+    environment:
+      - VITE_CLICKHOUSE_URL=http://${BITTENSOR_CLICKHOUSE_USER:-default}:${BITTENSOR_CLICKHOUSE_PASSWORD:-changeit456$}@infra-bittensor-clickhouse:8123/default
+      - VITE_CLICKHOUSE_USER=${BITTENSOR_CLICKHOUSE_USER:-default}
+      - VITE_CLICKHOUSE_PASS=${BITTENSOR_CLICKHOUSE_PASSWORD:-changeit456$}
+    depends_on:
+      - infra-bittensor-clickhouse
+    networks:
+      - bittensor-network
+
+  infra-logger:
+    container_name: infra-logger
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8888:8080"
+    networks:
+      - bittensor-network
+
+  infra-docker-manager:
+    container_name: infra-docker-manager
+    image: portainer/portainer-ce:latest
+    ports:
+      - "9015:9000"
+    volumes:
+      - infra-docker-manager-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - bittensor-network
+
+networks:
+    bittensor-network:
+        external: true
+
+volumes:
+  infra-bittensor-memgraph-data:
+    name: infra-bittensor-memgraph-data
+  infra-bittensor-memgraph-log:
+    name: infra-bittensor-memgraph-log
+  infra-bittensor-memgraph-etc:
+    name: infra-bittensor-memgraph-etc
+
+  infra-bittensor-clickhouse-data:
+    name: infra-bittensor-clickhouse-data
+  infra-bittensor-clickhouse-logs:
+    name: infra-bittensor-clickhouse-logs
+
+  infra-docker-manager-data:
+    name: infra-docker-manager-data

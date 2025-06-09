@@ -1,0 +1,177 @@
+__LAST_PROCESSED_HEIGHT__: 586924
+
+Balances:Deposit
+  who: 5FCM3DBXWiGcwYYQtT8z4ZD93TqYpYxjaAfgv6aMStV1FTCT
+  amount: 100838519
+
+Balances:DustLost
+  account: 5CUtVgKQ89PxArQemGPinawYU5iVTPMyt7V7MzjKZwKzuwXP
+  amount: 1
+
+Balances:Endowed
+  account: 5Ccmf1dJKzGtXX7h17eN72MVMRsFwvYjPVmkXPUaapczECf6
+  free_balance: 1000000000
+
+Balances:Transfer
+  from: 5EvbnLJVXZAMEoe2P8v5WQHBqSKNk6qgT2cRae3w5CdQBN9Q
+  to: 5Ccmf1dJKzGtXX7h17eN72MVMRsFwvYjPVmkXPUaapczECf6
+  amount: 1000000000
+
+Balances:Withdraw
+  who: 5EvbnLJVXZAMEoe2P8v5WQHBqSKNk6qgT2cRae3w5CdQBN9Q
+  amount: 100838543
+
+SubtensorModule:ActivityCutoffSet
+  0: 3
+  1: 1000
+
+SubtensorModule:AdjustmentIntervalSet
+  0: 1
+  1: 225
+
+SubtensorModule:AxonServed
+  0: 3
+  1: 5E6ronG7RigTFmaNKJEaAtwkrtuHFN7bc9vZWr5Z3TmD2jyb
+
+SubtensorModule:BurnSet
+  0: 3
+  1: 10000000000
+
+SubtensorModule:DelegateAdded
+  0: 5Ccmf1dJKzGtXX7h17eN72MVMRsFwvYjPVmkXPUaapczECf6
+  1: 5F4tQyWrhfGVcNhoqeiNsR6KjD4wMZ2kfhLj4oHYuyHbZAc3
+  2: 11796
+
+SubtensorModule:DifficultySet
+  0: 3
+  1: 671088640000000
+
+SubtensorModule:EmissionValuesSet
+  value: None
+
+SubtensorModule:ImmunityPeriodSet
+  0: 1
+  1: 7200
+
+SubtensorModule:MaxAllowedUidsSet
+  0: 1
+  1: 16
+
+SubtensorModule:MaxAllowedValidatorsSet
+  0: 1
+  1: 2
+
+SubtensorModule:MaxBurnSet
+  0: 3
+  1: 21000000000000000
+
+SubtensorModule:MaxWeightLimitSet
+  0: 3
+  1: 1310
+
+SubtensorModule:MinAllowedWeightSet
+  0: 3
+  1: 50
+
+SubtensorModule:MinBurnSet
+  0: 3
+  1: 10000000000
+
+SubtensorModule:NetworkAdded
+  0: 1
+  1: 1
+
+SubtensorModule:NetworkRemoved
+  value: 11
+
+SubtensorModule:NeuronRegistered
+  0: 3
+  1: 3937
+  2: 5FWyxXpcvVutHTrxfwwhJRkZUVMY9nko7DGgmka8scgMbJCs
+
+SubtensorModule:PrometheusServed
+  0: 3
+  1: 5E6ronG7RigTFmaNKJEaAtwkrtuHFN7bc9vZWr5Z3TmD2jyb
+
+SubtensorModule:RegistrationAllowed
+  0: 11
+  1: True
+
+SubtensorModule:RegistrationPerIntervalSet
+  0: 1
+  1: 8
+
+SubtensorModule:ServingRateLimitSet
+  0: 3
+  1: 250
+
+SubtensorModule:StakeAdded
+  0: 5F4tQyWrhfGVcNhoqeiNsR6KjD4wMZ2kfhLj4oHYuyHbZAc3
+  1: 999999000
+
+SubtensorModule:StakeRemoved
+  0: 5F4tQyWrhfGVcNhoqeiNsR6KjD4wMZ2kfhLj4oHYuyHbZAc3
+  1: 11999998100
+
+SubtensorModule:TxRateLimitSet
+  value: 1
+
+SubtensorModule:ValidatorBatchSizeSet
+  0: 1
+  1: 1
+
+SubtensorModule:ValidatorEpochLengthSet
+  0: 3
+  1: 250
+
+SubtensorModule:ValidatorExcludeQuantileSet
+  0: 3
+  1: 3277
+
+SubtensorModule:WeightsSet
+  0: 3
+  1: 25
+
+SubtensorModule:WeightsSetRateLimitSet
+  0: 3
+  1: 100
+
+SubtensorModule:WeightsVersionKeySet
+  0: 3
+  1: 370
+
+Sudo:Sudid
+  sudo_result: {"Ok": []}
+
+System:CodeUpdated
+  value: None
+
+System:ExtrinsicFailed
+  dispatch_error: {"Module": {"index": 8, "error": "0x0b000000"}}
+  dispatch_info: {"weight": {"ref_time": 113050840000, "proof_size": 0}, "class": "Normal", "pays_fee": "No"}
+
+System:ExtrinsicSuccess
+  dispatch_info: {"weight": {"ref_time": 259098000, "proof_size": 1006}, "class": "Mandatory", "pays_fee": "Yes"}
+
+System:KilledAccount
+  account: 5CUtVgKQ89PxArQemGPinawYU5iVTPMyt7V7MzjKZwKzuwXP
+
+System:NewAccount
+  account: 5Ccmf1dJKzGtXX7h17eN72MVMRsFwvYjPVmkXPUaapczECf6
+
+TransactionPayment:TransactionFeePaid
+  who: 5E6wNegH8tfvZ7Lb7fzarTBYaGLXNdYkQobh7kfr6cmsFiaH
+  actual_fee: 0
+  tip: 0
+
+Utility:BatchCompleted
+  value: None
+
+Utility:ItemCompleted
+  value: None
+
+__METADATA__
+  last_processed_height: 586924
+  processed_blocks: 588184
+  unique_events: 44
+

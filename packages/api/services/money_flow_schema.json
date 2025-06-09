@@ -1,0 +1,327 @@
+{
+    "schema": {
+        "node_props": {
+            "Address": [
+                {
+                    "property": "joint_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "first_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "first_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "network_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "temporal_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "financial_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "labels",
+                    "type": "tuple"
+                },
+                {
+                    "property": "volume_out",
+                    "type": "int"
+                },
+                {
+                    "property": "volume_in",
+                    "type": "int"
+                },
+                {
+                    "property": "address",
+                    "type": "str"
+                },
+                {
+                    "property": "transfer_count",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "page_rank",
+                    "type": "float"
+                },
+                {
+                    "property": "neighbor_count",
+                    "type": "int"
+                },
+                {
+                    "property": "community_id",
+                    "type": "int"
+                },
+                {
+                    "property": "community_ids",
+                    "type": "tuple"
+                },
+                {
+                    "property": "fraud",
+                    "type": "int"
+                }
+            ],
+            "Agent": [
+                {
+                    "property": "joint_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "transfer_count",
+                    "type": "int"
+                },
+                {
+                    "property": "first_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "first_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "network_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "temporal_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "financial_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "labels",
+                    "type": "tuple"
+                },
+                {
+                    "property": "volume_out",
+                    "type": "int"
+                },
+                {
+                    "property": "volume_in",
+                    "type": "int"
+                },
+                {
+                    "property": "address",
+                    "type": "str"
+                },
+                {
+                    "property": "page_rank",
+                    "type": "float"
+                },
+                {
+                    "property": "neighbor_count",
+                    "type": "int"
+                },
+                {
+                    "property": "community_id",
+                    "type": "int"
+                },
+                {
+                    "property": "community_ids",
+                    "type": "tuple"
+                }
+            ],
+            "Community": [
+                {
+                    "property": "community_id",
+                    "type": "int"
+                }
+            ],
+            "Genesis": [
+                {
+                    "property": "joint_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "first_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "first_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "network_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "temporal_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "financial_embedding",
+                    "type": "tuple"
+                },
+                {
+                    "property": "labels",
+                    "type": "tuple"
+                },
+                {
+                    "property": "volume_out",
+                    "type": "int"
+                },
+                {
+                    "property": "volume_in",
+                    "type": "int"
+                },
+                {
+                    "property": "address",
+                    "type": "str"
+                },
+                {
+                    "property": "transfer_count",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "page_rank",
+                    "type": "float"
+                },
+                {
+                    "property": "neighbor_count",
+                    "type": "int"
+                },
+                {
+                    "property": "community_id",
+                    "type": "int"
+                },
+                {
+                    "property": "community_ids",
+                    "type": "tuple"
+                }
+            ],
+            "GlobalState": [
+                {
+                    "property": "block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "name",
+                    "type": "str"
+                }
+            ]
+        },
+        "rel_props": {
+            "TO": [
+                {
+                    "property": "transfer_count",
+                    "type": "int"
+                },
+                {
+                    "property": "tx_frequency",
+                    "type": "tuple"
+                },
+                {
+                    "property": "first_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "first_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_block_height",
+                    "type": "int"
+                },
+                {
+                    "property": "last_transfer_timestamp",
+                    "type": "int"
+                },
+                {
+                    "property": "id",
+                    "type": "str"
+                },
+                {
+                    "property": "volume",
+                    "type": "int"
+                },
+                {
+                    "property": "min_amount",
+                    "type": "int"
+                },
+                {
+                    "property": "max_amount",
+                    "type": "int"
+                }
+            ]
+        },
+        "relationships": [
+            {
+                "end": "Address",
+                "start": "Address",
+                "type": "TO"
+            },
+            {
+                "end": "Address",
+                "start": "Genesis",
+                "type": "TO"
+            },
+            {
+                "end": "Genesis",
+                "start": "Address",
+                "type": "TO"
+            },
+            {
+                "end": "Genesis",
+                "start": "Genesis",
+                "type": "TO"
+            },
+            {
+                "end": "Agent",
+                "start": "Address",
+                "type": "TO"
+            },
+            {
+                "end": "Agent",
+                "start": "Genesis",
+                "type": "TO"
+            },
+            {
+                "end": "Address",
+                "start": "Agent",
+                "type": "TO"
+            },
+            {
+                "end": "Agent",
+                "start": "Agent",
+                "type": "TO"
+            },
+            {
+                "end": "Genesis",
+                "start": "Agent",
+                "type": "TO"
+            }
+        ]
+    }
+}

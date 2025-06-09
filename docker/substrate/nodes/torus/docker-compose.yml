@@ -1,0 +1,43 @@
+services:
+  infra-torus-node:
+    container_name: infra-torus-node
+    image: ghcr.io/renlabs-dev/torus-substrate:b1402c9
+    restart: unless-stopped
+    ports:
+      - "9944:9944"  # RPC Port
+      - "30333:30333"  # P2P Port
+      - "9615:9615"  # Prometheus Monitoring
+    command:
+      - torus-node
+      - --base-path=/chain-data
+      - --keystore-path=/keystore
+      - --chain=/chain-data/specs/chainspec.json
+      - --prometheus-external
+      - --prometheus-port=9615
+      - --unsafe-rpc-external
+      - --rpc-port=9944
+      - --rpc-cors=all
+      - --rpc-methods=unsafe
+      - --in-peers=64
+      - --rpc-max-connections=100000
+      - --rpc-max-response-size=20480
+      - --public-addr=/ip4/${EXTERNAL_IP:-0.0.0.0}/tcp/${RELAY_CHAIN_P2P_PORT:-30333}
+      - --listen-addr=/ip4/0.0.0.0/tcp/30333
+      - --pruning=archive
+    volumes:
+      - ./torus-specs-mainnet:/chain-data/specs
+      - infra-torus-chain-data:/chain-data
+      - infra-torus-keystore:/keystore
+    networks:
+      - torus-network
+
+volumes:
+  infra-torus-chain-data:
+    name: infra-torus-chain-data
+  infra-torus-keystore:
+    name: infra-torus-keystore
+
+networks:
+  torus-network:
+    driver: bridge
+    name: torus-network

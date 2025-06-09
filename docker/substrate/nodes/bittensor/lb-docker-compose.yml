@@ -1,0 +1,224 @@
+version: '3.8'
+
+services:
+  infra-bittensor-node1:
+    container_name: infra-bittensor-node1
+    image: ghcr.io/opentensor/subtensor:v2.0.2
+    restart: unless-stopped
+    ports:
+      - "30333:30333"  # P2P Port (Node 1)
+    command:
+      - /bin/bash
+      - -c
+      - |
+        node-subtensor \
+          --base-path /chain-data \
+          --keystore-path /keystore \
+          --chain raw_spec_finney.json \
+          --database=rocksdb \
+          --state-pruning=archive \
+          --rpc-external --rpc-cors all --unsafe-rpc-external --rpc-port=9944 --rpc-methods=unsafe --rpc-max-connections=10000 --rpc-max-response-size=2048 \
+          --no-mdns \
+          --max-parallel-requests 1000 \
+          --pool-limit 10240 \
+          --pool-kbytes 102400 \
+          --in-peers=64 --out-peers=64 \
+          --bootnodes /dns/bootnode.finney.chain.opentensor.ai/tcp/30333/ws/p2p/12D3KooWRwbMb85RWnT8DSXSYMWQtuDwh4LJzndoRrTDotTR5gDC \
+          --public-addr=/dns4/infra-bittensor-node1/tcp/30333 \
+          --listen-addr=/ip4/0.0.0.0/tcp/30333 \
+    volumes:
+      - ./bittensor-specs:/chain-data/specs
+      - type: volume
+        source: infra-bittensor-chain-data-node1
+        target: /chain-data
+        volume:
+          nocopy: true
+      - infra-bittensor-keystore-node1:/keystore
+    networks:
+      - bittensor-network
+
+  infra-bittensor-node2:
+    container_name: infra-bittensor-node2
+    image: ghcr.io/opentensor/subtensor:v2.0.2
+    restart: unless-stopped
+    ports:
+      - "30334:30333"  # P2P Port (Node 2)
+    command:
+      - /bin/bash
+      - -c
+      - |
+        node-subtensor \
+          --base-path /chain-data \
+          --keystore-path /keystore \
+          --chain raw_spec_finney.json \
+          --database=rocksdb \
+          --state-pruning=archive \
+          --rpc-external --rpc-cors all --unsafe-rpc-external --rpc-port=9944 --rpc-methods=unsafe --rpc-max-connections=10000 --rpc-max-response-size=2048 \
+          --no-mdns \
+          --max-parallel-requests 1000 \
+          --pool-limit 10240 \
+          --pool-kbytes 102400 \
+          --in-peers=64 --out-peers=64 \
+          --bootnodes /dns/bootnode.finney.chain.opentensor.ai/tcp/30333/ws/p2p/12D3KooWRwbMb85RWnT8DSXSYMWQtuDwh4LJzndoRrTDotTR5gDC \
+          --public-addr=/dns4/infra-bittensor-node2/tcp/30333 \
+          --listen-addr=/ip4/0.0.0.0/tcp/30333 \
+    volumes:
+      - ./bittensor-specs:/chain-data/specs
+      - type: volume
+        source: infra-bittensor-chain-data-node2
+        target: /chain-data
+        volume:
+          nocopy: true
+      - infra-bittensor-keystore-node2:/keystore
+    networks:
+      - bittensor-network
+
+  infra-bittensor-node3:
+    container_name: infra-bittensor-node3
+    image: ghcr.io/opentensor/subtensor:v2.0.2
+    restart: unless-stopped
+    ports:
+      - "30335:30333"  # P2P Port (Node 3)
+    command:
+      - /bin/bash
+      - -c
+      - |
+        node-subtensor \
+          --base-path /chain-data \
+          --keystore-path /keystore \
+          --chain raw_spec_finney.json \
+          --database=rocksdb \
+          --state-pruning=archive \
+          --rpc-external --rpc-cors all --unsafe-rpc-external --rpc-port=9944 --rpc-methods=unsafe --rpc-max-connections=10000 --rpc-max-response-size=2048 \
+          --no-mdns \
+          --max-parallel-requests 1000 \
+          --pool-limit 10240 \
+          --pool-kbytes 102400 \
+          --in-peers=64 --out-peers=64 \
+          --bootnodes /dns/bootnode.finney.chain.opentensor.ai/tcp/30333/ws/p2p/12D3KooWRwbMb85RWnT8DSXSYMWQtuDwh4LJzndoRrTDotTR5gDC \
+          --public-addr=/dns4/infra-bittensor-node3/tcp/30333 \
+          --listen-addr=/ip4/0.0.0.0/tcp/30333 \
+    volumes:
+      - ./bittensor-specs:/chain-data/specs
+      - type: volume
+        source: infra-bittensor-chain-data-node3
+        target: /chain-data
+        volume:
+          nocopy: true
+      - infra-bittensor-keystore-node3:/keystore
+    networks:
+      - bittensor-network
+
+  infra-bittensor-node4:
+    container_name: infra-bittensor-node4
+    image: ghcr.io/opentensor/subtensor:v2.0.2
+    restart: unless-stopped
+    ports:
+      - "30336:30333"  # P2P Port (Node 4)
+    command:
+      - /bin/bash
+      - -c
+      - |
+        node-subtensor \
+          --base-path /chain-data \
+          --keystore-path /keystore \
+          --chain raw_spec_finney.json \
+          --database=rocksdb \
+          --state-pruning=archive \
+          --rpc-external --rpc-cors all --unsafe-rpc-external --rpc-port=9944 --rpc-methods=unsafe --rpc-max-connections=10000 --rpc-max-response-size=2048 \
+          --no-mdns \
+          --max-parallel-requests 1000 \
+          --pool-limit 10240 \
+          --pool-kbytes 102400 \
+          --in-peers=64 --out-peers=64 \
+          --bootnodes /dns/bootnode.finney.chain.opentensor.ai/tcp/30333/ws/p2p/12D3KooWRwbMb85RWnT8DSXSYMWQtuDwh4LJzndoRrTDotTR5gDC \
+          --public-addr=/dns4/infra-bittensor-node4/tcp/30333 \
+          --listen-addr=/ip4/0.0.0.0/tcp/30333 \
+    volumes:
+      - ./bittensor-specs:/chain-data/specs
+      - type: volume
+        source: infra-bittensor-chain-data-node4
+        target: /chain-data
+        volume:
+          nocopy: true
+      - infra-bittensor-keystore-node4:/keystore
+    networks:
+      - bittensor-network
+
+  nginx-lb:
+    image: nginx:latest
+    container_name: bittensor-rpc-lb
+    ports:
+      - "9944:80"  # Expose load balancer on host port 9944
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - bittensor-network
+    depends_on:
+      - infra-bittensor-node1
+      - infra-bittensor-node2
+      - infra-bittensor-node3
+      - infra-bittensor-node4
+
+
+volumes:
+  # Node 1 volumes - dedicated NVMe disk
+  infra-bittensor-chain-data-node1:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme0/bittensor-node1
+  infra-bittensor-keystore-node1:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme0/bittensor-keystore-node1
+
+  # Node 2 volumes - dedicated NVMe disk
+  infra-bittensor-chain-data-node2:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme1/bittensor-node2
+  infra-bittensor-keystore-node2:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme1/bittensor-keystore-node2
+
+  # Node 3 volumes - dedicated NVMe disk
+  infra-bittensor-chain-data-node3:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme2/bittensor-node3
+  infra-bittensor-keystore-node3:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme2/bittensor-keystore-node3
+
+  # Node 4 volumes - dedicated NVMe disk
+  infra-bittensor-chain-data-node4:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme3/bittensor-node4
+  infra-bittensor-keystore-node4:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/nvme3/bittensor-keystore-node4
+
+
+networks:
+  bittensor-network:
+    external: true
