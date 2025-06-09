@@ -1,357 +1,262 @@
-# ChainSwarm
+# Chain Swarm: The Vision
 
-**AI-Powered Blockchain Intelligence Platform**
+## Executive Summary
 
-ChainSwarm is a sophisticated blockchain data indexing and analysis platform designed for AI integration through the Model Context Protocol (MCP). It provides real-time insights, advanced analytics, and intelligent data access for Substrate-based blockchain networks.
+Chain Swarm represents a paradigm shift in blockchain analytics, creating the world's first collaborative intelligence platform specifically designed for AI agents operating on decentralized networks. Built on the Torus blockchain, Chain Swarm combines advanced blockchain analytics with decentralized AI agent collaboration, establishing a self-sustaining ecosystem where human developers, infrastructure operators, and AI agents work together to advance blockchain intelligence capabilities.
 
-## 🎯 Overview
+## Vision Statement
 
-ChainSwarm transforms raw blockchain data into actionable intelligence through:
-- **Real-time data indexing** from Substrate networks
-- **AI-native architecture** with MCP server integration
-- **Multi-dimensional analytics** including balance tracking, money flow analysis, and similarity search
-- **Scalable infrastructure** supporting multiple blockchain networks
+**To create an open-source, community-driven blockchain analytics ecosystem where AI agents collaborate as a swarm to provide unprecedented insights into blockchain networks, while rewarding all participants through a decentralized incentive mechanism on the Torus network.**
 
-### Key Value Propositions
-- **For AI Developers**: Native MCP integration enables seamless blockchain data access in AI applications
-- **For Analysts**: Advanced query capabilities with time-series and graph databases
-- **For Researchers**: Vector-based similarity search for pattern discovery
-- **For Enterprises**: Scalable, production-ready infrastructure with comprehensive monitoring
+## Core Mission
 
-## 🏗️ High-Level Architecture
+Chain Swarm aims to democratize blockchain analytics by:
 
-```mermaid
-graph TB
-    subgraph "Blockchain Networks"
-        TR[🟢 Torus Network<br/>Production Ready]
-        BT[🔄 Bittensor Network<br/>Coming Soon]
-        PD[🔄 Polkadot Network<br/>Coming Soon]
-    end
-    
-    subgraph "ChainSwarm Platform"
-        subgraph "🤖 AI Integration Layer"
-            MCP[MCP Server<br/>Model Context Protocol]
-            TOOLS[AI Tools & Resources]
-        end
-        
-        subgraph "📊 Data Processing Pipeline"
-            BI[Block Stream Indexer]
-            BTI[Balance Tracking Indexer]
-            MFI[Money Flow Indexer]
-            SSI[Similarity Search Indexer]
-        end
-        
-        subgraph "💾 Multi-Modal Storage"
-            CH[(ClickHouse<br/>Time-Series Data)]
-            MG[(Memgraph<br/>Graph Analytics)]
-            N4[(Neo4j<br/>Graph Queries)]
-        end
-        
-        subgraph "🌐 API Layer"
-            REST[REST API<br/>FastAPI]
-            RL[Rate Limiting<br/>Session Management]
-        end
-    end
-    
-    subgraph "🔌 Client Integration"
-        AI[AI Applications<br/>LLMs, Agents]
-        WEB[Web Dashboards]
-        CLI[CLI Tools]
-        SDK[Custom Applications]
-    end
-    
-    TR --> BI
-    BT -.-> BI
-    PD -.-> BI
-    
-    BI --> BTI
-    BI --> MFI
-    BI --> SSI
-    
-    BTI --> CH
-    MFI --> MG
-    MFI --> N4
-    SSI --> MG
-    
-    CH --> REST
-    MG --> REST
-    N4 --> REST
-    
-    REST --> RL
-    RL --> MCP
-    MCP --> TOOLS
-    
-    TOOLS --> AI
-    REST --> WEB
-    REST --> CLI
-    REST --> SDK
-```
+1. **Empowering AI Agents**: Providing sophisticated tools and infrastructure that enable AI agents to perform complex blockchain analysis autonomously
+2. **Fostering Collaboration**: Creating a platform where AI agents can share insights, collaborate on complex analyses, and build upon each other's work
+3. **Rewarding Contributors**: Establishing a fair, transparent reward system for developers, infrastructure providers, and agent operators
+4. **Advancing Open Science**: Making blockchain analytics tools and insights freely available to researchers, developers, and the broader community
 
-## 🤖 AI-First Design
+## The Chain Swarm Ecosystem
 
-### Model Context Protocol (MCP) Integration
+### 1. Core Infrastructure
 
-ChainSwarm is built with AI-first principles, providing native integration through the Model Context Protocol:
+#### Advanced Analytics Engine
+- **Money Flow Analysis**: Real-time tracking and analysis of financial transactions across multiple blockchain networks
+- **Balance Tracking**: Comprehensive monitoring of address balances and their changes over time
+- **Pattern Recognition**: AI-powered detection of suspicious activities, trading patterns, and network behaviors
+- **Similarity Search**: Vector-based similarity analysis to identify related addresses and behavioral patterns
+- **Community Detection**: Automated identification of transaction communities and network clusters
 
+#### Multi-Network Support
+- **Primary Focus**: Substrate ( Torus, Bittensor, Polkadot )
+- **Extended Support**: EVM ( Ethereum, Base and more), UTXO ( Bitcoin, Litecoin and more )
+- **Scalable Architecture**: Designed to easily integrate additional blockchain networks
+
+#### Data Infrastructure
+- **Graph Databases**: Neo4j/Memgraph for complex relationship analysis
+- **Time-Series Storage**: ClickHouse for high-performance temporal data analysis
+- **Vector Search**: Advanced embedding-based similarity search capabilities
+- **Real-Time Processing**: Stream processing for live blockchain data ingestion
+
+### 2. AI Agent Integration
+
+#### Model Context Protocol (MCP) Integration
+Chain Swarm provides native MCP server capabilities, enabling seamless integration with AI agents through:
+- **Standardized APIs**: Consistent interfaces for balance tracking, money flow analysis, and similarity search
+- **Schema Discovery**: Automatic schema exposure for AI agents to understand available data structures
+- **Rate Limiting**: Intelligent session-based rate limiting to ensure fair resource allocation
+- **Query Optimization**: Optimized query patterns for efficient AI agent interactions
+
+#### Agent Collaboration Framework
+- **Shared Memory**: Distributed memory system allowing agents to share insights and findings
+- **Collaborative Analysis**: Framework for agents to work together on complex analytical tasks
+- **Knowledge Synthesis**: Mechanisms for combining insights from multiple agents into comprehensive reports
+- **Swarm Intelligence**: Emergent intelligence arising from agent collaboration
+
+### 3. Participant Ecosystem
+
+#### Developers
+**Role**: Create new blockchain integrations and analytical tools
+
+**Responsibilities**:
+- Develop blockchain network integrations for new chains
+- Build specialized analytical tools and algorithms
+- Host and maintain their developed solutions
+- Ensure reliability and performance of their contributions
+
+**Rewards**: 
+Incentive-based compensation system (details to be determined) that may include:
+- Usage-based rewards for popular integrations
+- Importance factor multipliers for critical infrastructure
+- Organic adoption metrics
+- Potential DevFund agent for automated reward distribution
+
+#### Infrastructure Operators (DevOps)
+**Role**: Host and maintain the indexing infrastructure
+
+**Responsibilities**:
+- Deploy and maintain blockchain indexing nodes
+- Ensure high availability and performance of services
+- Monitor system health and security
+- Scale infrastructure based on demand
+
+**Rewards**: Compensation in TORUS tokens for:
+- Infrastructure uptime and reliability
+- Data processing volume and quality
+- Network contribution and geographic distribution
+
+#### Agent Builders
+**Role**: Create and deploy AI agents that utilize Chain Swarm tools
+**Responsibilities**:
+- Develop specialized AI agents for specific analytical tasks
+- Train agents to effectively use Chain Swarm APIs
+- Contribute to the shared knowledge base
+- Collaborate with other agent builders
+
+**Rewards**: Revenue sharing from agent services and bounties for:
+- Agent performance and accuracy
+- Novel analytical insights discovered
+- Contribution to swarm intelligence
+
+### 4. Development Model
+
+#### Open Source Foundation
+- **MIT License**: Ensuring maximum accessibility and adoption
+- **Chain Swarm Organization**: All development happens in Chain Swarm organization repositories
+- **Project Leadership**: Project direction and governance led by the founder
+- **Documentation First**: Comprehensive documentation for all tools and APIs
+
+## Technical Architecture
+
+### 1. Data Processing Pipeline
+
+#### Real-Time Indexing
 ```mermaid
 graph LR
-    subgraph "AI Applications"
-        LLM[Large Language Models]
-        AGENT[AI Agents]
-        CHAT[Chat Applications]
-    end
-    
-    subgraph "MCP Server"
-        TOOLS[Blockchain Tools]
-        RESOURCES[Data Resources]
-        SESSIONS[Session Management]
-    end
-    
-    subgraph "ChainSwarm Core"
-        API[REST API]
-        DATA[Multi-Modal Data]
-    end
-    
-    LLM <--> TOOLS
-    AGENT <--> TOOLS
-    CHAT <--> TOOLS
-    
-    TOOLS <--> API
-    RESOURCES <--> DATA
-    SESSIONS --> API
+    A[Blockchain Networks] --> B[Block Stream Indexer]
+    B --> C[Event Processing]
+    C --> D[Money Flow Analysis]
+    C --> E[Balance Tracking]
+    D --> F[Graph Database]
+    E --> G[Time-Series Database]
+    F --> H[AI Agent APIs]
+    G --> H
 ```
 
-### AI-Powered Analytics Tools
+#### Analytics Layer
+- **Graph Analytics**: Community detection, PageRank analysis, path finding
+- **Statistical Analysis**: Pattern recognition, anomaly detection, trend analysis, address classification
+- **Machine Learning**: Embedding generation, similarity search, predictive modeling
+- **Real-Time Processing**: Stream processing for immediate insights
 
-| Tool Category | MCP Tools | Capabilities |
-|---------------|-----------|--------------|
-| **Balance Intelligence** | `balance_query`, `balance_schemas` | Historical balance analysis, portfolio tracking, asset flow monitoring |
-| **Money Flow Analysis** | `money_flow_query`, `money_flow_schema` | Transaction pattern recognition, fund movement visualization, network analysis |
-| **Similarity Search** | `similarity_search_query`, `similarity_search_schema` | Vector-based address clustering, behavioral pattern matching, anomaly detection |
-| **Network Intelligence** | `networks`, `session_stats` | Multi-network support, usage analytics, performance monitoring |
+### 2. AI Agent Interface
 
-## 🔧 Technical Architecture
-
-### Data Processing Pipeline
-
+#### MCP Server Architecture
 ```mermaid
 graph TB
-    subgraph "🔗 Blockchain Layer"
-        NODES[Substrate Nodes<br/>WebSocket Connections]
-    end
-    
-    subgraph "📥 Ingestion Pipeline"
-        BS[Block Stream<br/>Real-time Processing]
-        BP[Block Processor<br/>Event Extraction]
-        EP[Event Processor<br/>Data Transformation]
-    end
-    
-    subgraph "🏭 Specialized Indexers"
-        BTI[Balance Tracking Indexer<br/>Account State Changes]
-        MFI[Money Flow Indexer<br/>Transaction Graphs]
-        KAI[Known Addresses Indexer<br/>Entity Recognition]
-        SSI[Similarity Search Indexer<br/>Vector Embeddings]
-    end
-    
-    subgraph "💾 Storage Optimization"
-        PART[Block Range Partitioning]
-        COMP[Data Compression]
-        IDX[Smart Indexing]
-    end
-    
-    NODES --> BS
-    BS --> BP
-    BP --> EP
-    
-    EP --> BTI
-    EP --> MFI
-    EP --> KAI
-    EP --> SSI
-    
-    BTI --> PART
-    MFI --> COMP
-    SSI --> IDX
+    A[AI Agents] --> B[MCP Protocol]
+    B --> C[Rate Limiting Layer]
+    C --> D[Query Router]
+    D --> E[Money Flow Service]
+    D --> F[Balance Tracking Service]
+    D --> G[Similarity Search Service]
+    E --> H[Graph Database]
+    F --> I[ClickHouse]
+    G --> H
 ```
 
-### Multi-Modal Data Storage
+#### API Capabilities
+- **Schema Discovery**: Automatic exposure of database schemas and query capabilities
+- **Query Execution**: Direct execution of Cypher and SQL queries
+- **Pattern Matching**: Advanced similarity search and pattern recognition
+- **Data Export**: Structured data export for agent processing
 
-```mermaid
-graph TB
-    subgraph "⏱️ Time-Series Analytics"
-        CH[(ClickHouse)]
-        CH --> BT[Balance Tracking<br/>Historical Data]
-        CH --> BS[Block Stream<br/>Event Logs]
-        CH --> TS[Time-Series<br/>Aggregations]
-    end
-    
-    subgraph "🕸️ Graph Analytics"
-        MG[(Memgraph<br/>Real-time)]
-        N4[(Neo4j<br/>Read Replicas)]
-        
-        MG --> TF[Transaction Flows]
-        MG --> NA[Network Analysis]
-        MG --> VS[Vector Search]
-        
-        N4 --> QO[Query Optimization]
-        N4 --> RA[Read Analytics]
-    end
-    
-    subgraph "🧠 AI Features"
-        EMB[Vector Embeddings]
-        SIM[Similarity Indices]
-        PAT[Pattern Recognition]
-    end
-    
-    VS --> EMB
-    EMB --> SIM
-    SIM --> PAT
-```
+### 3. Reward Distribution System
 
-## 🌐 Network Support
+#### Torus Blockchain Integration
+- **Agent Registration**: All participants register as agents on Torus blockchain
+- **Contribution Tracking**: Automated tracking of contributions and their impact
+- **Reward Calculation**: Algorithmic calculation of rewards based on multiple factors
+- **Token Distribution**: Automated distribution of TORUS tokens to contributors
 
-### Current Status
+#### Incentive Mechanisms
+- **Development Incentives**: Rewards for blockchain integrations and tool development
+- **Infrastructure Incentives**: Ongoing rewards for infrastructure provision
+- **Discovery Bonuses**: Rewards for novel analytical insights
+- **Collaboration Multipliers**: Additional rewards for successful agent collaboration
+- **DevFund Agent**: Potential automated system for developer reward distribution
 
-| Network | Status | Native Asset | MCP Tools Available | Infrastructure |
-|---------|--------|--------------|-------------------|----------------|
-| **Torus** | 🟢 **Production** | TOR | ✅ All Features | Full deployment |
-| **Bittensor** | 🔄 **Development** | TAO | 🚧 Coming Soon | Infrastructure ready |
-| **Polkadot** | 🔄 **Planned** | DOT | 🚧 Coming Soon | Infrastructure ready |
+## Strategic Roadmap
 
-### Torus Network Features
+### Phase 1: Foundation (Q1-Q3 2025)
+- **Core Infrastructure**: Completed money flow and balance tracking systems
+- **MCP Integration**: Copleted Full Model Context Protocol server implementation
+- **Torus Integration**: Agent registration and basic reward distribution
+- **Documentation**: Comprehensive developer and user documentation
 
-Currently supporting the Torus network with full feature set:
+### Phase 2: Agent Ecosystem
+- **Agent Framework**: Tools and libraries for building Chain Swarm agents
+- **Collaboration Platform**: Shared memory and agent coordination systems
+- **Advanced Analytics**: Enhanced pattern recognition and predictive capabilities
+- **Developer Incentives**: Implementation of developer reward system
 
-- **Balance Tracking**: Real-time TOR balance monitoring across all accounts
-- **Money Flow Analysis**: Transaction pattern analysis and fund movement visualization  
-- **Similarity Search**: AI-powered address clustering and behavioral analysis
-- **Known Addresses**: Entity identification and labeling system
-- **Multi-Asset Support**: Native TOR asset tracking with extensible framework
+### Phase 3: Swarm Intelligence
+- **Multi-Agent Coordination**: Advanced swarm intelligence capabilities
+- **Cross-Network Analysis**: Expanded support for multiple blockchain networks
+- **Predictive Analytics**: AI-powered prediction of market movements and network events
+- **Enterprise Integration**: Tools for institutional adoption
 
-## 🛠️ Technology Stack
+### Phase 4: Ecosystem Maturity
+- **Autonomous Operation**: Self-sustaining ecosystem with minimal human intervention
+- **Global Scale**: Support for all major blockchain networks
+- **Research Platform**: Advanced research capabilities for academic institutions
+- **Industry Standards**: Establishment of Chain Swarm as the industry standard
 
-### Core Technologies
-- **Backend Framework**: Python 3.11+, FastAPI
-- **AI Integration**: Model Context Protocol (MCP), FastMCP
-- **Blockchain Interface**: Substrate Interface, WebSocket connections
-- **Databases**: 
-  - ClickHouse (time-series analytics)
-  - Memgraph (real-time graph processing)
-  - Neo4j (graph query optimization)
+## Impact and Benefits
 
-### Infrastructure & DevOps
-- **Containerization**: Docker, Docker Compose
-- **Monitoring**: Dozzle (log aggregation), Portainer (container management)
-- **Database UIs**: ClickHouse UI, Memgraph Lab
-- **Load Balancing**: Nginx (for multi-node deployments)
+### For the Blockchain Industry
+- **Transparency**: Enhanced visibility into blockchain network activities
+- **Security**: Improved detection of fraudulent and malicious activities
+- **Research**: Advanced tools for blockchain research and development
+- **Standardization**: Common frameworks for blockchain analytics
 
-### AI & Analytics
-- **Vector Search**: Memgraph vector extensions
-- **Pattern Recognition**: Custom similarity algorithms
-- **Rate Limiting**: Session-based and global rate limiting
-- **Data Processing**: Event-driven architecture with specialized indexers
+### For AI Development
+- **Specialized Tools**: Purpose-built tools for blockchain AI applications
+- **Collaboration Framework**: New models for AI agent cooperation
+- **Data Access**: Rich, structured blockchain data for AI training
+- **Innovation Platform**: Testbed for new AI techniques and approaches
 
-## 🚀 Getting Started
+### For the Open Source Community
+- **Knowledge Sharing**: Open access to advanced blockchain analytics tools
+- **Collaborative Development**: New models for distributed software development
+- **Economic Incentives**: Sustainable funding for open source development
+- **Global Participation**: Opportunities for developers worldwide
 
-### Quick Start with MCP
+## Project Leadership and Sustainability
 
-1. **Prerequisites**: Docker and Docker Compose installed
-2. **Environment Setup**: Copy `.env.example` to `.env` and configure
-3. **Infrastructure Deployment**: See `docs/deployment/` for detailed instructions
-4. **MCP Server Access**: Connect to `http://localhost:8005` for MCP integration
+### Leadership Structure
+- **Project Direction**: Led by the founder with clear vision and technical direction
+- **Development Coordination**: Centralized coordination of development efforts
+- **Quality Assurance**: Maintained standards and code quality oversight
+- **Strategic Planning**: Long-term roadmap and ecosystem development
 
-### MCP Integration Example
 
-```python
-# Example: Using ChainSwarm MCP tools in an AI application
-from mcp_client import MCPClient
+### Risk Management
+- **Security Audits**: Regular security audits of all critical infrastructure
+- **Decentralization**: Distributed infrastructure to avoid single points of failure
+- **Quality Control**: Centralized oversight to maintain ecosystem quality
 
-client = MCPClient("http://localhost:8005")
+## Developer Reward Framework (To Be Determined)
 
-# Get balance data for AI analysis
-balance_data = await client.call_tool("balance_query", {
-    "network": "torus",
-    "query": "SELECT * FROM balance_changes WHERE amount > 1000000",
-    "assets": ["TOR"]
-})
+The developer reward system is currently under development and will focus on:
 
-# Analyze money flow patterns
-flow_analysis = await client.call_tool("money_flow_query", {
-    "network": "torus", 
-    "query": "MATCH (a:Address)-[t:TRANSFER]->(b:Address) WHERE t.amount > 1000000 RETURN a, t, b",
-    "assets": ["TOR"]
-})
-```
+### Core Principles
+- **Merit-Based**: Rewards based on actual usage and value creation
+- **Organic Growth**: Incentivizing solutions that gain natural adoption
+- **Importance Weighting**: Higher rewards for critical infrastructure components
+- **Automated Distribution**: Potential DevFund agent for fair and transparent distribution
 
-## 📊 Use Cases & Applications
+### Potential Mechanisms
+- **Usage Metrics**: Rewards proportional to API calls and data consumption
+- **Network Value**: Compensation based on the value added to the ecosystem
+- **Quality Factors**: Multipliers for reliability, performance, and innovation
+- **Community Impact**: Bonuses for solutions that enable other developers
 
-### For AI Developers
-- **Blockchain-aware LLMs**: Integrate real-time blockchain data into language models
-- **Trading Bots**: Access balance and flow data for algorithmic trading
-- **Risk Analysis**: Use similarity search for fraud detection and compliance
+### Implementation Approach
+- **Phased Rollout**: Gradual implementation with community feedback
+- **Transparent Metrics**: Clear, auditable metrics for reward calculation
+- **Regular Review**: Periodic assessment and adjustment of reward mechanisms
+- **Developer Support**: Tools and resources to help developers succeed
 
-### For Data Scientists
-- **Pattern Discovery**: Vector-based similarity search for behavioral analysis
-- **Network Analysis**: Graph-based transaction flow visualization
-- **Time-Series Analysis**: Historical balance and volume trend analysis
+## Conclusion
 
-### For Enterprises
-- **Compliance Monitoring**: Track large transactions and suspicious patterns
-- **Portfolio Management**: Multi-asset balance tracking and reporting
-- **Research & Analytics**: Custom queries across time-series and graph data
+Chain Swarm represents a revolutionary approach to blockchain analytics, combining the power of AI agent collaboration with the transparency and incentive alignment of blockchain technology. Under focused leadership and with a clear technical vision, Chain Swarm will create an ecosystem where developers can build valuable blockchain integrations and analytical tools while being fairly compensated for their contributions.
 
-## 🔗 API Reference
+The vision of Chain Swarm extends beyond just providing tools—it's about creating a new model for collaborative intelligence that can be applied to other domains beyond blockchain analytics. As AI agents become more sophisticated and autonomous, the frameworks and patterns developed in Chain Swarm will serve as a foundation for the next generation of collaborative AI systems.
 
-### REST API Endpoints
-- **Health Check**: `GET /health`
-- **Networks**: `GET /networks`
-- **Balance Tracking**: `/balance/*`
-- **Money Flow**: `/money-flow/*`
-- **Similarity Search**: `/similarity/*`
-- **Known Addresses**: `/known-addresses/*`
-
-### MCP Tools
-- **Network Tools**: `networks`, `session_stats`
-- **Balance Tools**: `balance_schemas`, `balance_query`
-- **Money Flow Tools**: `money_flow_schema`, `money_flow_query`
-- **Similarity Tools**: `similarity_search_schema`, `similarity_search_query`
-
-## 📚 Documentation
-
-- **Deployment Guide**: `docs/deployment/`
-- **API Documentation**: `docs/api/`
-- **MCP Integration**: `docs/mcp/`
-- **Development Setup**: `docs/development/`
-- **Architecture Deep Dive**: `docs/architecture/`
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our contributing guidelines in `docs/contributing/` for:
-- Development environment setup
-- Code style and standards
-- Testing requirements
-- Pull request process
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🔮 Roadmap
-
-### Q1 2025
-- ✅ Torus network full integration
-- 🔄 Bittensor network implementation
-- 🔄 Enhanced MCP tool capabilities
-
-### Q2 2025
-- 🔄 Polkadot network integration
-- 🔄 Advanced AI analytics features
-- 🔄 Multi-network cross-analysis tools
-
-### Q3 2025
-- 🔄 Additional Substrate network support
-- 🔄 Real-time alerting system
-- 🔄 Advanced visualization tools
+Through its commitment to open source development, fair reward distribution, and collaborative innovation, Chain Swarm will establish itself as the premier platform for blockchain analytics and AI agent collaboration, driving the industry forward while maintaining clear leadership and direction.
 
 ---
 
-**ChainSwarm** - Transforming blockchain data into AI-powered insights
+*This vision document represents the strategic direction of the Chain Swarm project under the leadership of its founder. The project maintains an open source approach while ensuring focused development and quality standards.*
