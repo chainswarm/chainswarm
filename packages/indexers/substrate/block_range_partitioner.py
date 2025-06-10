@@ -9,7 +9,7 @@ class BlockRangePartitioner:
         self.block_time_seconds = block_time_seconds
 
         blocks_per_day = 24 * 60 * 60 // block_time_seconds
-        self.range_size = blocks_per_day * days  # blocks per year
+        self.range_size = blocks_per_day * days  # blocks per month (30 days)
 
         # Modified to start from block 1
         self.partition_ranges = {

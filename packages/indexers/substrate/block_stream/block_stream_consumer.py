@@ -189,7 +189,7 @@ if __name__ == "__main__":
         
         if last_indexed_height > start_height:
             start_height = last_indexed_height + 1
-            logger.info(f"Found existing blocks in partition {args.partition}, starting from block {start_height}")
+            logger.info(f"Resuming indexing for partition {args.partition}, blocks 1-{last_indexed_height} already exist, continuing from block {start_height}")
         else:
             logger.info(f"No existing blocks found in partition {args.partition}, starting from beginning: {start_height}")
             
