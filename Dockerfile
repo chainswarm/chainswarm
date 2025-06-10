@@ -1,5 +1,5 @@
 FROM python:3.10.12
-WORKDIR /blockchain-data-subnet-indexer-substrate
+WORKDIR /chainswarm
 COPY requirements.txt requirements.txt
 
 RUN apt-get update && apt-get install -y \
