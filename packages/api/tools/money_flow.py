@@ -15,11 +15,8 @@ class MoneyFlowTool:
         if self.guard_graph_database:
             self.guard_graph_database.close()
 
-    def get_money_flow_schema(self, assets: Optional[List[str]] = None) -> Dict[str, Any]:
+    def get_money_flow_schema(self) -> Dict[str, Any]:
         """Get schema information from Memgraph with asset support
-
-        Args:
-            assets: List of asset symbols to include in schema info
 
         Returns:
             Dict containing schema information including node labels, indexes, vector indexes, asset properties, and example queries
@@ -30,36 +27,28 @@ class MoneyFlowTool:
             indexes = session.run("SHOW INDEX INFO").data()
             vector_indexes = session.run("CALL vector_search.show_index_info() YIELD * RETURN *;").data()
 
-            # Default asset examples
-            asset_examples = assets if assets else ["TOR"]
-            # Use proper parameterization for asset filters in example queries
-            if len(asset_examples) == 1:
-                asset_filter = f"r.asset = '{asset_examples[0]}'"
-                asset_param_example = f"r.asset = $asset"
-            else:
-                asset_filter = f"r.asset IN {asset_examples}"
-                asset_param_example = f"r.asset IN $assets"
+            # Use generic asset parameter examples
+            asset_param_example = "r.asset = $asset"
 
             return {
                 "schema": schema[0]["schema"] if schema else "No schema available",
                 "indexes": indexes,
                 "vector_indexes": vector_indexes,
                 "asset_support": {
-                    "description": "Money flow graph includes asset properties on edges only. Address nodes are identified by address only.",
-                    "asset_properties": {
-                        "nodes": [],
-                        "edges": ["asset", "id"]
-                    },
-                    "edge_naming": "Edge IDs are suffixed with asset symbol: from-{from_address}-to-{to_address}-{asset}",
-                    "requested_assets": assets or ["Network native asset"]
+                    "description": "Address nodes are asset-agnostic. Edges contain asset property to identify which asset was transferred."
                 },
                 "example_queries": [
-                    f"MATCH (a:Address {{address: $address}})-[r:TO {{asset: $asset}}]->(b:Address) RETURN a, r, b LIMIT 10",
-                    f"MATCH (a:Address {{address: $address}})-[r:TO]->(b:Address) WHERE {asset_param_example} RETURN a, r, b LIMIT 10",
-                    f"MATCH path = (start:Address {{address: $source_address}})-[rels:TO*BFS]->(target:Address {{address: $target_address}}) WHERE ALL(r IN rels WHERE r.asset = $asset) RETURN path",
-                    f"MATCH (a:Address) WHERE a.address IN $addresses CALL path.expand(a, ['TO'],[],0, 2) YIELD result as path RETURN path",
-                    "MATCH (a:Address)-[r:TO]->(b:Address) RETURN r.asset as asset, COUNT(r) as transfer_count, SUM(r.volume) as total_volume GROUP BY r.asset"
-                ]
+                    "MATCH (a:Address {address: $address})-[r:TO {asset: $asset}]->(b:Address) RETURN a, r, b LIMIT 1000",
+                    f"MATCH (a:Address {{address: $address}})-[r:TO]->(b:Address) WHERE {asset_param_example} RETURN a, r, b LIMIT 1000",
+                    "MATCH path = (start:Address {address: $source_address})-[rels:TO*BFS 1..3]->(target:Address {address: $target_address}) WHERE ALL(r IN rels WHERE r.asset = $asset) RETURN path LIMIT 1000",
+                    "MATCH (a:Address) WHERE a.address IN $addresses CALL path.expand(a, ['TO'],[],1, 3) YIELD result as path RETURN path LIMIT 1000",
+                    "MATCH (a:Address)-[r:TO]->(b:Address) RETURN r.asset as asset, COUNT(r) as transfer_count, SUM(r.volume) as total_volume GROUP BY r.asset LIMIT 1000"
+                ],
+                "query_limits": {
+                    "max_path_depth": 3,
+                    "max_results": 1000,
+                    "note": "All path queries are limited to maximum 3 hops and 1000 results to protect database performance"
+                }
             }
 
     async def money_flow_query(self, query: str, assets: Optional[List[str]] = None) -> Dict[str, Any]:
