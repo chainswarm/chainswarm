@@ -1,304 +1,185 @@
- k# MCP Schema Enhancement Plan
+# Money Flow Query Examples Enhancement Plan
 
 ## Overview
 
-This plan outlines enhancements to the MCP server to:
-1. Add comprehensive network and asset information to schemas
-2. Create a unified `schema` method that returns all information in one call
-3. Include database-specific documentation for Memgraph and ClickHouse
-4. Provide extensive examples and cheatsheets
+This document outlines the plan for enhancing the MCP server by adding comprehensive query examples to the money flow section of the schema. These examples will be derived from the `money_flow_service.py` file, which contains sophisticated query patterns that can serve as excellent real-world examples.
 
-## Key Changes
+## Current Implementation
 
-### 1. Unified Schema Method
-
-Create a single `schema` MCP tool that consolidates:
-- All network and asset information (making the `networks` tool obsolete)
-- Money flow schema (Memgraph graph database)
-- Balance tracking schema (ClickHouse OLAP database)
-- Similarity search schema (Memgraph vector search)
-- Database-specific syntax and optimization guides
-
-### 2. Global Asset Support
-
-Emphasize that asset support is implemented globally across all schemas:
-- All tables in ClickHouse include asset fields
-- All edges in Memgraph include asset properties
-- Asset filtering is universally available
-
-### 3. Database-Specific Documentation
-
-#### Memgraph (Graph Database)
-- Cypher dialect differences from Neo4j
-- Path expansion with `path.expand()`
-- Native BFS/DFS traversal support
-- Triggers and streams for real-time processing
-- Built-in graph algorithms
-- Performance optimization techniques
-
-#### ClickHouse (OLAP Database)
-- MergeTree engine specifics and FINAL keyword
-- PREWHERE optimization for filtering
-- Advanced aggregation functions
-- Time-series analysis capabilities
-- Materialized views usage
-- Array and JSON operations
-
-## Implementation Details
-
-### Asset Registry Structure
+In `mcp_server.py`, there's a commented line that would add Cypher query examples to the money flow schema:
 
 ```python
-ASSET_REGISTRY = {
-    "torus": {
-        "name": "Torus",
-        "symbol": "TORUS",
-        "native_asset": "TOR",
-        "supported_assets": [
-            {
-                "symbol": "TOR",
-                "name": "Torus",
-                "type": "native",
-                "description": "Native token of Torus network"
-            }
-        ]
-    },
-    "bittensor": {
-        "name": "Bittensor", 
-        "symbol": "BITTENSOR",
-        "native_asset": "TAO",
-        "supported_assets": [
-            {
-                "symbol": "TAO",
-                "name": "Bittensor",
-                "type": "native",
-                "description": "Native token of Bittensor network"
-            }
-        ]
-    },
-    "polkadot": {
-        "name": "Polkadot",
-        "symbol": "POLKADOT",
-        "native_asset": "DOT",
-        "supported_assets": [
-            {
-                "symbol": "DOT",
-                "name": "Polkadot",
-                "type": "native",
-                "description": "Native token of Polkadot network"
-            }
-        ]
+# Line 306 in mcp_server.py
+#money_flow_schema["memgraph_cypher_cheatsheet"] = get_memgraph_cypher_cheatsheet()
+```
+
+The current `get_memgraph_cypher_cheatsheet()` function (lines 55-146) contains examples organized into categories like path expansion, traversal methods, result limits, etc.
+
+## Required Changes
+
+1. Replace the content of the `get_memgraph_cypher_cheatsheet()` function with new examples derived from `money_flow_service.py`
+2. Uncomment line 306 to include the cheatsheet in the schema
+
+## New Cypher Cheatsheet Structure
+
+The new cheatsheet will be organized into the following categories:
+
+1. **Path Analysis Queries**: For exploring connections between addresses
+2. **Community Analysis Queries**: For analyzing community structures and relationships
+3. **Pattern Detection Queries**: For detecting specific transaction patterns
+4. **Temporal Analysis Queries**: For time-based analysis of transaction patterns
+5. **Performance Optimization**: Best practices for efficient queries
+
+## Detailed Implementation
+
+### New `get_memgraph_cypher_cheatsheet()` Function
+
+```python
+def get_memgraph_cypher_cheatsheet() -> Dict[str, Any]:
+    """Get Memgraph-specific Cypher cheatsheet with examples from money_flow_service"""
+    return {
+        "path_analysis": {
+            "description": "Path-based queries for exploring connections between addresses",
+            "examples": [
+                {
+                    "name": "Shortest path between addresses",
+                    "query": "MATCH path = (start:Address {address: $source_address})-[rels:TO*BFS]-(target:Address {address: $target_address}) WHERE size(path) > 0 RETURN path LIMIT 1000"
+                },
+                {
+                    "name": "Shortest path with asset filter",
+                    "query": "MATCH path = (start:Address {address: $source_address})-[rels:TO*BFS]-(target:Address {address: $target_address}) WHERE ALL(rel IN rels WHERE rel.asset = $asset) RETURN path LIMIT 1000"
+                },
+                {
+                    "name": "Path exploration with depth control",
+                    "query": "MATCH (a:Address) WHERE a.address IN $addresses CALL path.expand(a, ['TO'], [], 0, $depth) YIELD result as path RETURN path LIMIT 1000"
+                },
+                {
+                    "name": "Directional path exploration (outgoing)",
+                    "query": "MATCH (a:Address) WHERE a.address IN $addresses CALL path.expand(a, ['TO>'], [], 0, $depth) YIELD result as path RETURN path LIMIT 1000"
+                },
+                {
+                    "name": "Directional path exploration (incoming)",
+                    "query": "MATCH (a:Address) WHERE a.address IN $addresses CALL path.expand(a, ['<TO'], [], 0, $depth) YIELD result as path RETURN path LIMIT 1000"
+                }
+            ]
+        },
+        "community_analysis": {
+            "description": "Queries for analyzing community structures and relationships",
+            "examples": [
+                {
+                    "name": "Aggregate community metrics",
+                    "query": "MATCH (a:Address) WHERE a.community_id IS NOT NULL WITH a.community_id AS community_id, COLLECT(a) AS community_addresses WITH community_id, REDUCE(volume_in = 0, addr IN community_addresses | volume_in + CASE WHEN addr.volume_in IS NOT NULL THEN addr.volume_in ELSE 0 END) AS total_volume_in, REDUCE(volume_out = 0, addr IN community_addresses | volume_out + CASE WHEN addr.volume_out IS NOT NULL THEN addr.volume_out ELSE 0 END) AS total_volume_out, SIZE(community_addresses) AS address_count RETURN community_id, total_volume_in, total_volume_out, address_count ORDER BY address_count DESC LIMIT 100"
+                },
+                {
+                    "name": "Find inter-community transfers",
+                    "query": "MATCH (a1:Address)-[r:TO]->(a2:Address) WHERE a1.community_id <> a2.community_id AND a1.community_id IS NOT NULL AND a2.community_id IS NOT NULL WITH a1.community_id AS from_community_id, a2.community_id AS to_community_id, SUM(r.volume) AS total_volume, COUNT(r) AS transfer_count RETURN from_community_id, to_community_id, total_volume, transfer_count ORDER BY total_volume DESC LIMIT 100"
+                },
+                {
+                    "name": "Extract subcommunities",
+                    "query": "MATCH (a:Address) WHERE a.community_id IS NOT NULL AND a.community_ids IS NOT NULL WITH a.community_id AS primary_community, a.community_ids AS all_communities UNWIND all_communities AS subcommunity_id WHERE subcommunity_id <> primary_community RETURN primary_community, COLLECT(DISTINCT subcommunity_id) AS subcommunities"
+                }
+            ]
+        },
+        "pattern_detection": {
+            "description": "Queries for detecting specific transaction patterns",
+            "examples": [
+                {
+                    "name": "Fan-in pattern detection (multiple sources to one target)",
+                    "query": "MATCH (source:Address)-[r:TO]->(target:Address) WHERE r.volume >= $min_volume WITH target, count(DISTINCT source) AS source_count, sum(r.volume) AS total_volume WHERE source_count >= $min_sources AND total_volume >= $min_volume MATCH (source:Address)-[r:TO]->(target) WHERE r.volume >= $min_volume WITH target, source, r ORDER BY r.last_transfer_timestamp DESC WITH target, collect({source: source.address, timestamp: r.last_transfer_timestamp, volume: r.volume}) AS incoming_txs UNWIND incoming_txs AS tx WITH target, tx ORDER BY tx.timestamp DESC WITH target, collect(tx) AS recent_txs, min(tx.timestamp) AS window_start, max(tx.timestamp) AS window_end WHERE (window_end - window_start) <= $time_window AND size(recent_txs) >= $min_sources RETURN target.address, size(recent_txs) AS source_count, reduce(total = 0, tx IN recent_txs | total + tx.volume) AS total_volume ORDER BY source_count DESC, total_volume DESC LIMIT 100"
+                },
+                {
+                    "name": "Fan-out pattern detection (one source to multiple targets)",
+                    "query": "MATCH (source:Address)-[r:TO]->(target:Address) WHERE r.volume >= $min_volume WITH source, count(DISTINCT target) AS target_count, sum(r.volume) AS total_volume WHERE target_count >= $min_targets AND total_volume >= $min_volume MATCH (source)-[r:TO]->(target:Address) WHERE r.volume >= $min_volume WITH source, target, r ORDER BY r.last_transfer_timestamp DESC WITH source, collect({target: target.address, timestamp: r.last_transfer_timestamp, volume: r.volume}) AS outgoing_txs UNWIND outgoing_txs AS tx WITH source, tx ORDER BY tx.timestamp DESC WITH source, collect(tx) AS recent_txs, min(tx.timestamp) AS window_start, max(tx.timestamp) AS window_end WHERE (window_end - window_start) <= $time_window AND size(recent_txs) >= $min_targets RETURN source.address, size(recent_txs) AS target_count, reduce(total = 0, tx IN recent_txs | total + tx.volume) AS total_volume ORDER BY target_count DESC, total_volume DESC LIMIT 100"
+                },
+                {
+                    "name": "High-volume transfer detection",
+                    "query": "MATCH (source:Address)-[r:TO]->(target:Address) WHERE r.volume > $threshold RETURN source.address, target.address, r.volume, r.first_transfer_timestamp ORDER BY r.volume DESC LIMIT 100"
+                }
+            ]
+        },
+        "temporal_analysis": {
+            "description": "Time-based analysis of transaction patterns",
+            "examples": [
+                {
+                    "name": "Transaction frequency pattern analysis",
+                    "query": "MATCH ()-[r:TO]->() WHERE r.transfer_count >= $min_transfers AND size(r.tx_frequency) >= $min_transfers - 1 WITH r, startNode(r) AS source, endNode(r) AS target, avg(toFloat(r.tx_frequency)) AS avg_interval, stdDev(r.tx_frequency) AS std_interval, min(r.tx_frequency) AS min_interval, max(r.tx_frequency) AS max_interval WITH r, source, target, avg_interval, std_interval, min_interval, max_interval, CASE WHEN std_interval <= (avg_interval * 0.3) THEN 'regular' WHEN min_interval <= (avg_interval * 0.2) THEN 'burst' ELSE 'inconsistent' END AS pattern RETURN source.address, target.address, pattern, r.transfer_count, avg_interval, std_interval ORDER BY r.transfer_count DESC LIMIT 100"
+                },
+                {
+                    "name": "Regular transaction pattern detection",
+                    "query": "MATCH ()-[r:TO]->() WHERE r.transfer_count >= $min_transfers AND size(r.tx_frequency) >= $min_transfers - 1 WITH r, startNode(r) AS source, endNode(r) AS target, avg(toFloat(r.tx_frequency)) AS avg_interval, stdDev(r.tx_frequency) AS std_interval WHERE std_interval <= (avg_interval * 0.3) RETURN source.address, target.address, r.transfer_count, avg_interval, std_interval ORDER BY r.transfer_count DESC LIMIT 100"
+                },
+                {
+                    "name": "Temporal sequence detection",
+                    "query": "MATCH path = (a:Address)-[r1:TO]->(b:Address)-[r2:TO]->(c:Address) WHERE r1.volume >= $min_volume AND r2.volume >= $min_volume AND r2.first_transfer_timestamp >= r1.last_transfer_timestamp AND (r2.first_transfer_timestamp - r1.last_transfer_timestamp) <= $max_time_gap RETURN [a.address, b.address, c.address] AS address_sequence, [r1.volume, r2.volume] AS volumes, [r1.first_transfer_timestamp, r2.first_transfer_timestamp] AS timestamps ORDER BY r1.volume + r2.volume DESC LIMIT 100"
+                },
+                {
+                    "name": "Time-windowed transfer analysis",
+                    "query": "MATCH (a:Address)-[r:TO]->(b:Address) WHERE r.first_transfer_timestamp >= $start_time AND r.last_transfer_timestamp <= $end_time RETURN a.address, b.address, r.volume, r.transfer_count, r.first_transfer_timestamp, r.last_transfer_timestamp ORDER BY r.volume DESC LIMIT 1000"
+                }
+            ]
+        },
+        "performance_optimization": {
+            "description": "Query optimization techniques for Memgraph",
+            "examples": [
+                {
+                    "name": "Index usage for address lookup",
+                    "query": "USING INDEX SEEK ON :Address(address) MATCH (a:Address {address: $addr}) RETURN a"
+                },
+                {
+                    "name": "Early filtering with limit",
+                    "query": "MATCH (a:Address) WHERE a.address STARTS WITH '5C' WITH a LIMIT 1000 MATCH (a)-[r:TO {asset: $asset}]->(b) RETURN a, r, b LIMIT 1000"
+                },
+                {
+                    "name": "Limit early in path expansion",
+                    "query": "MATCH (a:Address {address: $addr}) CALL path.expand(a, ['TO'], [], 1, 3) YIELD result LIMIT 100 RETURN result"
+                },
+                {
+                    "name": "Parameterized asset filtering",
+                    "query": "MATCH (a:Address)-[r:TO]->(b:Address) WHERE r.asset IN $assets RETURN a, r, b LIMIT 1000"
+                }
+            ]
+        },
+        "restricted_operations": {
+            "description": "Operations that are NOT allowed",
+            "note": "These operations are handled by the indexing engine",
+            "restricted": [
+                "PageRank calculation - computed during indexing",
+                "Community detection - computed during indexing",
+                "Other graph algorithms - not yet implemented",
+                "Path expansions beyond 3 hops - use multiple queries",
+                "Queries without LIMIT - always specify a limit (max 1000)"
+            ]
+        }
     }
-}
 ```
 
-### Schema Method Response Structure
+### Line to Uncomment
 
-```json
-{
-  "networks": {
-    // Complete network and asset information
-  },
-  "global_asset_support": {
-    "description": "All schemas support multi-asset tracking. Asset filtering is available across all data models.",
-    "note": "Asset support is implemented globally - all tables, nodes, and edges include asset information"
-  },
-  "schemas": {
-    "money_flow": {
-      "description": "Graph database schema for money flow analysis",
-      "database": {
-        "type": "Memgraph",
-        "note": "Uses Memgraph-specific Cypher dialect"
-      },
-      "memgraph_cypher_cheatsheet": {
-        // Extensive Memgraph examples
-      }
-    },
-    "balance_tracking": {
-      "description": "Time-series balance tracking schema",
-      "database": {
-        "type": "ClickHouse",
-        "note": "OLAP database optimized for analytical queries"
-      },
-      "clickhouse_sql_cheatsheet": {
-        // Extensive ClickHouse examples
-      }
-    },
-    "similarity_search": {
-      // Vector search schema
-    }
-  },
-  "usage_examples": {
-    // Practical examples for each capability
-  }
-}
+```python
+# Line 306 in mcp_server.py - Remove the # at the beginning
+money_flow_schema["memgraph_cypher_cheatsheet"] = get_memgraph_cypher_cheatsheet()
 ```
 
-## Memgraph-Specific Examples
+## Implementation Steps
 
-### Path Expansion
-```cypher
--- Basic expansion
-MATCH (a:Address {address: $addr}) 
-CALL path.expand(a, ['TO'], [], 1, 3) 
-YIELD result 
-RETURN result
-
--- Filtered expansion with asset
-MATCH (a:Address {address: $addr}) 
-CALL path.expand(a, ['TO'], [], 1, 5) 
-YIELD result 
-WHERE ALL(r IN relationships(result) WHERE r.asset = $asset) 
-RETURN result
-```
-
-### BFS/DFS Traversal
-```cypher
--- BFS with depth limit and filter
-MATCH path = (a:Address {address: $addr})-[*BFS 1..3 (r, n | r.asset = $asset)]->(b:Address) 
-RETURN path
-
--- Weighted shortest path
-MATCH path = (a:Address {address: $from})-[*WSHORTEST 1..10 (r, n | r.volume) volume]->(b:Address {address: $to}) 
-RETURN path, volume
-```
-
-### Real-time Processing
-```cypher
--- Create trigger for large transfers
-CREATE TRIGGER large_transfer 
-ON CREATE EDGE TO 
-EXECUTE IF NEW.volume > 1000000 
-THEN CREATE (n:Alert {
-  address: NEW.from_address, 
-  amount: NEW.volume, 
-  timestamp: timestamp()
-})
-
--- Kafka stream
-CREATE STREAM money_flow_stream 
-TOPICS money_flow_events 
-TRANSFORM money_flow.transform
-```
-
-### Graph Algorithms
-```cypher
--- PageRank
-CALL pagerank.pagerank() 
-YIELD node, rank 
-SET node.page_rank = rank
-
--- Community detection
-CALL community_detection.louvain() 
-YIELD node, community_id 
-SET node.community = community_id
-```
-
-## ClickHouse-Specific Examples
-
-### MergeTree Optimizations
-```sql
--- FINAL for deduplication
-SELECT * FROM balance_changes FINAL 
-WHERE address = $addr AND asset = $asset 
-ORDER BY timestamp DESC
-
--- PREWHERE optimization
-SELECT * FROM balance_transfers 
-PREWHERE asset = $asset 
-WHERE from_address = $addr OR to_address = $addr
-
--- Partition pruning
-SELECT * FROM balance_changes 
-WHERE toYYYYMM(timestamp) = 202401 
-AND address = $addr
-```
-
-### Advanced Aggregations
-```sql
--- Moving averages
-SELECT 
-  timestamp, 
-  asset, 
-  amount,
-  avg(amount) OVER (
-    PARTITION BY asset 
-    ORDER BY timestamp 
-    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-  ) as moving_avg_7d
-FROM balance_transfers FINAL
-
--- Quantiles
-SELECT 
-  asset,
-  quantile(0.5)(amount) as median,
-  quantile(0.95)(amount) as p95,
-  quantile(0.99)(amount) as p99
-FROM balance_transfers FINAL
-GROUP BY asset
-```
-
-### Time-Series Analysis
-```sql
--- Time buckets with gap filling
-WITH (SELECT min(timestamp) FROM balance_changes) as min_time
-SELECT 
-  time_bucket,
-  COALESCE(sum_amount, 0) as amount
-FROM (
-  SELECT 
-    toStartOfHour(timestamp) as time_bucket,
-    SUM(amount) as sum_amount
-  FROM balance_changes FINAL
-  WHERE asset = $asset
-  GROUP BY time_bucket
-) RIGHT JOIN (
-  SELECT toStartOfHour(min_time + number * 3600) as time_bucket
-  FROM numbers(24*30)
-) USING time_bucket
-ORDER BY time_bucket
-
--- Cumulative sums
-SELECT 
-  timestamp,
-  address,
-  asset,
-  amount,
-  SUM(amount) OVER (
-    PARTITION BY address, asset 
-    ORDER BY timestamp
-  ) as cumulative_amount
-FROM balance_transfers FINAL
-```
-
-### Performance Patterns
-```sql
--- Sampling for estimates
-SELECT 
-  asset,
-  COUNT(*) * 100 as estimated_count
-FROM balance_transfers SAMPLE 0.01
-GROUP BY asset
-
--- Efficient JOIN with known addresses
-SELECT * 
-FROM balance_transfers FINAL AS t
-INNER JOIN known_addresses AS k 
-  ON t.from_address = k.address
-WHERE t.asset = $asset 
-  AND k.label != ''
-```
+1. Switch to Code mode to make the changes
+2. Replace the existing `get_memgraph_cypher_cheatsheet()` function with the new implementation
+3. Uncomment line 306 to include the cheatsheet in the schema
+4. Test the changes by running the MCP server
 
 ## Benefits
 
-1. **Single Entry Point**: One call to get all schema information
-2. **Database Awareness**: Clear documentation of database-specific features
-3. **Practical Examples**: Extensive real-world query examples
-4. **Performance Guidance**: Optimization tips for both databases
-5. **Asset Support Clarity**: Global asset support is clearly documented
+The enhanced schema with these query examples will:
 
-## Migration Notes
+1. Provide users with real-world, practical query patterns
+2. Showcase the advanced capabilities of the money flow graph database
+3. Help users understand how to construct complex queries for various analysis scenarios
+4. Demonstrate best practices for query optimization and performance
 
-- The `networks` tool becomes deprecated in favor of the comprehensive `schema` method
-- Existing schema methods remain functional but users are encouraged to use the unified `schema` method
-- No breaking changes to existing functionality
+## Next Steps
+
+After implementing these changes, we should:
+
+1. Test the schema output to ensure it includes the new examples
+2. Consider adding more examples as new query patterns are developed
+3. Document the available query patterns for users

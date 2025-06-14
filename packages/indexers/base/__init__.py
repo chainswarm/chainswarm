@@ -53,8 +53,6 @@ def get_clickhouse_connection_string(network: str):
         "max_query_size": int(os.getenv(f"{network.upper()}_CLICKHOUSE_MAX_QUERY_SIZE", "5000000")),
     }
 
-    logger.debug(f"ClickHouse connection params: {connection_params}")
-
     return connection_params
 
 

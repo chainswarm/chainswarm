@@ -1,72 +1,48 @@
-# MCP Schema Enhancement Implementation Summary
+# MCP Schema Enhancement Summary
 
-## Changes Implemented
+## Overview
 
-### 1. Added Comprehensive Asset Registry
-- Created `ASSET_REGISTRY` constant with network and asset information
-- Includes network names, symbols, native assets, and supported assets
-- Currently supports: Torus (TOR), Bittensor (TAO), and Polkadot (DOT)
+This document summarizes the planned enhancements to the MCP server's money flow schema section, focusing on adding comprehensive query examples derived from `money_flow_service.py`.
 
-### 2. Created Unified Schema Method
-- New `schema` MCP tool that consolidates all information
-- Returns comprehensive schema for all data models in one call
-- Network is now determined from environment variable (no need to pass as parameter)
-- Includes database-specific documentation and cheatsheets
+## Key Changes
 
-### 3. Enhanced Database Documentation
+1. **Replace existing examples**: The current examples in `get_memgraph_cypher_cheatsheet()` will be replaced with new ones based on real-world query patterns from `money_flow_service.py`.
 
-#### Memgraph (Graph Database)
-- Added extensive Memgraph-specific Cypher examples
-- **IMPORTANT LIMITS ENFORCED**:
-  - Maximum path expansion: 3 hops
-  - Maximum results: 1000 per query
-  - Removed graph algorithm examples (PageRank, community detection)
-- Added performance optimization examples
-- Clear documentation of restricted operations
+2. **Uncomment integration line**: Line 306 in `mcp_server.py` will be uncommented to include the cheatsheet in the schema.
 
-#### ClickHouse (OLAP Database)
-- Added comprehensive ClickHouse SQL examples
-- Covered MergeTree optimizations, PREWHERE, aggregations
-- Time-series analysis patterns
-- Array and JSON operations
+3. **New category structure**: The examples will be organized into logical categories that reflect different analysis approaches:
+   - Path Analysis
+   - Community Analysis
+   - Pattern Detection
+   - Temporal Analysis
+   - Performance Optimization
 
-### 4. Updated Existing Schema Methods
-- Enhanced `money_flow_schema` with network/asset info and 3-hop limits
-- Enhanced `balance_schemas` with ClickHouse-specific examples
-- Enhanced `similarity_search_schema` with vector search examples
-- All methods now validate network from `ASSET_REGISTRY`
+## Query Pattern Categories
 
-### 5. Updated MoneyFlowTool
-- Modified example queries to enforce 3-hop limit
-- Added 1000 result limit to all queries
-- Added `query_limits` section documenting restrictions
+| Category | Description | Example Queries |
+|----------|-------------|----------------|
+| **Path Analysis** | Exploring connections between addresses | Shortest path, Path exploration with depth control, Directional path exploration |
+| **Community Analysis** | Analyzing community structures | Aggregate community metrics, Inter-community transfers, Subcommunity extraction |
+| **Pattern Detection** | Identifying specific transaction patterns | Fan-in patterns, Fan-out patterns, High-volume transfers |
+| **Temporal Analysis** | Time-based analysis of transactions | Transaction frequency patterns, Regular transaction detection, Temporal sequences |
+| **Performance Optimization** | Techniques for efficient queries | Index usage, Early filtering, Parameterized filtering |
 
-### 6. Deprecated Networks Tool
-- The `networks` tool is now marked as deprecated
-- All network information is available through the `schema` method
+## Implementation Approach
 
-## Key Security and Performance Features
-
-1. **Path Expansion Limits**: Maximum 3 hops to protect Memgraph
-2. **Result Limits**: Maximum 1000 results per query
-3. **No Graph Algorithms**: PageRank and community detection are computed during indexing
-4. **Environment-Based Network**: Network determined from `NETWORK` env variable
-
-## Usage Example
-
-```python
-# Get comprehensive schema (network from env)
-result = await schema(ctx)
-
-# Get schema without examples
-result = await schema(ctx, include_examples=False)
-```
-
-## Environment Variables Required
-- `NETWORK`: The blockchain network to use (e.g., "torus", "bittensor", "polkadot")
+The implementation will require switching to Code mode to:
+1. Replace the existing `get_memgraph_cypher_cheatsheet()` function
+2. Uncomment line 306 in `mcp_server.py`
 
 ## Benefits
-- Single entry point for all schema information
-- Database-aware with specific optimizations
-- Performance-protected with enforced limits
-- Self-documenting with extensive examples
+
+- **Practical examples**: Users get real-world query patterns they can adapt
+- **Advanced capabilities**: Showcases the full power of the money flow graph database
+- **Query construction guidance**: Helps users understand how to build complex queries
+- **Best practices**: Demonstrates optimization techniques for better performance
+
+## Next Steps
+
+After implementation:
+1. Test schema output
+2. Consider adding more examples as new query patterns emerge
+3. Document the available query patterns for users

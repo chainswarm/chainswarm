@@ -288,7 +288,6 @@ class BalanceTrackingConsumer:
             logger.error(f"Error closing block stream manager: {e}")
     
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Enhanced Balance Tracking Consumer')
     parser.add_argument(

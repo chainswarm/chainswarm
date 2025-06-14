@@ -193,16 +193,9 @@ ALTER TABLE balance_delta_changes ADD INDEX IF NOT EXISTS idx_asset_address (ass
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_from_address (asset, from_address) TYPE bloom_filter(0.01) GRANULARITY 4;
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_to_address (asset, to_address) TYPE bloom_filter(0.01) GRANULARITY 4;
 
--- Materialized view for available assets
-CREATE MATERIALIZED VIEW IF NOT EXISTS available_assets_mv
-ENGINE = AggregatingMergeTree()
-ORDER BY (asset, total_balance_sum)
-AS
-SELECT
-    asset,
-    count(DISTINCT address) as address_count,
-    sum(total_balance) as total_balance_sum,
-    max(block_height) as last_seen_block
+-- Simple view for available assets list
+CREATE VIEW IF NOT EXISTS available_assets_view AS
+SELECT DISTINCT asset
 FROM balance_changes
 WHERE asset != ''
-GROUP BY asset;
+ORDER BY asset;
