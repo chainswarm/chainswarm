@@ -2,12 +2,10 @@ import asyncio
 import json
 from typing import List, Optional, Dict, Any
 from typing import Annotated
-
 from loguru import logger
 from pydantic import Field
 from fastmcp import FastMCP, Context
 from packages.api.routers import get_memgraph_driver, get_neo4j_driver
-from packages.api.services.money_flow_service import MoneyFlowService
 from packages.api.tools.balance_tracking import BalanceTrackingTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
@@ -19,11 +17,7 @@ from packages.api.middleware.mcp_session_rate_limiting import (
 import os
 import clickhouse_connect
 
-mcp = FastMCP(
-    name="Chan Insights MCP Server",
-    instructions="This MCP server provides access to balance tracking, money flow, similarity search, and known addresses data.",
-)
-
+network = os.getenv("NETWORK", "torus").lower()
 
 async def get_assets_from_clickhouse(network: str) -> List[str]:
     """Query ClickHouse to get available assets for the network"""
@@ -36,151 +30,335 @@ async def get_assets_from_clickhouse(network: str) -> List[str]:
             password=connection_params['password'],
             database=connection_params['database']
         )
-        
+
         # Ultra simple query to get assets from the view
         query = "SELECT asset FROM available_assets_view LIMIT 1000"
-        
+
         result = client.query(query)
         assets = [row[0] for row in result.result_rows]
-        
+
         client.close()
-        
+
         # Ensure native asset is included
         native_asset = get_network_asset(network)
         if native_asset not in assets:
             assets.insert(0, native_asset)
-            
+
         return assets
     except Exception as e:
         # If query fails, return at least the native asset
         return [get_network_asset(network)]
 
 
-async def get_instructions():
-    network = os.getenv('NETWORK', 'torus')
+async def get_user_guide():
+    """User-facing documentation for MCP server capabilities"""
     assets = get_network_asset(network)
 
+    return f"""
+
+RETURN EXACT TEXT BELOW  WITHOUT CHANGES: 
+    `
+    # {network.upper()} Blockchain Analytics MCP Server
+    
+    **🚀 FIRST TIME SETUP**: Run the `instructions` tool first so the AI assistant learns how to use the blockchain analytics tools properly.
+    
+    Welcome to your blockchain analytics assistant! This MCP server provides comprehensive analysis capabilities for the {network} blockchain with {assets} asset support.
+    
+    ## 🚀 Getting Started
+    
+    This server connects to multiple data sources to give you complete blockchain insights:
+    - **Aggregated Money Flow Graph**: Aggregated transaction connections between addresses
+    - **Similarity Search**: Find addresses with similar behavior patterns
+    - **Balances**: Historical balance transfers, balances at given point in time, balance change deltas, known addresses lookup
+    
+    
+    ## 🌊 Money Flow Analysis
+    
+    **What it does**: Maps the network of transactions between addresses, showing how money flows through the blockchain.
+    
+    **You can ask about**:
+    - Address connections and relationships
+    - Transaction paths between any two addresses
+    - Network topology and influential nodes
+    - Volume flows and transaction patterns
+    
+    **Example questions**:
+    - "Show me connections around address [ADDRESS]"
+    - "Find the path between [ADDRESS1] and [ADDRESS2]"
+    - "What addresses are most connected to [ADDRESS]?"
+    - "Map the transaction network with 2 degrees of separation from [ADDRESS]"
+    
+    ## 💰 Balance & Address Intelligence
+    
+    **What it does**: Tracks balance changes over time and maintains a database of known/labeled addresses (exchanges, treasuries, bridges, etc.).
+    
+    **You can ask about**:
+    - Historical balance changes for any address
+    - Known addresses and their labels/purposes
+    - Transaction history with detailed records
+    - Asset movements and distributions
+    
+    **Example questions**:
+    - "What are the well-known addresses on this blockchain?"
+    - "Show me the transaction history for [ADDRESS]"
+    - "What's the balance history of [ADDRESS] over the last month?"
+    - "Find all treasury and DAO addresses"
+    
+    ## 🔍 Similarity & Pattern Detection
+    
+    **What it does**: Analyzes transaction patterns to find addresses that behave similarly, helping identify related accounts or suspicious activity.
+    
+    **You can ask about**:
+    - Addresses with similar transaction patterns
+    - Potential related wallets or accounts
+    - Behavioral clustering and anomalies
+    - Pattern-based investigations
+    
+    **Example questions**:
+    - "Find addresses similar to [ADDRESS]"
+    - "What addresses have unusual transaction patterns?"
+    - "Group addresses by their behavior patterns"
+    - "Are there any addresses that might be related to [ADDRESS]?"
+    
+    ## 💡 Advanced Analytics
+    
+    Combine multiple data sources for comprehensive insights:
+    - "Analyze the complete profile of [ADDRESS] including connections, history, and similar addresses"
+    - "Map the ecosystem around [KNOWN_ENTITY] showing all related addresses"
+    - "Find the flow of [AMOUNT] tokens from [SOURCE] and trace where they went"
+    - "What's the network structure of major token holders?"
+    
+    ## 🎯 Pro Tips
+    
+    1. **Start Broad**: Ask general questions first, then drill down into specifics
+    2. **Use Address Labels**: Ask about "exchanges", "bridges", "treasuries" to find known entities
+    3. **Combine Approaches**: Use flow analysis + balance history + similarity for complete pictures
+    4. **Historical Analysis**: Include time ranges for balance and transaction queries
+    5. **Network Exploration**: Start with 1-2 degree connections, expand if needed
+    
+    ## ⚡ Quick Reference
+    
+    **Most Popular Queries**:
+    - "What are the well-known addresses?" (Great starting point)
+    - "Show me the most active addresses" (Find network hubs)
+    - "Trace [ADDRESS] connections" (Explore around specific address)
+    - "Find path between [ADDR1] and [ADDR2]" (Direct relationship analysis)
+    - "List all [TYPE] addresses" (Find specific entity types)
+    
+    Just ask your questions in natural language - the assistant will use the appropriate tools and data sources to provide comprehensive blockchain insights!
+    `
+"""
+
+
+async def get_instructions():
+    """
+    Generate comprehensive LLM instructions for blockchain analytics tools.
+
+    This function dynamically builds instructions based on the actual schemas
+    of available tools, ensuring the AI assistant has accurate information
+    about data structures and capabilities.
+    """
+
+    # Get network configuration
+    assets = get_network_asset(network)
+
+    # Initialize database connections
     memgraph_driver = get_memgraph_driver(network)
     neo4j_driver = get_neo4j_driver(network)
+
+    # Initialize tools and get their schemas
     money_flow_tool = MoneyFlowTool(memgraph_driver, neo4j_driver)
-    money_flow_schema = money_flow_tool.get_money_flow_schema()
+    money_flow_schema = money_flow_tool.schema()
 
     similarity_search_tool = SimilaritySearchTool(memgraph_driver)
-    similarity_schema = similarity_search_tool.get_similarity_search_schema()
+    similarity_schema = similarity_search_tool.schema()
 
     balance_tracking_tool = BalanceTrackingTool(get_clickhouse_connection_string(network))
-    balance_schema = await balance_tracking_tool.get_balance_tracking_schema()
+    balance_schema = await balance_tracking_tool.schema()
 
     return f"""
-    You are AI assistant on {network} blockchain and {assets} assets.
+# {network.upper()} Blockchain Analytics Assistant Instructions
 
-    1) You have access to money flow graph database, which describes aggregated flow of assets between addresses.
-        a) money flow graph database schema: {money_flow_schema}
-        b) use memgraph cypher syntax, neo4j cypher is not compatible
-        c) when asked about certain addresses, explore it's connections and relationships with other addresses using 4 hops maximum
-        d) when asked about transfers/flows between addresses:
-           - FIRST: use BFS shortest path to find the shortest connection
-           - THEN: if needed, use explicit relationship matching for accessing properties
-           - ALWAYS filter by asset type in path conditions
-           - Use up to 4 hops maximum for path exploration
-
-        e) memgraph-specific syntax requirements:
-           - Use BFS for shortest paths: MATCH path = (start)-[*BFS ..5]-(target) 
-           - Use size() instead of length() function
-           - PREFER inline filtering for performance: -[*BFS ..5 (r, n | condition)]->
-           - FALLBACK to ALL() only when inline filtering insufficient
-           - Use path.expand() with inline filtering: CALL path.expand(node, ['TO'], [], min, max, (r, n | condition))
-           - CANNOT access relationship/node properties with array[index].property syntax
-           - ALWAYS return * or full objects to get all available properties, let the schema guide what's available
-           - Add HOPS LIMIT for complex queries: USING HOPS LIMIT 10000;
-           - Use relationships(path) and nodes(path) functions to extract elements from paths
-           - Use reduce() for aggregations during traversal instead of post-processing
-           - Cannot use array[index].property syntax in Memgraph - use explicit relationship matching instead.
-           - Use ['TO'] for both directions, ['TO>'] for outgoing only, ['<TO'] for incoming only.
-           - Use reduce() during traversal instead of collecting large result sets for memory efficiency.
-        
-        f) use money_flow_query for execution
-
-    2) You have access to similarity search functionality on top of the money flow graph database.
-        a) similarity search specific schema: {similarity_schema}
-        b) use memgraph cypher syntax, neo4j cypher is not compatible  
-        c) similarity_search_query tool for execution
-
-    3) You have access to balance database, which describes balance changes over time, balance transfers, known addresses.
-        a) balance database schema: {balance_schema}
-        b) use clickhouse sql syntax
-        c) use balance_query tool for execution
-
-    4) UNIVERSAL ADDRESS LABELING REQUIREMENT:
-        a) AFTER obtaining addresses from ANY query (money flow, similarity search, or balance queries), ALWAYS check if they exist in the known_addresses table
-        b) Use batch SQL query for performance: SELECT address, label FROM known_addresses WHERE address IN ('addr1', 'addr2', ...)
-        c) Use balance_query tool to access the known_addresses table
-        d) Include address labels/names in your response when available
+You are an AI assistant specialized in {network} blockchain analytics with {assets} asset support.
+Your task is to help users analyze blockchain data using the available tools.
  
+**Connection Exploration**
+- Tool: `money_flow_explore_address_connections`
+- Purpose: Discover address relationships and transaction networks
+- Usage: Specify addresses, depth (1-5 hops), and direction (in/out/all)
+
+**Path Finding**
+- Tool: `money_flow_shortest_path` 
+- Purpose: Find transaction paths between two specific addresses
+- Usage: Provide source and target addresses, optionally filter by assets
+
+**Advanced Graph Queries**
+- Tool: `money_flow_query`
+- **Database**: MEMGRAPH (NOT Neo4j)
+- **Schema**: {money_flow_schema}
+
+**MEMGRAPH CYPHER SYNTAX REQUIREMENTS:**
+```cypher
+// ✅ CORRECT Memgraph syntax:
+MATCH path = (start)-[*BFS ..3]-(target)           // BFS traversal
+RETURN size(path) AS path_length                   // Use size(), not length()
+MATCH (a)-[*BFS ..5 (r, n | n.balance > 1000)]->(b)  // Inline filtering
+
+// ❌ AVOID Neo4j syntax:
+MATCH path = (start)-[*..3]-(target)               // Standard traversal
+RETURN length(path)                                // length() function
+```
+
+**Key Memgraph Differences:**
+- BFS paths: `[*BFS ..max_depth]` or `[*BFS min..max]`
+- Filtering: `[*BFS ..5 (relationship, node | condition)]`
+- Aggregation: Use `reduce()` for path calculations
+- Directions: `['TO']` (both), `['TO>']` (outgoing), `['<TO']` (incoming)
+- Path functions: `relationships(path)`, `nodes(path)`
+
+ 
+
+
+### 🎯 Pattern Recognition Tool
+
+**Similarity Search**
+- Tool: `similarity_search_query`
+- Purpose: Find addresses with similar transaction patterns and behaviors
+- **Schema**: {similarity_schema}
+- Usage: Vector-based similarity matching for behavioral analysis
+
+### 💰 Balance & Transaction Analysis
+
+**Balance Tracking**
+- Tool: `balance_query`
+- Purpose: Historical balance changes, balance change deltas, known addresses, transactions
+- **Database**: ClickHouse
+- **Schema**: {balance_schema}
+
+**ClickHouse Query Guidelines:**
+- Use ClickHouse SQL dialect (not standard SQL)
+- Available aggregation functions: `sum()`, `avg()`, `max()`, `min()`, `count()`
+- Time functions: `toStartOfDay()`, `toStartOfMonth()`, etc.
+- Array functions: `arrayJoin()`, `arrayElement()`, etc.
+ 
+## 🎯 Success Metrics
+
+A successful analysis should:
+- Use actual schema information, not assumptions
+- Provide accurate data based on real database structure
+- Combine multiple data sources for comprehensive insights
+- Handle errors gracefully and adjust queries accordingly
+
+Remember: The schema information provided is authoritative - use it as your ground truth for database structure.
+"""
+
+
+mcp = FastMCP(name=f"{network.upper()} Chain Swarm MCP Server")
+
+
+@mcp.tool(name="user_guide", description="Get user guide for the MCP server capabilities.",)
+async def user_guide() -> str:
     """
+    Get user guide for the MCP server capabilities.
+    """
+    return await get_user_guide()
+
+@mcp.tool(name="instructions", description="Get instructions for using the MCP server tools by the AI assistant.")
+async def instructions():
+    """
+    Get instructions for using the MCP server tools by the AI assistant.
+    """
+    return await get_instructions()
+
 
 @session_rate_limit
 @mcp.tool(
-    name="instructions",
-    description="Get money flow, balance tracking, and similarity search schema information for the MCP server.",
-    tags={"schema", "networks", "assets", "money flow", "balance tracking", "similarity search"},
+    name="money_flow_shortest_path",
+    description="Find shortest paths between two addresses with optional asset filtering.",
+    tags={"money flow", "shortest path", "path finding", "asset filtering"},
     annotations={
-        "title": "Get comprehensive schema and capability information",
+        "title": "Find shortest paths between addresses",
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False
     }
 )
-async def instructions():
+async def money_flow_shortest_path(
+    source_address: Annotated[str, Field(description="Source address to start the path from")],
+    target_address: Annotated[str, Field(description="Target address to find path to")],
+    assets: Annotated[Optional[str], Field(description="Optional comma-separated list of assets to filter by. ")] = None
+) -> dict:
     """
-    Get comprehensive schema information for the MCP server.
-    Queries real databases for accurate schema information.
+    Find shortest paths between two addresses with optional asset filtering.
     
-    Returns:
-        dict: Complete schema including:
-            - Network and available assets
-            - Money flow graph schema
-            - Balance tracking schema
-            - Similarity search schema
-            - Usage examples for each capability
-    """
-    return await get_instructions()
-
-
-
-@session_rate_limit
-@mcp.tool(
-    name="explore_address"
-    description="Explore connections and relationships of a specific address in the money flow graph.",
-    tags={"money flow", "exploration", "address relationships"},
-    annotations={
-        "title": "Explore address connections in money flow graph",
-        "readOnlyHint": True,
-        "idempotentHint": True,
-        "openWorldHint": False
-    })
-async def explore_address(address: Annotated[str, Field(description="The address to explore in the money flow graph.")]) -> dict:
-    """
-    Explore connections and relationships of a specific address in the money flow graph.
-
     Args:
-        address (str): The address to explore in the money flow graph.
-
+        source_address: Source address to start the path from
+        target_address: Target address to find path to
+        assets: Optional list of assets to filter by
+        
     Returns:
-        dict: The result of the exploration query with address connections and relationships.
+        dict: Path results containing nodes and edges
     """
-    network = os.getenv("NETWORK", "torus").lower()
+
+    assets = assets if assets else ["all"]
+
     memgraph_driver = get_memgraph_driver(network)
     neo4j_driver = get_neo4j_driver(network)
     try:
-        service = MoneyFlowService(memgraph_driver)
         money_flow_tool = MoneyFlowTool(memgraph_driver, neo4j_driver)
-        # TODO: Implement the explore_address method in MoneyFlowTool
-        #result = await money_flow_tool.explore_address(address)
+        result = money_flow_tool.shortest_path(source_address, target_address, assets)
         return {"data": result}
     finally:
         memgraph_driver.close()
         neo4j_driver.close()
+
+
+@session_rate_limit
+@mcp.tool(
+    name="money_flow_explore_address_connections",
+    description="Explore address connections with depth and direction control.",
+    tags={"money flow", "exploration", "depth traversal", "directional analysis"},
+    annotations={
+        "title": "Explore address connections with depth and direction control",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def money_flow_explore_address_connections(
+    addresses: Annotated[List[str], Field(description="List of wallet addresses to start the exploration from")],
+    depth_level: Annotated[int, Field(description="Number of hops to explore from the starting addresses", ge=1, le=5)],
+    direction: Annotated[str, Field(description="Direction of relationships to follow: 'in', 'out', or 'all'")],
+    assets: Annotated[Optional[str], Field(description="Optional comma-separated list of assets to filter by. ")] = None
+) -> dict:
+    """
+    Explore address connections with depth and direction control.
+    
+    Args:
+        addresses: List of wallet addresses to start the exploration from
+        depth_level: Number of hops to explore (1-5)
+        direction: Direction of relationships ('in', 'out', or 'all')
+        assets: Optional list of assets to filter by
+        
+    Returns:
+        dict: Exploration results containing nodes and edges
+    """
+
+    assets = assets.split(",") if assets else ["all"]
+
+    memgraph_driver = get_memgraph_driver(network)
+    neo4j_driver = get_neo4j_driver(network)
+    try:
+        money_flow_tool = MoneyFlowTool(memgraph_driver, neo4j_driver)
+        # Convert string direction to enum
+        from packages.api.tools.money_flow import Direction
+        direction_enum = Direction(direction)
+        result = money_flow_tool.explore_address_connections(addresses, depth_level, direction_enum, assets)
+        return {"data": result}
+    finally:
+        memgraph_driver.close()
+        neo4j_driver.close()
+
 
 @session_rate_limit
 @mcp.tool(
@@ -194,7 +372,8 @@ async def explore_address(address: Annotated[str, Field(description="The address
         "openWorldHint": False
     }
 )
-async def execute_money_flow_query(query: Annotated[str, Field(description="The Cypher query to execute. Use asset properties to filter by specific assets.")]) -> dict:
+def execute_money_flow_query(query: Annotated[
+    str, Field(description="The Cypher query to execute. Use asset properties to filter by specific assets.")]) -> dict:
     """
     Execute a money flow query on the specified blockchain network with asset support.
 
@@ -205,12 +384,11 @@ async def execute_money_flow_query(query: Annotated[str, Field(description="The 
         dict: The result of the money flow query with asset information.
     """
 
-    network = os.getenv("NETWORK", "torus").lower()
     memgraph_driver = get_memgraph_driver(network)
     neo4j_driver = get_neo4j_driver(network)
     try:
         money_flow_tool = MoneyFlowTool(memgraph_driver, neo4j_driver)
-        result = await money_flow_tool.money_flow_query(query)
+        result = money_flow_tool.query(query)
         result = {
             "data": result,
         }
@@ -233,10 +411,11 @@ async def execute_money_flow_query(query: Annotated[str, Field(description="The 
         "openWorldHint": False
     }
 )
-async def execute_similarity_search_query(query: Annotated[dict, Field(description="The similarity search query parameters")]) -> dict:
+async def execute_similarity_search_query(
+        query: Annotated[dict, Field(description="The similarity search query parameters")]) -> dict:
     """
     Execute a similarity search query on the specified blockchain network.
-    
+
     Args:
         query (dict): The similarity search query parameters, including:
             - query_type: How to specify the search query ('by_address', 'by_financial_pattern', etc.)
@@ -253,7 +432,6 @@ async def execute_similarity_search_query(query: Annotated[dict, Field(descripti
     Returns:
         dict: The result of the similarity search query, including raw nodes and similarity scores.
     """
-    network = os.getenv("NETWORK", "torus").lower()
     memgraph_driver = get_memgraph_driver(network)
     similarity_search_tool = SimilaritySearchTool(memgraph_driver)
     result = similarity_search_tool.similarity_search_query(query)
@@ -274,7 +452,6 @@ async def execute_similarity_search_query(query: Annotated[dict, Field(descripti
         "openWorldHint": False
     }
 )
-
 async def execute_balance_query(query: Annotated[str, Field(
     description="The Clickhouse dialect SQL query to execute. Use asset field to filter by specific assets.")]) -> dict:
     """
@@ -286,13 +463,11 @@ async def execute_balance_query(query: Annotated[str, Field(
     Returns:
         dict: The result of the balance tracking query with asset information.
     """
-    network = os.getenv("NETWORK", "torus").lower()
     balance_tracking_service = BalanceTrackingTool(get_clickhouse_connection_string(network))
     result = await balance_tracking_service.balance_tracking_query(query)
     return result
 
-
-
+ 
 if __name__ == "__main__":
     setup_logger("chain-insights-mcp-server")
     schema_response = asyncio.run(get_instructions())

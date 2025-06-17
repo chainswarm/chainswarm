@@ -48,7 +48,7 @@ class BalanceTrackingTool:
             "balances_current_view",
         }
 
-    async def get_balance_tracking_schema(self) -> Dict[str, Any]:
+    async def schema(self) -> Dict[str, Any]:
         """
         Get balance tracking schema from ClickHouse with asset support
 

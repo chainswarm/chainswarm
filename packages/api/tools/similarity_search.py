@@ -10,7 +10,7 @@ class SimilaritySearchTool:
         self.graph_database = graph_database
         self.similarity_service = SimilaritySearchService(graph_database)
 
-    def get_similarity_search_schema(self) -> dict:
+    def schema(self) -> dict:
         """
         Get schema information for similarity search
         
