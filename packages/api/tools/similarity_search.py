@@ -42,7 +42,7 @@ class SimilaritySearchTool:
                     "description": "Network structure embeddings (4 dimensions)",
                     "dimensions": 4,
                     "components": [
-                        "page_rank", "community_id", "unique_senders", "unique_receivers"
+                        "community_page_rank", "community_id", "unique_senders", "unique_receivers"
                     ]
                 },
                 "joint": {
@@ -53,7 +53,7 @@ class SimilaritySearchTool:
                         "log_transfer_count", "outgoing_tx_avg_ratio", "incoming_tx_avg_ratio",
                         "last_transfer_timestamp", "first_transfer_timestamp",
                         "avg_outgoing_tx_frequency", "avg_incoming_tx_frequency",
-                        "page_rank", "community_id", "unique_senders", "unique_receivers"
+                        "community_page_rank", "community_id", "unique_senders", "unique_receivers"
                     ]
                 }
             },
@@ -106,7 +106,7 @@ class SimilaritySearchTool:
                     "avg_incoming_tx_frequency": "float - Average incoming transaction frequency"
                 },
                 "network_pattern": {
-                    "page_rank": "float - PageRank score",
+                    "community_page_rank": "float - Community PageRank score",
                     "community_id": "float - Community membership ID",
                     "unique_senders": "float - Number of unique senders",
                     "unique_receivers": "float - Number of unique receivers"
@@ -122,7 +122,7 @@ class SimilaritySearchTool:
                     "first_transfer_timestamp": "float - First activity timestamp",
                     "avg_outgoing_tx_frequency": "float - Average outgoing transaction frequency",
                     "avg_incoming_tx_frequency": "float - Average incoming transaction frequency",
-                    "page_rank": "float - PageRank score",
+                    "community_page_rank": "float - Community PageRank score",
                     "community_id": "float - Community membership ID",
                     "unique_senders": "float - Number of unique senders",
                     "unique_receivers": "float - Number of unique receivers"

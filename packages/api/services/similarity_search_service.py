@@ -155,7 +155,7 @@ class SimilaritySearchService:
             List of float values representing the vector
         """
         expected_keys = [
-            'page_rank',
+            'community_page_rank',
             'community_id',
             'unique_senders',
             'unique_receivers'
@@ -163,7 +163,7 @@ class SimilaritySearchService:
         self._validate_pattern(pattern, expected_keys)
         
         return [
-            float(pattern['page_rank']),
+            float(pattern['community_page_rank']),
             float(pattern['community_id']),
             float(pattern['unique_senders']),
             float(pattern['unique_receivers'])
@@ -194,7 +194,7 @@ class SimilaritySearchService:
             'avg_incoming_tx_frequency'
         ]
         network_keys = [
-            'page_rank',
+            'community_page_rank',
             'community_id',
             'unique_senders',
             'unique_receivers'
@@ -220,7 +220,7 @@ class SimilaritySearchService:
         ]
         
         network_vector = [
-            float(pattern['page_rank']),
+            float(pattern['community_page_rank']),
             float(pattern['community_id']),
             float(pattern['unique_senders']),
             float(pattern['unique_receivers'])
@@ -382,7 +382,7 @@ class SimilaritySearchService:
             last_transfer_timestamp: node.last_transfer_timestamp,
             badges: coalesce(node.labels, []),
             community_id: coalesce(node.community_id, 0),
-            page_rank: coalesce(node.page_rank, 0.0),
+            community_page_rank: coalesce(node.community_page_rank, 0.0),
             similarity_score: similarity
         }} AS result
         ORDER BY similarity DESC
@@ -422,7 +422,7 @@ class SimilaritySearchService:
                         last_transfer_timestamp: a.last_transfer_timestamp,
                         badges: coalesce(a.labels, []),
                         community_id: coalesce(a.community_id, 0),
-                        page_rank: coalesce(a.page_rank, 0.0),
+                        community_page_rank: coalesce(a.community_page_rank, 0.0),
                         similarity_score: 1.0
                     } AS result
                     """

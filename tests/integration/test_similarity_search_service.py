@@ -218,7 +218,7 @@ def test_similarity_service_network_pattern(similarity_service):
     """
     # Create a network pattern based on the example vector
     network_pattern = {
-        'page_rank': 0.5,
+        'community_page_rank': 0.5,
         'community_id': 42,
         'unique_senders': 10,
         'unique_receivers': 15
@@ -264,7 +264,7 @@ def test_similarity_service_combined_pattern(similarity_service):
         'avg_incoming_tx_frequency': 0.6,
         
         # Network components
-        'page_rank': 0.5,
+        'community_page_rank': 0.5,
         'community_id': 42,
         'unique_senders': 10,
         'unique_receivers': 15

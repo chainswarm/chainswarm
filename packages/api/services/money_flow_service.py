@@ -72,7 +72,7 @@ class MoneyFlowService:
                          last_transfer_timestamp: node.last_transfer_timestamp,
                          badges: coalesce(node.labels, []),
                          community_id: coalesce(node.community_id, 0),
-                         page_rank: coalesce(node.page_rank, 0.0)
+                         community_page_rank: coalesce(node.community_page_rank, 0.0)
                      }}) AS address_nodes,
                      from_id, to_id, edge_data
 
@@ -183,7 +183,7 @@ class MoneyFlowService:
                      last_transfer_timestamp: node.last_transfer_timestamp,
                      badges: coalesce(node.labels, []),
                      community_id: coalesce(node.community_id, 0),
-                     page_rank: coalesce(node.page_rank, 0.0)
+                     community_page_rank: coalesce(node.community_page_rank, 0.0)
                  }}) AS address_nodes,
                  from_id, to_id, edge_data
 

@@ -400,7 +400,7 @@ class BaseMoneyFlowIndexer:
 
             a.network_embedding = [
                 // Network features (4 dimensions) - now just reading properties
-                coalesce(a.page_rank, 0),                              // PageRank score
+                coalesce(a.community_page_rank, 0),                              // Community PageRank score
                 coalesce(a.community_id, 0),                           // Community membership
                 coalesce(a.unique_senders, 0),                         // Number of unique addresses that sent to this address
                 coalesce(a.unique_receivers, 0)                        // Number of unique addresses this address sent to
@@ -483,7 +483,7 @@ class BaseMoneyFlowIndexer:
                         WHERE ALL(rel IN r WHERE rel.asset = $asset)
                         WITH project(p) AS community_graph
                         CALL pagerank.get(community_graph) YIELD node, rank
-                        SET node.page_rank = rank
+                        SET node.community_page_rank = rank
                         """
                     with session.begin_transaction() as transaction:
                         transaction.run(subgraph_query, {"asset": self.asset})

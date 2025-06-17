@@ -52,7 +52,7 @@ class TemporalPattern(BaseModel):
     avg_incoming_tx_frequency: float = Field(..., description="Average incoming transaction frequency")
 
 class NetworkPattern(BaseModel):
-    page_rank: float = Field(..., description="PageRank score")
+    community_page_rank : float = Field(..., description="CommunityPageRank score")
     community_id: float = Field(..., description="Community membership ID")
     unique_senders: float = Field(..., description="Number of unique senders")
     unique_receivers: float = Field(..., description="Number of unique receivers")
@@ -73,7 +73,7 @@ class CombinedPattern(BaseModel):
     avg_incoming_tx_frequency: float = Field(..., description="Average incoming transaction frequency")
     
     # Network pattern components
-    page_rank: float = Field(..., description="PageRank score")
+    community_page_rank: float = Field(..., description="CommunityPageRank score")
     community_id: float = Field(..., description="Community membership ID")
     unique_senders: float = Field(..., description="Number of unique senders")
     unique_receivers: float = Field(..., description="Number of unique receivers")

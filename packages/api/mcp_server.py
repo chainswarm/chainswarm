@@ -207,16 +207,40 @@ MATCH (a)-[*BFS ..5 (r, n | n.balance > 1000)]->(b)  // Inline filtering
 // ❌ AVOID Neo4j syntax:
 MATCH path = (start)-[*..3]-(target)               // Standard traversal
 RETURN length(path)                                // length() function
+// ❌ AVOID: List comprehensions inside functions
+WITH collect(addresses) as addr_list
+RETURN [addr IN addr_list | addr][0..3]            // NOT SUPPORTED
+
+// ✅ CORRECT: Separate collection and slicing
+WITH collect(addresses) as addr_list
+RETURN size(addr_list) as count, addr_list[0..3] as top_items
 ```
 
 **Key Memgraph Differences:**
 - BFS paths: `[*BFS ..max_depth]` or `[*BFS min..max]`
 - Filtering: `[*BFS ..5 (relationship, node | condition)]`
-- Aggregation: Use `reduce()` for path calculations
+- List comprehensions: Work in RETURN/WITH but NOT inside functions like size()
+- Aggregation: Use `reduce()` for path calculations, `collect()` then separate operations
 - Directions: `['TO']` (both), `['TO>']` (outgoing), `['<TO']` (incoming)
 - Path functions: `relationships(path)`, `nodes(path)`
+- Collection operations: Use separate queries instead of nested comprehensions
 
- 
+**CRITICAL: For complex grouping, use multiple queries instead of nested list comprehensions:**
+```cypher
+// ❌ AVOID: This Neo4j pattern fails in Memgraph
+MATCH (a:Address)
+WITH a.community_id as community, collect(a) as addresses
+RETURN community, [addr IN addresses | addr][0..3] as top_addresses
+
+// ✅ CORRECT: Split into separate operations
+MATCH (a:Address) 
+WHERE a.community_page_rank  IS NOT NULL
+WITH a.community_id as community, max(a.community_page_rank ) as max_rank
+MATCH (b:Address) 
+WHERE b.community_page_rank  = max_rank AND b.community_id = community
+RETURN community, b.address, b.community_page_rank 
+ORDER BY community ASC
+``` 
 
 
 ### 🎯 Pattern Recognition Tool
