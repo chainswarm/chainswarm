@@ -2,13 +2,13 @@
 -- Tables and views for tracking individual transfer transactions on Substrate networks
 
 -- Drop potentially invalid objects first to ensure clean recreation
-DROP VIEW IF EXISTS balance_transfers_address_relationships_mv;
-DROP VIEW IF EXISTS balance_transfers_pairs_analysis_view;
-DROP VIEW IF EXISTS balance_transfers_address_clusters_view;
-DROP VIEW IF EXISTS balance_transfers_suspicious_activity_view;
-DROP VIEW IF EXISTS balance_transfers_address_activity_patterns_view;
-DROP VIEW IF EXISTS balance_transfers_address_classification_view;
-DROP VIEW IF EXISTS balance_transfers_address_behavior_profiles_view;
+--DROP VIEW IF EXISTS balance_transfers_address_relationships_mv;
+--DROP VIEW IF EXISTS balance_transfers_pairs_analysis_view;
+--DROP VIEW IF EXISTS balance_transfers_address_clusters_view;
+--DROP VIEW IF EXISTS balance_transfers_suspicious_activity_view;
+--DROP VIEW IF EXISTS balance_transfers_address_activity_patterns_view;
+--DROP VIEW IF EXISTS balance_transfers_address_classification_view;
+--DROP VIEW IF EXISTS balance_transfers_address_behavior_profiles_view;
 
 -- Balance Transfers Table
 -- Stores individual transfer transactions between addresses
@@ -149,20 +149,17 @@ SELECT
     countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 18 AND 23) as evening_transactions,
     
     -- Transaction Size Distribution
-    countIf(amount < 100) as micro_transactions,
-    countIf(amount >= 100 AND amount < 1000) as small_transactions,
-    countIf(amount >= 1000 AND amount < 10000) as medium_transactions,
-    countIf(amount >= 10000 AND amount < 100000) as large_transactions,
-    countIf(amount >= 100000) as whale_transactions,
+    countIf(amount < 10) as micro_transactions,
+    countIf(amount >= 10 AND amount < 100) as small_transactions,
+    countIf(amount >= 100 AND amount < 1000) as medium_transactions,
+    countIf(amount >= 1000 AND amount < 10000) as large_transactions,
+    countIf(amount >= 10000) as whale_transactions,
     
     -- Behavioral Indicators
     stddevPopIf(amount, address = from_address) as sent_amount_variance,
     stddevPopIf(amount, address = to_address) as received_amount_variance,
-    uniq(toDate(toDateTime(intDiv(block_timestamp, 1000)))) as active_days,
-    
-    -- Network Effect Metrics (simplified to avoid subquery issues)
-    0 as circular_transactions
-    
+    uniq(toDate(toDateTime(intDiv(block_timestamp, 1000)))) as active_days
+
 FROM (
     SELECT from_address as address, from_address, to_address, asset, amount, fee, block_height, block_timestamp FROM balance_transfers
     UNION ALL
@@ -194,7 +191,6 @@ SELECT
         WHEN total_transactions >= 100 AND total_volume < 10000 THEN 'Retail_Active'
         WHEN total_transactions < 10 AND total_volume >= 50000 THEN 'Whale_Inactive'
         WHEN total_transactions < 10 AND total_volume < 1000 THEN 'Retail_Inactive'
-        WHEN circular_transactions >= total_transactions * 0.3 THEN 'Circular_Trader'
         ELSE 'Regular_User'
     END as address_type,
     
@@ -220,10 +216,10 @@ SELECT
     
     -- Volume Classification
     CASE
-        WHEN total_volume >= 1000000 THEN 'Ultra_High'
-        WHEN total_volume >= 100000 THEN 'High'
-        WHEN total_volume >= 10000 THEN 'Medium'
-        WHEN total_volume >= 1000 THEN 'Low'
+        WHEN total_volume >= 100000 THEN 'Ultra_High'
+        WHEN total_volume >= 10000 THEN 'High'
+        WHEN total_volume >= 1000 THEN 'Medium'
+        WHEN total_volume >= 100 THEN 'Low'
         ELSE 'Micro'
     END as volume_tier,
     
@@ -277,7 +273,7 @@ SELECT
     
     -- Simplified Relationship Type Classification
     CASE
-        WHEN total_amount >= 100000 AND transfer_count >= 10 THEN 'High_Value'
+        WHEN total_amount >= 10000 AND transfer_count >= 10 THEN 'High_Value'
         WHEN transfer_count >= 100 THEN 'High_Frequency'
         WHEN transfer_count >= 5 THEN 'Regular'
         ELSE 'Casual'
@@ -354,11 +350,7 @@ SELECT
     CASE
         WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0
     END as has_risk_flag,
-    
-    CASE
-        WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0
-    END as high_circular_activity,
-    
+
     CASE
         WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0
     END as unusual_time_pattern,
@@ -375,9 +367,8 @@ SELECT
         WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0
     END as large_infrequent_pattern,
     
-    -- Composite Suspicion Score (0-6)
+    -- Composite Suspicion Score (0-5)
     (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-     CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
      CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
      CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
      CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
@@ -386,19 +377,16 @@ SELECT
     -- Risk Level
     CASE
         WHEN (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-              CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
               CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
               CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
               CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
               CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 4 THEN 'High'
         WHEN (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-              CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
               CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
               CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
               CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
               CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 2 THEN 'Medium'
         WHEN (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-              CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
               CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
               CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
               CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
