@@ -73,10 +73,7 @@ def run(file: str, network: str):
                     query = """
                         MERGE (addr:Address:Genesis {address: $account })
                         SET
-                            addr.first_transfer_block_height = 0,
                             addr.first_transfer_timestamp = $timestamp,
-                            addr.volume_in = $amount,
-                            addr.volume_out = 0,
                             addr.labels = ['genesis']
                         """
                     tx.run(query, {

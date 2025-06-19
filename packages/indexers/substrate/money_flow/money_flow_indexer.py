@@ -100,38 +100,30 @@ class BaseMoneyFlowIndexer:
 
             indexes = [
                 ("Address", "address"),
-                ("Address", "volume_in"),
-                ("Address", "volume_out"),
-                ("Address", "transfer_count"),
-                ("Address", "neighbor_count"),
-                ("Address", "first_transfer_block_height"),
-                ("Address", "first_transfer_timestamp"),
-                ("Address", "last_transfer_block_height"),
-                ("Address", "last_transfer_timestamp"),
-                # New calculated properties
-                ("Address", "volume_differential"),
-                ("Address", "log_transfer_count"),
-                ("Address", "outgoing_tx_avg_ratio"),
-                ("Address", "incoming_tx_avg_ratio"),
-                ("Address", "avg_outgoing_tx_frequency"),
-                ("Address", "avg_incoming_tx_frequency"),
-                ("Address", "unique_senders"),
-                ("Address", "unique_receivers"),
-                ("Agent", "address"),
                 ("Agent", "labels"),
+
+                ("Address", "transfer_count"), # Total number of transfers
+                ("Address", "neighbor_count"), # Total number of neighbors
+
+                ("Address", "unique_senders"), # Total number of unique senders
+                ("Address", "unique_receivers"), # Total number of unique receivers
+
+                ("Address", "first_activity_timestamp"), # First activity timestamp
+                ("Address", "last_activity_timestamp"), # Last activity timestamp
+
+                ("Address", "community_id"), # Community ID
+                ("Address", "community_ids"), # Community IDs (for multi-community membership)
+                ("Address", "community_page_rank"), # Community PageRank score
             ]
 
             edge_indexes = [
                 ("TO", "id"),
                 ("TO", "asset"),
                 ("TO", "volume"),
-                ("TO", "min_amount"),
-                ("TO", "max_amount"),
                 ("TO", "transfer_count"),
-                ("TO", "last_transfer_block_height"),
-                ("TO", "last_transfer_timestamp"),
-                ("TO", "first_transfer_block_height"),
-                ("TO", "first_transfer_timestamp"),
+
+                ("TO", "last_activity_timestamp"),
+                ("TO", "first_activity_timestamp"),
             ]
 
             for label, prop in indexes:
@@ -153,32 +145,6 @@ class BaseMoneyFlowIndexer:
                 prop = row.get("property")
                 existing_vector_indexes.add(f"{entity}:{prop}")
 
-            financial_index_key = "Address:financial_embedding"
-            if financial_index_key not in existing_vector_indexes:
-                session.run("""
-                            CREATE VECTOR INDEX FinancialEmbeddings
-                            ON:Address(financial_embedding)
-                            WITH CONFIG {
-                            "capacity":1000,
-                            "dimension":6,
-                            "metric":"cos"
-                            };
-                            """)
-                logger.info("Created Financial vector index")
-
-            temporal_index_key = "Address:temporal_embedding"
-            if temporal_index_key not in existing_vector_indexes:
-                session.run("""
-                            CREATE VECTOR INDEX TemporalEmbeddings
-                            ON:Address(temporal_embedding)
-                            WITH CONFIG {
-                            "capacity":1000,
-                            "dimension":4,
-                            "metric":"cos"
-                            };
-                            """)
-                logger.info("Created Temporal vector index")
-
             network_index_key = "Address:network_embedding"
             if network_index_key not in existing_vector_indexes:
                 session.run("""
@@ -186,24 +152,11 @@ class BaseMoneyFlowIndexer:
                             ON:Address(network_embedding)
                             WITH CONFIG {
                             "capacity":1000,
-                            "dimension":4,
+                            "dimension":6,
                             "metric":"cos"
                             };
                             """)
                 logger.info("Created Network vector index")
-
-            joint_index_key = "Address:joint_embedding"
-            if joint_index_key not in existing_vector_indexes:
-                session.run("""
-                            CREATE VECTOR INDEX JointEmbeddings
-                            ON:Address(joint_embedding)
-                            WITH CONFIG {
-                            "capacity":1000,
-                            "dimension":14,
-                            "metric":"cos"
-                            };
-                            """)
-                logger.info("Created Joint vector index")
 
     def update_global_state(self, end_height):
         """
@@ -253,14 +206,14 @@ class BaseMoneyFlowIndexer:
                 RETURN g.block_height AS last_block_height
                 """)
                 last_block_height = result.single()
-                """
+
                 if last_block_height is None and block_height > 1:
                     raise ValueError(f"Cannot index block {block_height} without indexing block 0 first")
                 elif last_block_height is not None:
                     last_block_height = last_block_height['last_block_height']
-                    if last_block_height + 1 != block_height:
-                        raise ValueError(f"Cannot index block {block_height} before block {last_block_height}")
-                """
+                    if last_block_height > block_height:
+                        return  # Skip indexing if this block is already indexed
+
             with session.begin_transaction() as transaction:
                 transaction.run("""
                                 MERGE (g:GlobalState { name: "last_block_height" })
@@ -312,43 +265,17 @@ class BaseMoneyFlowIndexer:
             MATCH (a:Address)
             {address_filter}
             
-            // Calculate outgoing transaction metrics (asset-aware)
+            // Calculate outgoing transaction metrics
             OPTIONAL MATCH (a)-[r:TO]->(target)
-            WHERE r.asset = $asset
             WITH a,
-             collect(r) as outgoing_txs,
-             avg(r.volume) as avg_out_volume,
-             sum(r.transfer_count) as total_out_transfers,
              count(DISTINCT target) as unique_receivers_count
              
-            // Calculate incoming transaction metrics (asset-aware)
+            // Calculate incoming transaction metrics
             OPTIONAL MATCH (source)-[in_r:TO]->(a)
-            WHERE in_r.asset = $asset
-            WITH a, outgoing_txs, avg_out_volume, total_out_transfers, unique_receivers_count,
-             collect(in_r) as incoming_txs,
-             avg(in_r.volume) as avg_in_volume,
-             sum(in_r.transfer_count) as total_in_transfers,
+            WITH a,
              count(DISTINCT source) as unique_senders_count
             
             // Set all calculated properties
-            SET a.volume_differential = coalesce(a.volume_in, 0) - coalesce(a.volume_out, 0),
-            a.log_transfer_count = log(coalesce(a.transfer_count, 0) + 1),
-            a.outgoing_tx_avg_ratio = CASE
-                WHEN coalesce(avg_out_volume, 0) = 0 THEN 0
-                ELSE coalesce(total_out_transfers, 0) / (coalesce(avg_out_volume, 0) + 0.001)
-            END,
-            a.incoming_tx_avg_ratio = CASE
-                WHEN coalesce(avg_in_volume, 0) = 0 THEN 0
-                ELSE coalesce(total_in_transfers, 0) / (coalesce(avg_in_volume, 0) + 0.001)
-            END,
-            a.avg_outgoing_tx_frequency = CASE
-                WHEN (coalesce(a.last_transfer_timestamp, 0) - coalesce(a.first_transfer_timestamp, 0)) = 0 THEN 0
-                ELSE total_out_transfers::float / ((coalesce(a.last_transfer_timestamp, 0) - coalesce(a.first_transfer_timestamp, 0)) / 86400000.0)
-            END,
-            a.avg_incoming_tx_frequency = CASE
-                WHEN (coalesce(a.last_transfer_timestamp, 0) - coalesce(a.first_transfer_timestamp, 0)) = 0 THEN 0
-                ELSE total_in_transfers::float / ((coalesce(a.last_transfer_timestamp, 0) - coalesce(a.first_transfer_timestamp, 0)) / 86400000.0)
-            END,
             a.unique_senders = unique_senders_count,
             a.unique_receivers = unique_receivers_count
             """
@@ -372,55 +299,31 @@ class BaseMoneyFlowIndexer:
     def update_embeddings(self, addresses: Optional[List[str]] = None):
         """Update joint embeddings using pre-calculated properties"""
         try:
-            # First update calculated properties
-            self.update_calculated_properties(addresses)
-
             # Then create embeddings from the properties
             base_query = """
             MATCH (a:Address)
             {address_filter}
-
-            SET a.financial_embedding = [
-                // Financial features (6 dimensions) - now just reading properties
-                coalesce(a.volume_in, 0) / 1e8,                    // Normalized incoming volume
-                coalesce(a.volume_out, 0) / 1e8,                   // Normalized outgoing volume
-                coalesce(a.volume_differential, 0) / 1e8,          // Volume differential
-                coalesce(a.log_transfer_count, 0),                 // Log-scaled transaction count
-                coalesce(a.outgoing_tx_avg_ratio, 0),              // Transaction count to avg volume ratio (outgoing)
-                coalesce(a.incoming_tx_avg_ratio, 0)               // Transaction count to avg volume ratio (incoming)
-            ],
-
-            a.temporal_embedding = [
-                // Temporal features (4 dimensions) - using existing timestamps
-                coalesce(a.last_transfer_timestamp, 0) / 1e12,         // Last activity time (normalized)
-                coalesce(a.first_transfer_timestamp, 0) / 1e12,        // First activity time (normalized)
-                coalesce(a.avg_outgoing_tx_frequency, 0),              // Average outgoing transaction frequency
-                coalesce(a.avg_incoming_tx_frequency, 0)               // Average incoming transaction frequency
-            ],
-
+            SET
             a.network_embedding = [
-                // Network features (4 dimensions) - now just reading properties
-                coalesce(a.community_page_rank, 0),                              // Community PageRank score
-                coalesce(a.community_id, 0),                           // Community membership
+                coalesce(a.transfer_count, 0),                        // Total number of transfers in and out
                 coalesce(a.unique_senders, 0),                         // Number of unique addresses that sent to this address
-                coalesce(a.unique_receivers, 0)                        // Number of unique addresses this address sent to
-            ],
-
-            a.joint_embedding = a.financial_embedding +
-                               a.temporal_embedding +
-                               a.network_embedding
+                coalesce(a.unique_receivers, 0),                        // Number of unique addresses this address sent to
+                coalesce(a.neighbor_count, 0),                        // Number of neighbors (connected addresses)
+                coalesce(a.community_id, 0),                           // Community membership
+                coalesce(a.community_page_rank, 0)                              // Community PageRank score
+            ]
+            
             """
 
             if addresses is not None:
                 query = base_query.replace("{address_filter}", "AND a.address IN $addresses")
-                params = {"addresses": addresses, "asset": self.asset}
+                params = {"addresses": addresses}
                 with self.graph_database.session() as session:
                     session.run(query, params)
             else:
                 query = base_query.replace("{address_filter}", "")
-                params = {"asset": self.asset}
                 with self.graph_database.session() as session:
-                    session.run(query, params)
+                    session.run(query)
 
         except Exception as e:
             logger.error("Failed to update embeddings", error=e)
@@ -432,18 +335,17 @@ class BaseMoneyFlowIndexer:
         try:
             query = """
                    MATCH (source:Address)-[r:TO]->(target:Address)
-                   WHERE r.asset = $asset
                    WITH collect(DISTINCT source) + collect(DISTINCT target) AS nodes, collect(DISTINCT r) AS relationships
                    CALL leiden_community_detection.get_subgraph(nodes, relationships)
                    YIELD node, community_id, communities
                    SET node.community_id = community_id, node.community_ids = communities
                    WITH DISTINCT community_id
                    WHERE community_id IS NOT NULL
-                   MERGE (c:Community { community_id: community_id, asset: $asset });
+                   MERGE (c:Community { community_id: community_id });
                 """
             with self.graph_database.session() as session:
                 with session.begin_transaction() as transaction:
-                    transaction.run(query, {"asset": self.asset})
+                    transaction.run(query)
         except Exception as e:
             if e.args[0] == 'leiden_community_detection.get_subgraph: No communities detected.':
                 logger.warning("No communities detected")
@@ -457,8 +359,8 @@ class BaseMoneyFlowIndexer:
         try:
             with self.graph_database.session() as session:
                 result = session.run(
-                    "MATCH (c:Community) WHERE c.asset = $asset RETURN DISTINCT c.community_id",
-                    {"asset": self.asset}
+                    "MATCH (c:Community) RETURN DISTINCT c.community_id",
+                    {}
                 )
                 communities = [community_id[0] for community_id in result]
 
@@ -480,13 +382,12 @@ class BaseMoneyFlowIndexer:
 
                     subgraph_query = f"""
                         MATCH p=(a1:Address {{community_id: {community!r}}})-[r:TO*1..3]->(a2:Address)
-                        WHERE ALL(rel IN r WHERE rel.asset = $asset)
                         WITH project(p) AS community_graph
                         CALL pagerank.get(community_graph) YIELD node, rank
                         SET node.community_page_rank = rank
                         """
                     with session.begin_transaction() as transaction:
-                        transaction.run(subgraph_query, {"asset": self.asset})
+                        transaction.run(subgraph_query)
 
                     processed_count += 1
                     community_end_time = time.time()
@@ -521,8 +422,7 @@ class BaseMoneyFlowIndexer:
             query = """
             MERGE (addr:Address { address: $account })
             ON CREATE SET
-                addr.first_transfer_block_height = $block_height,
-                addr.first_transfer_timestamp = $timestamp
+                addr.first_activity_timestamp = $timestamp
 
             """
             transaction.run(query, {
@@ -547,44 +447,40 @@ class BaseMoneyFlowIndexer:
             query = """
             MERGE (sender:Address { address: $from })
               ON CREATE SET
-                sender.first_transfer_block_height = $block_height,
-                sender.first_transfer_timestamp = $timestamp,
-                sender.fraud = 0
-              SET sender.volume_out = coalesce(sender.volume_out, 0) + $amount,
-                  sender.transfer_count = coalesce(sender.transfer_count, 0) + 1,
-                  sender.last_transfer_block_height = $block_height,
-                  sender.last_transfer_timestamp = $timestamp
+                sender.first_activity_timestamp = $timestamp,
+                sender.last_activity_timestamp = $timestamp,
+                sender.transfer_count = 1
+              SET 
+                sender.last_activity_timestamp = $timestamp, 
+                sender.transfer_count = coalesce(sender.transfer_count, 0) + 1
+                  
             MERGE (receiver:Address { address: $to })
               ON CREATE SET
-                receiver.first_transfer_block_height = $block_height,
-                receiver.first_transfer_timestamp = $timestamp,
-                receiver.fraud = 0
-              SET receiver.volume_in = coalesce(receiver.volume_in, 0) + $amount,
-                receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1,
-                receiver.last_transfer_block_height = $block_height,
-                receiver.last_transfer_timestamp = $timestamp
+                receiver.first_activity_timestamp = $timestamp,
+                receiver.last_activity_timestamp = $timestamp,
+                receiver.transfer_count = 1
+              SET
+                receiver.last_activity_timestamp = $timestamp,
+                receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1
 
             MERGE (sender)-[r:TO { id: $to_id, asset: $asset }]->(receiver)
               ON CREATE SET
                   r.volume = $amount,
-                  r.min_amount = $amount,
-                  r.max_amount = $amount,
                   r.transfer_count = 1,
-                  r.last_transfer_block_height = $block_height,
-                  r.last_transfer_timestamp = $timestamp,
-                  r.first_transfer_block_height = $block_height,
-                  r.first_transfer_timestamp = $timestamp,
+                  r.first_activity_timestamp = $timestamp,
+                  r.last_activity_timestamp = $timestamp,
+                  
                   sender.neighbor_count = coalesce(sender.neighbor_count, 0) + 1,
-                  receiver.neighbor_count = coalesce(receiver.neighbor_count, 0) + 1
+                  sender.unique_receivers = coalesce(sender.unique_receivers, 0) + 1,
+                  
+                  receiver.neighbor_count = coalesce(receiver.neighbor_count, 0) + 1,
+                  receiver.unique_senders = coalesce(receiver.unique_senders, 0) + 1
+                  
               ON MATCH SET
                   r.volume = r.volume + $amount,
-                  r.min_amount = CASE WHEN $amount < r.min_amount THEN $amount ELSE r.min_amount END,
-                  r.max_amount = CASE WHEN $amount > r.max_amount THEN $amount ELSE r.max_amount END,
                   r.transfer_count = r.transfer_count + 1,
-                  r.last_transfer_block_height = $block_height,
-                  r.last_transfer_timestamp = $timestamp,
-                  r.first_transfer_block_height = CASE WHEN r.first_transfer_block_height IS NULL THEN $block_height ELSE r.first_transfer_block_height END,
-                  r.first_transfer_timestamp = CASE WHEN r.first_transfer_timestamp IS NULL THEN $timestamp ELSE r.first_transfer_timestamp END
+                  r.last_activity_timestamp = $timestamp
+                  
             """
             transaction.run(query, {
                 'block_height': event['block_height'],
