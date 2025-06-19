@@ -1,5 +1,5 @@
 -- Balance Tracking Schema
--- Tables for tracking balance changes, deltas, and transfers on Substrate networks
+-- Tables for tracking balance changes and deltas on Substrate networks
 
 -- Balance Changes Table
 -- Stores the current balance state for addresses at specific block heights
@@ -58,33 +58,6 @@ ORDER BY (block_height, asset, address)
 SETTINGS index_granularity = 8192
 COMMENT 'Stores balance changes (deltas) between consecutive blocks for addresses';
 
--- Balance Transfers Table
--- Stores individual transfer transactions between addresses
-CREATE TABLE IF NOT EXISTS balance_transfers (
-    -- Transaction identification
-    extrinsic_id String,
-    event_idx String,
-    
-    -- Block information
-    block_height UInt32,
-    block_timestamp UInt64,
-    
-    -- Transfer details
-    from_address String,
-    to_address String,
-    asset String,
-    amount Decimal128(18),
-    fee Decimal128(18),
-    
-    -- Versioning for updates
-    _version UInt64
-    
-) ENGINE = ReplacingMergeTree(_version)
-PARTITION BY intDiv(block_height, {PARTITION_SIZE})
-ORDER BY (extrinsic_id, event_idx, asset)
-SETTINGS index_granularity = 8192
-COMMENT 'Stores individual balance transfer transactions with associated fees';
-
 -- Views for easier querying
 
 -- View for current balances (latest balance for each address and asset)
@@ -117,24 +90,6 @@ FROM balance_delta_changes
 WHERE abs(total_balance_delta) > 100  -- Adjusted threshold for human-readable format
 ORDER BY block_height DESC, asset, abs(total_balance_delta) DESC;
 
--- View for transfer statistics by address and asset
-CREATE VIEW IF NOT EXISTS balance_transfers_statistics_view AS
-SELECT
-    address,
-    asset,
-    countIf(address = from_address) as outgoing_transfer_count,
-    countIf(address = to_address) as incoming_transfer_count,
-    sumIf(amount, address = from_address) as total_sent,
-    sumIf(amount, address = to_address) as total_received,
-    sumIf(fee, address = from_address) as total_fees_paid,
-    min(block_height) as first_activity_block,
-    max(block_height) as last_activity_block
-FROM (
-    SELECT from_address as address, from_address, to_address, asset, amount, fee, block_height FROM balance_transfers
-    UNION ALL
-    SELECT to_address as address, from_address, to_address, asset, amount, 0 as fee, block_height FROM balance_transfers
-)
-GROUP BY address, asset;
 
 -- Materialized view for daily balance statistics
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_daily_statistics_mv
@@ -153,45 +108,22 @@ SELECT
 FROM balance_changes
 GROUP BY date, address, asset;
 
--- Materialized view for daily transfer volume
-CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_daily_volume_mv
-ENGINE = AggregatingMergeTree()
-ORDER BY (date, asset)
-AS
-SELECT
-    toDate(intDiv(block_timestamp, 1000)) as date,
-    asset,
-    count() as transfer_count,
-    uniqExact(from_address) as unique_senders,
-    uniqExact(to_address) as unique_receivers,
-    sum(amount) as total_volume,
-    sum(fee) as total_fees,
-    avg(amount) as avg_transfer_amount,
-    max(amount) as max_transfer_amount
-FROM balance_transfers
-GROUP BY date, asset;
 
 -- Index for efficient address lookups
 ALTER TABLE balance_changes ADD INDEX IF NOT EXISTS idx_address address TYPE bloom_filter(0.01) GRANULARITY 4;
 ALTER TABLE balance_delta_changes ADD INDEX IF NOT EXISTS idx_address address TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_address from_address TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_to_address to_address TYPE bloom_filter(0.01) GRANULARITY 4;
 
 -- Index for efficient asset lookups
 ALTER TABLE balance_changes ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
 ALTER TABLE balance_delta_changes ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
 
 -- Index for block height range queries
 ALTER TABLE balance_changes ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
 ALTER TABLE balance_delta_changes ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
 
 -- Composite indexes for efficient asset-address queries
 ALTER TABLE balance_changes ADD INDEX IF NOT EXISTS idx_asset_address (asset, address) TYPE bloom_filter(0.01) GRANULARITY 4;
 ALTER TABLE balance_delta_changes ADD INDEX IF NOT EXISTS idx_asset_address (asset, address) TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_from_address (asset, from_address) TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_to_address (asset, to_address) TYPE bloom_filter(0.01) GRANULARITY 4;
 
 -- Simple view for available assets list
 CREATE VIEW IF NOT EXISTS available_assets_view AS

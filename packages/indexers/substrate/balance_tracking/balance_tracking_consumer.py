@@ -264,8 +264,6 @@ class BalanceTrackingConsumer:
                 
                 logger.success(f"Processed block {block_height} with {len(address_balances)} addresses")
 
-                # Index balance transfers
-                self.balance_tracking_indexer.index_blocks(blocks)
             
         except Exception as e:
             logger.error(f"Error processing block {block_height}: {e}")
