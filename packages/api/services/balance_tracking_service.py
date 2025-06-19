@@ -1,21 +1,5 @@
-from datetime import datetime
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, Optional, List
 import clickhouse_connect
-from loguru import logger
-from dataclasses import dataclass
-
-
-@dataclass
-class TableColumn:
-    name: str
-    type: str
-    description: str = ""
-
-@dataclass
-class TableInfo:
-    name: str
-    description: str = ""
-    columns: List[TableColumn] = None
 
 
 def get_balance_tracking_tables() -> List[str]:
@@ -27,87 +11,12 @@ def get_balance_tracking_tables() -> List[str]:
     return [
         "balance_changes",
         "balance_delta_changes",
-        "balance_transfers",
         "known_addresses",
 
         "balance_daily_statistics_mv",
-        "balance_transfers_daily_volume_mv",
         "balance_significant_changes_view",
-        "balance_transfers_statistics_view",
         "balances_current_view"
     ]
-
-
-def get_table_info(client, database: str, tables: List[str]) -> List[TableInfo]:
-    """Get information about the specified tables
-    
-    Args:
-        client: ClickHouse client instance
-        database: Database name
-        tables: List of table names
-        
-    Returns:
-        List of TableInfo objects
-    """
-    table_info_list = []
-    
-    for table in tables:
-        table_info = TableInfo(name=table)
-        table_info_list.append(table_info)
-    
-    return table_info_list
-
-
-def get_column_info(client, database: str, table_name: str) -> List[TableColumn]:
-    """Get column information for a specific table
-    
-    Args:
-        client: ClickHouse client instance
-        database: Database name
-        table_name: Table name
-        
-    Returns:
-        List of TableColumn objects
-    """
-    query = f"DESCRIBE TABLE {database}.{table_name}"
-    result = client.query(query)
-    
-    columns = []
-    for row in result.result_rows:
-        column_name = row[0]
-        column_type = row[1]
-        columns.append(TableColumn(name=column_name, type=column_type))
-    
-    return columns
-
-
-def format_tables_to_schema(table_info_list: List[TableInfo]) -> Dict[str, Any]:
-    """Format table information into a schema dictionary
-    
-    Args:
-        table_info_list: List of TableInfo objects
-        
-    Returns:
-        Schema dictionary
-    """
-    schema = {}
-    
-    for table in table_info_list:
-        table_schema = {
-            "description": table.description,
-            "columns": {}
-        }
-        
-        if table.columns:
-            for column in table.columns:
-                table_schema["columns"][column.name] = {
-                    "type": column.type,
-                    "description": column.description
-                }
-        
-        schema[table.name] = table_schema
-    
-    return schema
 
 
 def create_balance_tracking_schema(schema: Dict[str, Any], assets: List[str] = None) -> Dict[str, Any]:
@@ -140,28 +49,6 @@ def create_balance_tracking_schema(schema: Dict[str, Any], assets: List[str] = N
             "SELECT asset, COUNT(*) as transfer_count, SUM(amount) as total_amount FROM balance_transfers FINAL GROUP BY asset",
             f"SELECT asset, address, SUM(total_balance_delta) as net_change FROM balance_delta_changes FINAL WHERE {asset_filter} GROUP BY asset, address ORDER BY net_change DESC LIMIT 10"
         ]
-    }
-
-
-def format_paginated_response(items, page, page_size, total_items):
-    """Format response for paginated endpoints
-
-    Args:
-        items: List of items to include in the response
-        page: Current page number
-        page_size: Number of items per page
-        total_items: Total number of items available
-
-    Returns:
-        Dictionary with standardized pagination metadata
-    """
-    total_pages = (total_items + page_size - 1) // page_size if page_size > 0 else 0
-    return {
-        "items": items,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "total_items": total_items
     }
 
 

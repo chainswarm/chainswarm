@@ -39,57 +39,71 @@ class BalanceTransfersIndexerBase:
         self.version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
 
     def _init_tables(self):
-        """Initialize tables for balance transfers from schema file"""
-        # Read schema file
-        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+        """Initialize tables for balance transfers from split schema files"""
+        # Schema files in order of execution
+        schema_files = [
+            'schema_part1_core.sql',
+            'schema_part2_basic_views.sql',
+            'schema_part3_behavior_profiles.sql',
+            'schema_part4_classification.sql',
+            'schema_part5_suspicious_activity.sql',
+            'schema_part6_relationships_activity.sql'
+        ]
         
         try:
-            with open(schema_path, 'r') as f:
-                schema_sql = f.read()
-            
-            # Replace partition size placeholder
-            schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
-            
-            # Split by semicolon but preserve semicolons within CREATE TABLE statements
-            # by not splitting on semicolons that are followed by whitespace and then CREATE or ALTER
-            statements = []
-            current_statement = []
-            lines = schema_sql.split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                if line.startswith('--') or not line:
-                    continue
-                    
-                current_statement.append(line)
+            # Process each schema file in order
+            for schema_file in schema_files:
+                schema_path = os.path.join(os.path.dirname(__file__), schema_file)
                 
-                # Check if this line ends with a semicolon and the next non-empty line starts a new statement
-                if line.endswith(';'):
-                    # Join the current statement and add it to statements
-                    full_statement = ' '.join(current_statement).strip()
-                    if full_statement and not full_statement.startswith('--'):
-                        statements.append(full_statement.rstrip(';'))
+                try:
+                    with open(schema_path, 'r') as f:
+                        schema_sql = f.read()
+                    
+                    # Replace partition size placeholder
+                    schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
+                    
+                    # Split by semicolon but preserve semicolons within CREATE TABLE statements
+                    statements = []
                     current_statement = []
+                    lines = schema_sql.split('\n')
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if line.startswith('--') or not line:
+                            continue
+                            
+                        current_statement.append(line)
+                        
+                        # Check if this line ends with a semicolon and the next non-empty line starts a new statement
+                        if line.endswith(';'):
+                            # Join the current statement and add it to statements
+                            full_statement = ' '.join(current_statement).strip()
+                            if full_statement and not full_statement.startswith('--'):
+                                statements.append(full_statement.rstrip(';'))
+                            current_statement = []
+                    
+                    # Execute each statement
+                    for statement in statements:
+                        if statement:
+                            try:
+                                self.client.command(statement)
+                            except Exception as e:
+                                # Skip errors for views and indexes that might already exist
+                                if "already exists" in str(e).lower():
+                                    logger.debug(f"Object already exists, skipping: {statement[:50]}...")
+                                else:
+                                    logger.error(f"Error executing statement: {e}")
+                                    logger.error(f"Statement: {statement[:100]}...")
+                                    raise
+                    
+                    logger.info(f"Executed schema file: {schema_file}")
+                    
+                except FileNotFoundError:
+                    logger.error(f"Schema file not found: {schema_path}")
+                    raise
+                
+            logger.info("Balance transfers tables initialized from split schema files")
             
-            # Execute each statement
-            for statement in statements:
-                if statement:
-                    try:
-                        self.client.command(statement)
-                    except Exception as e:
-                        # Skip errors for views and indexes that might already exist
-                        if "already exists" in str(e).lower():
-                            logger.debug(f"Object already exists, skipping: {statement[:50]}...")
-                        else:
-                            logger.error(f"Error executing statement: {e}")
-                            logger.error(f"Statement: {statement[:100]}...")
-                            raise
-            
-            logger.info("Balance transfers tables initialized from schema.sql")
-            
-        except FileNotFoundError:
-            logger.error(f"Schema file not found: {schema_path}")
-            raise
         except Exception as e:
             logger.error(f"Error initializing balance transfers tables: {e}")
             raise

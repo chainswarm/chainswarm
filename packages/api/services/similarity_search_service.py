@@ -34,10 +34,7 @@ class SimilaritySearchService:
             ValueError: If an invalid embedding type is provided
         """
         embedding_mapping = {
-            'financial': 'FinancialEmbeddings',
-            'temporal': 'TemporalEmbeddings',
             'network': 'NetworkEmbeddings',
-            'joint': 'JointEmbeddings'
         }
         
         if embedding_type.lower() not in embedding_mapping:
@@ -60,10 +57,7 @@ class SimilaritySearchService:
             ValueError: If an invalid embedding type is provided
         """
         dimension_mapping = {
-            'financial': 6,
-            'temporal': 4,
-            'network': 4,
-            'joint': 14
+            'network': 6,
         }
         
         if embedding_type.lower() not in dimension_mapping:
@@ -89,61 +83,7 @@ class SimilaritySearchService:
         missing_keys = [key for key in expected_keys if key not in pattern]
         if missing_keys:
             raise ValueError(f"Missing required keys in pattern: {', '.join(missing_keys)}")
-            
-    def _construct_vector_from_financial_pattern(self, pattern: dict) -> List[float]:
-        """
-        Convert a financial pattern object to a vector.
-        
-        Args:
-            pattern: Dictionary with financial pattern parameters
-            
-        Returns:
-            List of float values representing the vector
-        """
-        expected_keys = [
-            'volume_in',
-            'volume_out',
-            'volume_differential',
-            'log_transfer_count',
-            'outgoing_tx_avg_ratio',
-            'incoming_tx_avg_ratio'
-        ]
-        self._validate_pattern(pattern, expected_keys)
-        
-        return [
-            float(pattern['volume_in']) / 1e8,
-            float(pattern['volume_out']) / 1e8,
-            float(pattern['volume_differential']) / 1e8,
-            float(pattern['log_transfer_count']),
-            float(pattern['outgoing_tx_avg_ratio']),
-            float(pattern['incoming_tx_avg_ratio'])
-        ]
-        
-    def _construct_vector_from_temporal_pattern(self, pattern: dict) -> List[float]:
-        """
-        Convert a temporal pattern object to a vector.
-        
-        Args:
-            pattern: Dictionary with temporal pattern parameters
-            
-        Returns:
-            List of float values representing the vector
-        """
-        expected_keys = [
-            'last_transfer_timestamp',
-            'first_transfer_timestamp',
-            'avg_outgoing_tx_frequency',
-            'avg_incoming_tx_frequency'
-        ]
-        self._validate_pattern(pattern, expected_keys)
-        
-        return [
-            float(pattern['last_transfer_timestamp']) / 1e12,
-            float(pattern['first_transfer_timestamp']) / 1e12,
-            float(pattern['avg_outgoing_tx_frequency']),
-            float(pattern['avg_incoming_tx_frequency'])
-        ]
-        
+
     def _construct_vector_from_network_pattern(self, pattern: dict) -> List[float]:
         """
         Convert a network pattern object to a vector.
@@ -179,20 +119,7 @@ class SimilaritySearchService:
         Returns:
             List of float values representing the vector
         """
-        financial_keys = [
-            'volume_in',
-            'volume_out',
-            'volume_differential',
-            'log_transfer_count',
-            'outgoing_tx_avg_ratio',
-            'incoming_tx_avg_ratio'
-        ]
-        temporal_keys = [
-            'last_transfer_timestamp',
-            'first_transfer_timestamp',
-            'avg_outgoing_tx_frequency',
-            'avg_incoming_tx_frequency'
-        ]
+
         network_keys = [
             'community_page_rank',
             'community_id',
@@ -200,25 +127,9 @@ class SimilaritySearchService:
             'unique_receivers'
         ]
         
-        expected_keys = financial_keys + temporal_keys + network_keys
+        expected_keys = network_keys
         self._validate_pattern(pattern, expected_keys)
-        
-        financial_vector = [
-            float(pattern['volume_in']) / 1e8,
-            float(pattern['volume_out']) / 1e8,
-            float(pattern['volume_differential']) / 1e8,
-            float(pattern['log_transfer_count']),
-            float(pattern['outgoing_tx_avg_ratio']),
-            float(pattern['incoming_tx_avg_ratio'])
-        ]
-        
-        temporal_vector = [
-            float(pattern['last_transfer_timestamp']) / 1e12,
-            float(pattern['first_transfer_timestamp']) / 1e12,
-            float(pattern['avg_outgoing_tx_frequency']),
-            float(pattern['avg_incoming_tx_frequency'])
-        ]
-        
+
         network_vector = [
             float(pattern['community_page_rank']),
             float(pattern['community_id']),
@@ -226,7 +137,7 @@ class SimilaritySearchService:
             float(pattern['unique_receivers'])
         ]
         
-        return financial_vector + temporal_vector + network_vector
+        return network_vector
     
     def _get_vector_from_address(self, address: str, embedding_type: str) -> List[float]:
         """
@@ -265,10 +176,7 @@ class SimilaritySearchService:
             The corresponding Memgraph metric name
         """
         metric_mapping = {
-            'cosine': 'cos',
-            'euclidean': 'l2sq',
-            'dot_product': 'ip',
-            'correlation': 'pearson'
+            'cosine': 'cos'
         }
         
         if metric.lower() not in metric_mapping:
@@ -282,10 +190,7 @@ class SimilaritySearchService:
         embedding_type: str,
         query_type: str,
         reference_address: Optional[str] = None,
-        financial_pattern: Optional[dict] = None,
-        temporal_pattern: Optional[dict] = None,
         network_pattern: Optional[dict] = None,
-        combined_pattern: Optional[dict] = None,
         limit: int = 10,
         similarity_metric: str = "cosine",
         min_similarity_score: Optional[float] = None
@@ -297,10 +202,7 @@ class SimilaritySearchService:
             embedding_type: Type of embedding to use ('financial', 'temporal', 'network', or 'joint')
             query_type: How to specify the search query ('by_address', 'by_financial_pattern', etc.)
             reference_address: Address to use as reference when query_type is 'by_address'
-            financial_pattern: Financial pattern when query_type is 'by_financial_pattern'
-            temporal_pattern: Temporal pattern when query_type is 'by_temporal_pattern'
             network_pattern: Network pattern when query_type is 'by_network_pattern'
-            combined_pattern: Combined pattern when query_type is 'by_combined_pattern'
             limit: Number of similar nodes to retrieve
             similarity_metric: Similarity metric to use
             min_similarity_score: Optional minimum similarity threshold
@@ -315,35 +217,14 @@ class SimilaritySearchService:
             if not reference_address:
                 raise ValueError("Reference address must be provided when query_type is 'by_address'")
             query_vector = self._get_vector_from_address(reference_address, embedding_type)
-            
-        elif query_type == 'by_financial_pattern':
-            if embedding_type != 'financial':
-                raise ValueError(f"Financial pattern can only be used with 'financial' embedding type, not '{embedding_type}'")
-            if not financial_pattern:
-                raise ValueError("Financial pattern must be provided when query_type is 'by_financial_pattern'")
-            query_vector = self._construct_vector_from_financial_pattern(financial_pattern)
-            
-        elif query_type == 'by_temporal_pattern':
-            if embedding_type != 'temporal':
-                raise ValueError(f"Temporal pattern can only be used with 'temporal' embedding type, not '{embedding_type}'")
-            if not temporal_pattern:
-                raise ValueError("Temporal pattern must be provided when query_type is 'by_temporal_pattern'")
-            query_vector = self._construct_vector_from_temporal_pattern(temporal_pattern)
-            
+
         elif query_type == 'by_network_pattern':
             if embedding_type != 'network':
                 raise ValueError(f"Network pattern can only be used with 'network' embedding type, not '{embedding_type}'")
             if not network_pattern:
                 raise ValueError("Network pattern must be provided when query_type is 'by_network_pattern'")
             query_vector = self._construct_vector_from_network_pattern(network_pattern)
-            
-        elif query_type == 'by_combined_pattern':
-            if embedding_type != 'joint':
-                raise ValueError(f"Combined pattern can only be used with 'joint' embedding type")
-            if not combined_pattern:
-                raise ValueError("Combined pattern must be provided when query_type is 'by_combined_pattern'")
-            query_vector = self._construct_vector_from_combined_pattern(combined_pattern)
-            
+
         else:
             raise ValueError(f"Invalid query type: '{query_type}'")
             
@@ -372,8 +253,6 @@ class SimilaritySearchService:
             type: 'node',
             label: 'address',
             address: node.address,
-            volume_in: node.volume_in,
-            volume_out: node.volume_out,
             transfer_count: node.transfer_count,
             neighbor_count: node.neighbor_count,
             first_transfer_block_height: node.first_transfer_block_height,
@@ -412,8 +291,6 @@ class SimilaritySearchService:
                         type: 'node',
                         label: 'address',
                         address: a.address,
-                        volume_in: a.volume_in,
-                        volume_out: a.volume_out,
                         transfer_count: a.transfer_count,
                         neighbor_count: a.neighbor_count,
                         first_transfer_block_height: a.first_transfer_block_height,
@@ -423,7 +300,7 @@ class SimilaritySearchService:
                         badges: coalesce(a.labels, []),
                         community_id: coalesce(a.community_id, 0),
                         community_page_rank: coalesce(a.community_page_rank, 0.0),
-                        similarity_score: 1.0
+                        similarity_score: similarity
                     } AS result
                     """
                     ref_result = session.run(ref_query, {"address": reference_address})
@@ -455,7 +332,7 @@ class SimilaritySearchService:
     def find_similar_addresses_by_address(
         self,
         address: str,
-        embedding_type: str = "joint",
+        embedding_type: str = "network",
         limit: int = 10,
         similarity_metric: str = "cosine",
         min_similarity_score: Optional[float] = None
@@ -487,10 +364,7 @@ class SimilaritySearchService:
         embedding_type: str,
         query_type: str,
         reference_address: Optional[str] = None,
-        financial_pattern: Optional[dict] = None,
-        temporal_pattern: Optional[dict] = None,
         network_pattern: Optional[dict] = None,
-        combined_pattern: Optional[dict] = None,
         limit: int = 10,
         similarity_metric: str = "cosine",
         min_similarity_score: Optional[float] = None
@@ -506,10 +380,7 @@ class SimilaritySearchService:
             embedding_type: Type of embedding to use ('financial', 'temporal', 'network', or 'joint')
             query_type: How to specify the search query ('by_address', 'by_financial_pattern', etc.)
             reference_address: Address to use as reference when query_type is 'by_address'
-            financial_pattern: Financial pattern when query_type is 'by_financial_pattern'
-            temporal_pattern: Temporal pattern when query_type is 'by_temporal_pattern'
             network_pattern: Network pattern when query_type is 'by_network_pattern'
-            combined_pattern: Combined pattern when query_type is 'by_combined_pattern'
             limit: Number of similar nodes to retrieve
             similarity_metric: Similarity metric to use
             min_similarity_score: Optional minimum similarity threshold
@@ -524,35 +395,14 @@ class SimilaritySearchService:
             if not reference_address:
                 raise ValueError("Reference address must be provided when query_type is 'by_address'")
             query_vector = self._get_vector_from_address(reference_address, embedding_type)
-            
-        elif query_type == 'by_financial_pattern':
-            if embedding_type != 'financial':
-                raise ValueError(f"Financial pattern can only be used with 'financial' embedding type, not '{embedding_type}'")
-            if not financial_pattern:
-                raise ValueError("Financial pattern must be provided when query_type is 'by_financial_pattern'")
-            query_vector = self._construct_vector_from_financial_pattern(financial_pattern)
-            
-        elif query_type == 'by_temporal_pattern':
-            if embedding_type != 'temporal':
-                raise ValueError(f"Temporal pattern can only be used with 'temporal' embedding type, not '{embedding_type}'")
-            if not temporal_pattern:
-                raise ValueError("Temporal pattern must be provided when query_type is 'by_temporal_pattern'")
-            query_vector = self._construct_vector_from_temporal_pattern(temporal_pattern)
-            
+
         elif query_type == 'by_network_pattern':
             if embedding_type != 'network':
                 raise ValueError(f"Network pattern can only be used with 'network' embedding type, not '{embedding_type}'")
             if not network_pattern:
                 raise ValueError("Network pattern must be provided when query_type is 'by_network_pattern'")
             query_vector = self._construct_vector_from_network_pattern(network_pattern)
-            
-        elif query_type == 'by_combined_pattern':
-            if embedding_type != 'joint':
-                raise ValueError(f"Combined pattern can only be used with 'joint' embedding type")
-            if not combined_pattern:
-                raise ValueError("Combined pattern must be provided when query_type is 'by_combined_pattern'")
-            query_vector = self._construct_vector_from_combined_pattern(combined_pattern)
-            
+
         else:
             raise ValueError(f"Invalid query type: '{query_type}'")
             
