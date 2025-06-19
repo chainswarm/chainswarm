@@ -110,6 +110,8 @@ class BaseMoneyFlowIndexer:
 
                 ("Address", "first_activity_timestamp"), # First activity timestamp
                 ("Address", "last_activity_timestamp"), # Last activity timestamp
+                ("Address", "first_activity_block_height"), # First activity block height
+                ("Address", "last_activity_block_height"), # Last activity block height
 
                 ("Address", "community_id"), # Community ID
                 ("Address", "community_ids"), # Community IDs (for multi-community membership)
@@ -124,6 +126,8 @@ class BaseMoneyFlowIndexer:
 
                 ("TO", "last_activity_timestamp"),
                 ("TO", "first_activity_timestamp"),
+                ("TO", "last_activity_block_height"),
+                ("TO", "first_activity_block_height")
             ]
 
             for label, prop in indexes:
@@ -212,6 +216,7 @@ class BaseMoneyFlowIndexer:
                 elif last_block_height is not None:
                     last_block_height = last_block_height['last_block_height']
                     if last_block_height > block_height:
+                        logger.warning(f"Skipping block {block_height} as it is already indexed (last indexed: {last_block_height})")
                         return  # Skip indexing if this block is already indexed
 
             with session.begin_transaction() as transaction:
@@ -422,7 +427,8 @@ class BaseMoneyFlowIndexer:
             query = """
             MERGE (addr:Address { address: $account })
             ON CREATE SET
-                addr.first_activity_timestamp = $timestamp
+                addr.first_activity_timestamp = $timestamp,
+                addr.first_activity_block_height = $block_height
 
             """
             transaction.run(query, {
@@ -449,18 +455,24 @@ class BaseMoneyFlowIndexer:
               ON CREATE SET
                 sender.first_activity_timestamp = $timestamp,
                 sender.last_activity_timestamp = $timestamp,
+                sender.first_activity_block_height = $block_height,
+                sender.last_activity_block_height = $block_height,
                 sender.transfer_count = 1
               SET 
                 sender.last_activity_timestamp = $timestamp, 
+                sender.last_activity_block_height = $block_height,
                 sender.transfer_count = coalesce(sender.transfer_count, 0) + 1
                   
             MERGE (receiver:Address { address: $to })
               ON CREATE SET
                 receiver.first_activity_timestamp = $timestamp,
                 receiver.last_activity_timestamp = $timestamp,
+                receiver.first_activity_block_height = $block_height,
+                receiver.last_activity_block_height = $block_height,
                 receiver.transfer_count = 1
               SET
                 receiver.last_activity_timestamp = $timestamp,
+                receiver.last_activity_block_height = $block_height,
                 receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1
 
             MERGE (sender)-[r:TO { id: $to_id, asset: $asset }]->(receiver)
@@ -469,6 +481,9 @@ class BaseMoneyFlowIndexer:
                   r.transfer_count = 1,
                   r.first_activity_timestamp = $timestamp,
                   r.last_activity_timestamp = $timestamp,
+                  
+                  r.first_activity_block_height = $block_height,
+                  r.last_activity_block_height = $block_height,
                   
                   sender.neighbor_count = coalesce(sender.neighbor_count, 0) + 1,
                   sender.unique_receivers = coalesce(sender.unique_receivers, 0) + 1,
@@ -479,7 +494,8 @@ class BaseMoneyFlowIndexer:
               ON MATCH SET
                   r.volume = r.volume + $amount,
                   r.transfer_count = r.transfer_count + 1,
-                  r.last_activity_timestamp = $timestamp
+                  r.last_activity_timestamp = $timestamp,
+                  r.last_activity_block_height = $block_height
                   
             """
             transaction.run(query, {
