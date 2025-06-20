@@ -239,51 +239,6 @@ async def get_money_flow_by_block(
 
     return result
 
-@router.post(
-    "/{network}/money-flow/query",
-    summary="Execute Custom Cypher Query",
-    description=(
-        "Execute a custom Cypher query against the money flow graph database. This allows "
-        "for advanced graph analysis and exploration. Only read-only queries are allowed "
-        "and will be validated before execution."
-    ),
-    response_description="Query results and schema information",
-    responses={
-        200: {"description": "Query executed successfully"},
-        400: {"description": "Invalid query syntax or write operation attempted"},
-        500: {"description": "Internal server error"}
-    },
-    tags=["money-flow", "mcp"]
-)
-async def execute_money_flow_query(
-    network: str = Path(..., description="The blockchain network identifier", example="torus"),
-    query: str = Query(
-        ...,
-        example="MATCH (a:Address {address: '5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f'})-[r:TO]->(b:Address) RETURN a, r, b LIMIT 10",
-        description="Cypher query to execute"
-    )
-):
-    neo4j_driver = get_neo4j_driver(network)
-    memgraph_driver = get_memgraph_driver(network)
-
-    try:
-        with neo4j_driver.session(default_access_mode="READ") as session:
-            try:
-                session.run(query).data()
-            except Exception as e:
-                # Check if this is a write operation in read-only transaction
-                if "write operations are not allowed" in str(e).lower():
-                    raise HTTPException(status_code=400, detail="Write operations are not allowed in read-only transaction")
-
-        money_flow_service = MoneyFlowService(memgraph_driver)
-        result = await money_flow_service.money_flow_query(query)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error executing query: {str(e)}")
-    finally:
-        neo4j_driver.close()
-        memgraph_driver.close()
-
 @router.get(
     "/{network}/money-flow/schema",
     summary="Get Money Flow Schema",

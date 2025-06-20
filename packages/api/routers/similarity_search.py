@@ -29,10 +29,20 @@ class SimilarityMetric(str, Enum):
     cosine = "cosine"
 
 class NetworkPattern(BaseModel):
-    community_page_rank : float = Field(..., description="CommunityPageRank score")
+    transfer_count: float = Field(..., description="Total number of transfers in and out")
+    unique_senders: float = Field(..., description="Number of unique addresses that sent to this address")
+    unique_receivers: float = Field(..., description="Number of unique addresses this address sent to")
+    neighbor_count: float = Field(..., description="Number of neighbors (connected addresses)")
     community_id: float = Field(..., description="Community membership ID")
-    unique_senders: float = Field(..., description="Number of unique senders")
-    unique_receivers: float = Field(..., description="Number of unique receivers")
+    community_page_rank: float = Field(..., description="CommunityPageRank score")
+
+class DimensionWeights(BaseModel):
+    transfer_count: float = Field(1.0, description="Weight for transfer count dimension (0.0-1.0)", ge=0.0, le=1.0)
+    unique_senders: float = Field(1.0, description="Weight for unique senders dimension (0.0-1.0)", ge=0.0, le=1.0)
+    unique_receivers: float = Field(1.0, description="Weight for unique receivers dimension (0.0-1.0)", ge=0.0, le=1.0)
+    neighbor_count: float = Field(1.0, description="Weight for neighbor count dimension (0.0-1.0)", ge=0.0, le=1.0)
+    community_id: float = Field(1.0, description="Weight for community ID dimension (0.0-1.0)", ge=0.0, le=1.0)
+    community_page_rank: float = Field(1.0, description="Weight for community page rank dimension (0.0-1.0)", ge=0.0, le=1.0)
 
 
 @router.post(
@@ -70,6 +80,10 @@ async def find_similar_addresses(
     network_pattern: Optional[NetworkPattern] = Body(
         None,
         description="Network pattern when query_type is 'by_network_pattern'"
+    ),
+    dimension_weights: Optional[DimensionWeights] = Body(
+        None,
+        description="Optional weights for each dimension (0.0-1.0) to focus on specific dimensions"
     ),
     limit: int = Query(
         10,
@@ -109,6 +123,7 @@ async def find_similar_addresses(
             query_type=query_type.value,
             reference_address=reference_address,
             network_pattern=network_pattern.dict() if network_pattern else None,
+            dimension_weights=dimension_weights.dict() if dimension_weights else None,
             limit=limit,
             similarity_metric=similarity_metric.value,
             min_similarity_score=min_similarity_score
@@ -162,6 +177,10 @@ async def find_similar_addresses_by_address(
         description="Minimum similarity threshold (0-1)",
         ge=0,
         le=1
+    ),
+    dimension_weights: Optional[DimensionWeights] = Body(
+        None,
+        description="Optional weights for each dimension (0.0-1.0) to focus on specific dimensions"
     )
 ):
     memgraph_driver = get_memgraph_driver(network)
@@ -170,6 +189,7 @@ async def find_similar_addresses_by_address(
         result = similarity_search_service.find_similar_addresses_by_address(
             address=address,
             embedding_type=embedding_type.value,
+            dimension_weights=dimension_weights.dict() if dimension_weights else None,
             limit=limit,
             similarity_metric=similarity_metric.value,
             min_similarity_score=min_similarity_score

@@ -39,10 +39,11 @@ class SimilaritySearchTool:
                     ]
                 },
                 "network": {
-                    "description": "Network structure embeddings (4 dimensions)",
-                    "dimensions": 4,
+                    "description": "Network structure embeddings (6 dimensions)",
+                    "dimensions": 6,
                     "components": [
-                        "community_page_rank", "community_id", "unique_senders", "unique_receivers"
+                        "transfer_count", "unique_senders", "unique_receivers",
+                        "neighbor_count", "community_id", "community_page_rank"
                     ]
                 },
                 "joint": {
@@ -106,10 +107,12 @@ class SimilaritySearchTool:
                     "avg_incoming_tx_frequency": "float - Average incoming transaction frequency"
                 },
                 "network_pattern": {
-                    "community_page_rank": "float - Community PageRank score",
+                    "transfer_count": "float - Total number of transfers in and out",
+                    "unique_senders": "float - Number of unique addresses that sent to this address",
+                    "unique_receivers": "float - Number of unique addresses this address sent to",
+                    "neighbor_count": "float - Number of neighbors (connected addresses)",
                     "community_id": "float - Community membership ID",
-                    "unique_senders": "float - Number of unique senders",
-                    "unique_receivers": "float - Number of unique receivers"
+                    "community_page_rank": "float - Community PageRank score"
                 },
                 "combined_pattern": {
                     "volume_in": "float - Incoming volume",
@@ -126,6 +129,17 @@ class SimilaritySearchTool:
                     "community_id": "float - Community membership ID",
                     "unique_senders": "float - Number of unique senders",
                     "unique_receivers": "float - Number of unique receivers"
+                }
+            },
+            "dimension_weights": {
+                "description": "Optional weights for each dimension (0.0-1.0) to focus on specific dimensions",
+                "network_weights": {
+                    "transfer_count": "float - Weight for transfer count dimension (0.0-1.0)",
+                    "unique_senders": "float - Weight for unique senders dimension (0.0-1.0)",
+                    "unique_receivers": "float - Weight for unique receivers dimension (0.0-1.0)",
+                    "neighbor_count": "float - Weight for neighbor count dimension (0.0-1.0)",
+                    "community_id": "float - Weight for community ID dimension (0.0-1.0)",
+                    "community_page_rank": "float - Weight for community page rank dimension (0.0-1.0)"
                 }
             },
             "example_queries": [
@@ -156,6 +170,50 @@ class SimilaritySearchTool:
                         "similarity_metric": "cosine",
                         "min_similarity_score": 0.7
                     }
+                },
+                {
+                    "description": "Find addresses with similar network patterns",
+                    "query": {
+                        "query_type": "by_network_pattern",
+                        "embedding_type": "network",
+                        "network_pattern": {
+                            "transfer_count": 16,
+                            "unique_senders": 10,
+                            "unique_receivers": 15,
+                            "neighbor_count": 25,
+                            "community_id": 42,
+                            "community_page_rank": 0.5
+                        },
+                        "limit": 10,
+                        "similarity_metric": "cosine",
+                        "min_similarity_score": 0.7
+                    }
+                },
+                {
+                    "description": "Find addresses with similar network patterns, focusing only on transfer count and unique senders",
+                    "query": {
+                        "query_type": "by_network_pattern",
+                        "embedding_type": "network",
+                        "network_pattern": {
+                            "transfer_count": 100,
+                            "unique_senders": 10,
+                            "unique_receivers": 0,
+                            "neighbor_count": 0,
+                            "community_id": 0,
+                            "community_page_rank": 0
+                        },
+                        "dimension_weights": {
+                            "transfer_count": 1.0,
+                            "unique_senders": 1.0,
+                            "unique_receivers": 0.0,
+                            "neighbor_count": 0.0,
+                            "community_id": 0.0,
+                            "community_page_rank": 0.0
+                        },
+                        "limit": 10,
+                        "similarity_metric": "cosine",
+                        "min_similarity_score": 0.7
+                    }
                 }
             ]
         }
@@ -173,6 +231,7 @@ class SimilaritySearchTool:
                 - temporal_pattern: (Optional) Temporal pattern parameters
                 - network_pattern: (Optional) Network pattern parameters
                 - combined_pattern: (Optional) Combined pattern parameters
+                - dimension_weights: (Optional) Weights for each dimension (0.0-1.0)
                 - limit: Number of similar nodes to retrieve
                 - similarity_metric: Similarity metric to use
                 - min_similarity_score: (Optional) Minimum similarity threshold
@@ -189,6 +248,7 @@ class SimilaritySearchTool:
             temporal_pattern = query.get("temporal_pattern")
             network_pattern = query.get("network_pattern")
             combined_pattern = query.get("combined_pattern")
+            dimension_weights = query.get("dimension_weights")
             limit = query.get("limit", 10)
             similarity_metric = query.get("similarity_metric", "cosine")
             min_similarity_score = query.get("min_similarity_score")
@@ -246,6 +306,7 @@ class SimilaritySearchTool:
                 temporal_pattern=temporal_pattern,
                 network_pattern=network_pattern,
                 combined_pattern=combined_pattern,
+                dimension_weights=dimension_weights,
                 limit=limit,
                 similarity_metric=similarity_metric,
                 min_similarity_score=min_similarity_score

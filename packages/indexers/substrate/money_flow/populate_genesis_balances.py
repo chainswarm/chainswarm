@@ -71,7 +71,7 @@ def run(file: str, network: str):
 
                 for i, (address, amount) in enumerate(balances):
                     query = """
-                        MERGE (addr:Address:Genesis {address: $account })
+                        MERGE (addr:Address:Genesis {address: $account, id: $account })
                         SET
                             addr.first_transfer_timestamp = $timestamp,
                             addr.labels = ['genesis']

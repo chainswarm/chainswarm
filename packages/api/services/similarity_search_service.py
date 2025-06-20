@@ -57,7 +57,7 @@ class SimilaritySearchService:
             ValueError: If an invalid embedding type is provided
         """
         dimension_mapping = {
-            'network': 6,
+            'network': 6,  # Changed back to 6 to match database schema
         }
         
         if embedding_type.lower() not in dimension_mapping:
@@ -95,18 +95,23 @@ class SimilaritySearchService:
             List of float values representing the vector
         """
         expected_keys = [
-            'community_page_rank',
-            'community_id',
+            'transfer_count',
             'unique_senders',
-            'unique_receivers'
+            'unique_receivers',
+            'neighbor_count',
+            'community_id',
+            'community_page_rank'
         ]
         self._validate_pattern(pattern, expected_keys)
         
+        # Create a 6D vector to match the database schema
         return [
-            float(pattern['community_page_rank']),
-            float(pattern['community_id']),
+            float(pattern['transfer_count']),
             float(pattern['unique_senders']),
-            float(pattern['unique_receivers'])
+            float(pattern['unique_receivers']),
+            float(pattern['neighbor_count']),
+            float(pattern['community_id']),
+            float(pattern['community_page_rank'])
         ]
         
     def _construct_vector_from_combined_pattern(self, pattern: dict) -> List[float]:
@@ -121,20 +126,24 @@ class SimilaritySearchService:
         """
 
         network_keys = [
-            'community_page_rank',
-            'community_id',
+            'transfer_count',
             'unique_senders',
-            'unique_receivers'
+            'unique_receivers',
+            'neighbor_count',
+            'community_id',
+            'community_page_rank'
         ]
         
         expected_keys = network_keys
         self._validate_pattern(pattern, expected_keys)
 
         network_vector = [
-            float(pattern['community_page_rank']),
-            float(pattern['community_id']),
+            float(pattern['transfer_count']),
             float(pattern['unique_senders']),
-            float(pattern['unique_receivers'])
+            float(pattern['unique_receivers']),
+            float(pattern['neighbor_count']),
+            float(pattern['community_id']),
+            float(pattern['community_page_rank'])
         ]
         
         return network_vector
@@ -163,7 +172,42 @@ class SimilaritySearchService:
             if not record or not record["embedding"]:
                 raise ValueError(f"Address '{address}' not found or has no {embedding_type} embedding")
             
-            return record["embedding"]
+            vector = record["embedding"]
+            logger.debug(f"Retrieved {embedding_type} vector for address {address}: {vector}, length: {len(vector)}")
+            
+            return vector
+    
+    def _apply_dimension_weights(self, vector: List[float], weights: Optional[dict] = None) -> List[float]:
+        """
+        Apply dimension weights to a vector.
+        
+        Args:
+            vector: The vector to apply weights to
+            weights: Optional dictionary of dimension weights
+            
+        Returns:
+            The weighted vector
+        """
+        if not weights:
+            return vector
+            
+        # For network embeddings, the dimensions are:
+        # [transfer_count, unique_senders, unique_receivers, neighbor_count, community_id, community_page_rank]
+        if len(vector) == 6:  # Network embedding
+            weight_values = [
+                weights.get('transfer_count', 1.0),
+                weights.get('unique_senders', 1.0),
+                weights.get('unique_receivers', 1.0),
+                weights.get('neighbor_count', 1.0),
+                weights.get('community_id', 1.0),
+                weights.get('community_page_rank', 1.0)
+            ]
+            
+            # Apply weights to vector
+            return [v * w for v, w in zip(vector, weight_values)]
+            
+        # For other embedding types, just return the original vector
+        return vector
     
     def _convert_similarity_metric(self, metric: str) -> str:
         """
@@ -191,6 +235,7 @@ class SimilaritySearchService:
         query_type: str,
         reference_address: Optional[str] = None,
         network_pattern: Optional[dict] = None,
+        dimension_weights: Optional[dict] = None,
         limit: int = 10,
         similarity_metric: str = "cosine",
         min_similarity_score: Optional[float] = None
@@ -224,14 +269,25 @@ class SimilaritySearchService:
             if not network_pattern:
                 raise ValueError("Network pattern must be provided when query_type is 'by_network_pattern'")
             query_vector = self._construct_vector_from_network_pattern(network_pattern)
+            logger.debug(f"Constructed network vector: {query_vector}, length: {len(query_vector)}")
 
         else:
             raise ValueError(f"Invalid query type: '{query_type}'")
             
         # Validate the query vector dimension
         expected_dimension = self._get_embedding_dimension(embedding_type)
+        logger.debug(f"Expected dimension for {embedding_type} embedding: {expected_dimension}")
         if len(query_vector) != expected_dimension:
+            logger.error(f"Dimension mismatch: Query vector dimension ({len(query_vector)}) does not match expected dimension for {embedding_type} embedding ({expected_dimension})")
             raise ValueError(f"Query vector dimension ({len(query_vector)}) does not match expected dimension for {embedding_type} embedding ({expected_dimension})")
+            
+        # Apply dimension weights if provided
+        if dimension_weights:
+            original_vector = query_vector.copy()
+            query_vector = self._apply_dimension_weights(query_vector, dimension_weights)
+            logger.debug(f"Applied dimension weights: {dimension_weights}")
+            logger.debug(f"Original vector: {original_vector}")
+            logger.debug(f"Weighted vector: {query_vector}")
         
         # Get index name and convert similarity metric
         index_name = self._get_embedding_index_name(embedding_type)
@@ -300,7 +356,7 @@ class SimilaritySearchService:
                         badges: coalesce(a.labels, []),
                         community_id: coalesce(a.community_id, 0),
                         community_page_rank: coalesce(a.community_page_rank, 0.0),
-                        similarity_score: similarity
+                        similarity_score: 1.0  // Fixed: Use constant 1.0 instead of undefined 'similarity' variable
                     } AS result
                     """
                     ref_result = session.run(ref_query, {"address": reference_address})
@@ -333,6 +389,7 @@ class SimilaritySearchService:
         self,
         address: str,
         embedding_type: str = "network",
+        dimension_weights: Optional[dict] = None,
         limit: int = 10,
         similarity_metric: str = "cosine",
         min_similarity_score: Optional[float] = None
@@ -354,6 +411,7 @@ class SimilaritySearchService:
             embedding_type=embedding_type,
             query_type='by_address',
             reference_address=address,
+            dimension_weights=dimension_weights,
             limit=limit,
             similarity_metric=similarity_metric,
             min_similarity_score=min_similarity_score
@@ -365,6 +423,7 @@ class SimilaritySearchService:
         query_type: str,
         reference_address: Optional[str] = None,
         network_pattern: Optional[dict] = None,
+        dimension_weights: Optional[dict] = None,
         limit: int = 10,
         similarity_metric: str = "cosine",
         min_similarity_score: Optional[float] = None
@@ -402,14 +461,25 @@ class SimilaritySearchService:
             if not network_pattern:
                 raise ValueError("Network pattern must be provided when query_type is 'by_network_pattern'")
             query_vector = self._construct_vector_from_network_pattern(network_pattern)
+            logger.debug(f"Constructed network vector (raw): {query_vector}, length: {len(query_vector)}")
 
         else:
             raise ValueError(f"Invalid query type: '{query_type}'")
             
         # Validate the query vector dimension
         expected_dimension = self._get_embedding_dimension(embedding_type)
+        logger.debug(f"Expected dimension for {embedding_type} embedding (raw): {expected_dimension}")
         if len(query_vector) != expected_dimension:
+            logger.error(f"Dimension mismatch (raw): Query vector dimension ({len(query_vector)}) does not match expected dimension for {embedding_type} embedding ({expected_dimension})")
             raise ValueError(f"Query vector dimension ({len(query_vector)}) does not match expected dimension for {embedding_type} embedding ({expected_dimension})")
+            
+        # Apply dimension weights if provided
+        if dimension_weights:
+            original_vector = query_vector.copy()
+            query_vector = self._apply_dimension_weights(query_vector, dimension_weights)
+            logger.debug(f"Applied dimension weights (raw): {dimension_weights}")
+            logger.debug(f"Original vector (raw): {original_vector}")
+            logger.debug(f"Weighted vector (raw): {query_vector}")
         
         # Get index name and convert similarity metric
         index_name = self._get_embedding_index_name(embedding_type)
@@ -450,7 +520,7 @@ class SimilaritySearchService:
                     # Get the reference address with a simple query
                     ref_query = """
                     MATCH (a:Address {address: $address})
-                    RETURN a as node, 1.0 as similarity_score
+                    RETURN a as node, 1.0 as similarity_score  // This was already correct with a constant value
                     """
                     ref_result = session.run(ref_query, {"address": reference_address})
                     ref_data = ref_result.data()

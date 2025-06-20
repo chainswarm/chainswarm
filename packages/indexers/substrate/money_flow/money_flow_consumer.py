@@ -154,6 +154,15 @@ class MoneyFlowConsumer:
                     end_time = time.time()
                     logger.success(f"Page rank with communities took {end_time - start_time} seconds")
 
+                """
+                ADD ANY OTHER PERIODIC TASKS HERE
+                https://memgraph.com/docs/advanced-algorithms/available-algorithms/degree_centrality
+                https://memgraph.com/docs/advanced-algorithms/available-algorithms/betweenness_centrality
+                https://memgraph.com/docs/advanced-algorithms/available-algorithms/katz_centrality
+                https://memgraph.com/docs/advanced-algorithms/available-algorithms/kmeans_clustering
+                """
+
+
                 # Update embeddings with termination check
                 if not self.terminate_event.is_set():
                     start_time = time.time()
