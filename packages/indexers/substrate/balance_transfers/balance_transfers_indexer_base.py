@@ -47,7 +47,11 @@ class BalanceTransfersIndexerBase:
             'schema_part3_behavior_profiles.sql',
             'schema_part4_classification.sql',
             'schema_part5_suspicious_activity.sql',
-            'schema_part6_relationships_activity.sql'
+            'schema_part6_relationships_activity.sql',
+            'schema_part7_network_flow.sql',
+            'schema_part8_temporal_analysis.sql',
+            'schema_part9_economic_analysis.sql',
+            'schema_part10_anomaly_detection.sql'
         ]
         
         try:

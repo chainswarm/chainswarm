@@ -19,3 +19,15 @@
 
 -- Include relationship and activity patterns views
 -- @include schema_part6_relationships_activity.sql
+
+-- Include network flow analysis view
+-- @include schema_part7_network_flow.sql
+
+-- Include temporal analysis views
+-- @include schema_part8_temporal_analysis.sql
+
+-- Include economic analysis views
+-- @include schema_part9_economic_analysis.sql
+
+-- Include anomaly detection view
+-- @include schema_part10_anomaly_detection.sql
