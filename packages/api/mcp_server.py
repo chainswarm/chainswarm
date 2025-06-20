@@ -7,6 +7,7 @@ from pydantic import Field
 from fastmcp import FastMCP, Context
 from packages.api.routers import get_memgraph_driver, get_neo4j_driver
 from packages.api.tools.balance_tracking import BalanceTrackingTool
+from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
 from packages.indexers.base import get_clickhouse_connection_string, setup_logger
@@ -88,21 +89,28 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - "What addresses are most connected to [ADDRESS]?"
     - "Map the transaction network with 2 degrees of separation from [ADDRESS]"
     
-    ## 💰 Balance & Address Intelligence
+    ## 💰 Account Balance Analytics
     
-    **What it does**: Tracks balance changes over time and maintains a database of known/labeled addresses (exchanges, treasuries, bridges, etc.).
+    **What it does**: Tracks balance changes over time, analyzes transfer transactions between addresses, and maintains a database of known/labeled addresses (exchanges, treasuries, bridges, etc.).
     
     **You can ask about**:
     - Historical balance changes for any address
     - Known addresses and their labels/purposes
     - Transaction history with detailed records
-    - Asset movements and distributions
+    - Address behavior patterns and classifications
+    - Relationship analysis between addresses
+    - Network flow and economic indicators
+    - Suspicious activity and anomaly detection
     
     **Example questions**:
     - "What are the well-known addresses on this blockchain?"
     - "Show me the transaction history for [ADDRESS]"
     - "What's the balance history of [ADDRESS] over the last month?"
     - "Find all treasury and DAO addresses"
+    - "Identify addresses with suspicious transaction patterns"
+    - "Analyze the relationship between [ADDRESS1] and [ADDRESS2]"
+    - "What's the token velocity for [ASSET] over the last quarter?"
+    - "Show me addresses classified as 'whales' for [ASSET]"
     
     ## 🔍 Similarity & Pattern Detection
     
@@ -175,6 +183,9 @@ async def get_instructions():
 
     balance_tracking_tool = BalanceTrackingTool(get_clickhouse_connection_string(network))
     balance_schema = await balance_tracking_tool.schema()
+    
+    balance_transfers_tool = BalanceTransfersTool(get_clickhouse_connection_string(network))
+    balance_transfers_schema = await balance_transfers_tool.schema()
 
     return f"""
 # {network.upper()} Blockchain Analytics Assistant Instructions
@@ -251,13 +262,95 @@ ORDER BY community ASC
 - **Schema**: {similarity_schema}
 - Usage: Vector-based similarity matching for behavioral analysis
 
-### 💰 Balance & Transaction Analysis
+### 💰 Account Balance Analytics
 
 **Balance Tracking**
-- Tool: `balance_query`
-- Purpose: Historical balance changes, balance change deltas, known addresses, transactions
+- Tool: `balance_tracking_query`
+- Purpose: Historical balance changes, balance change deltas, known addresses
 - **Database**: ClickHouse
 - **Schema**: {balance_schema}
+- **Core Tables**:
+  - `balance_changes`: Stores balance snapshots for addresses at specific block heights
+  - `balance_delta_changes`: Stores balance changes (deltas) between consecutive blocks
+- **Available Views**:
+  - `balances_current_view`: Latest balance for each address and asset
+  - `balance_significant_changes_view`: Significant balance changes (delta > 100)
+  - `balance_daily_statistics_mv`: Daily balance statistics
+  - `available_assets_view`: Simple view listing available assets
+
+**Example Queries**:
+```sql
+-- Get current balance for an address
+SELECT * FROM balances_current_view
+WHERE address = '0x123...' AND asset = 'TOR';
+
+-- Find significant balance changes
+SELECT * FROM balance_significant_changes_view
+WHERE address = '0x123...'
+ORDER BY block_height DESC LIMIT 10;
+
+-- Get daily balance statistics
+SELECT * FROM balance_daily_statistics_mv
+WHERE address = '0x123...' AND asset = 'TOR'
+ORDER BY date DESC LIMIT 30;
+```
+
+**Balance Transfers Analysis**
+- Tool: `balance_transfers_query`
+- Purpose: Analyze individual transfer transactions between addresses
+- **Database**: ClickHouse
+- **Schema**: {balance_transfers_schema}
+- **Core Table**:
+  - `balance_transfers`: Stores individual transfer transactions between addresses
+- **Available Views**:
+  - **Basic Views**:
+    - `balance_transfers_statistics_view`: Basic statistics by address and asset
+    - `balance_transfers_daily_volume_mv`: Materialized view for daily transfer volume
+    - `available_transfer_assets_view`: Simple view listing available assets
+  
+  - **Behavior Analysis**:
+    - `balance_transfers_address_behavior_profiles_view`: Comprehensive behavioral analysis for each address
+    - `balance_transfers_address_classification_view`: Classifies addresses into behavioral categories
+    - `balance_transfers_suspicious_activity_view`: Identifies potentially suspicious activity patterns
+  
+  - **Relationship Analysis**:
+    - `balance_transfers_address_relationships_view`: Tracks relationships between addresses
+    - `balance_transfers_address_activity_patterns_view`: Analyzes temporal and behavioral patterns
+  
+  - **Network Analysis**:
+    - `balance_transfers_network_flow_view`: High-level overview of network activity
+    - `balance_transfers_periodic_activity_view`: Activity patterns over weekly time periods
+    - `balance_transfers_seasonality_view`: Temporal patterns in transaction activity
+  
+  - **Economic Analysis**:
+    - `balance_transfers_velocity_view`: Measures token circulation speed
+    - `balance_transfers_liquidity_concentration_view`: Analyzes holding concentration
+    - `balance_transfers_holding_time_view`: Analyzes token holding duration
+  
+  - **Anomaly Detection**:
+    - `balance_transfers_basic_anomaly_view`: Detects unusual transaction patterns
+
+**Example Queries**:
+```sql
+-- Get basic statistics for an address
+SELECT * FROM balance_transfers_statistics_view
+WHERE address = '0x123...' AND asset = 'TOR';
+
+-- Find suspicious activity
+SELECT * FROM balance_transfers_suspicious_activity_view
+WHERE risk_level = 'High'
+ORDER BY suspicion_score DESC LIMIT 10;
+
+-- Analyze relationships between addresses
+SELECT * FROM balance_transfers_address_relationships_view
+WHERE from_address = '0x123...' OR to_address = '0x123...'
+ORDER BY relationship_strength DESC;
+
+-- Analyze token velocity
+SELECT * FROM balance_transfers_velocity_view
+WHERE asset = 'TOR'
+ORDER BY month DESC LIMIT 12;
+```
 
 **ClickHouse Query Guidelines:**
 - Use ClickHouse SQL dialect (not standard SQL)
@@ -465,30 +558,59 @@ async def execute_similarity_search_query(
 
 @session_rate_limit
 @mcp.tool(
-    name="balance_query",
-    description="Execute a balance related query.",
-    tags={"balance tracking", "balance changes", "balance changes delta", "balances", "balance changes",
+    name="balance_tracking_query",
+    description="Execute a balance tracking related query.",
+    tags={"balance tracking", "balance changes", "balance changes delta", "balances",
           "known addresses", "assets"},
     annotations={
-        "title": "Executes Clickhouse dialect SQL query against blockchain balance database with asset support",
+        "title": "Executes Clickhouse dialect SQL query against blockchain balance tracking database",
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False
     }
 )
-async def execute_balance_query(query: Annotated[str, Field(
-    description="The Clickhouse dialect SQL query to execute. Use asset field to filter by specific assets.")]) -> dict:
+async def execute_balance_tracking_query(query: Annotated[str, Field(
+    description="The Clickhouse dialect SQL query to execute against balance tracking tables/views.")]) -> dict:
     """
-    Execute a balance tracking query on the specified blockchain network with asset support.
+    Execute a balance tracking query on the specified blockchain network.
 
     Args:
-        query (str): The SQL query to execute. Use asset field to filter by specific assets.
+        query (str): The SQL query to execute against balance tracking tables/views.
 
     Returns:
-        dict: The result of the balance tracking query with asset information.
+        dict: The result of the balance tracking query.
     """
     balance_tracking_service = BalanceTrackingTool(get_clickhouse_connection_string(network))
     result = await balance_tracking_service.balance_tracking_query(query)
+    return result
+
+
+@session_rate_limit
+@mcp.tool(
+    name="balance_transfers_query",
+    description="Execute a balance transfers related query.",
+    tags={"balance transfers", "transaction analysis", "address behavior", "relationship analysis",
+          "network flow", "economic analysis", "anomaly detection"},
+    annotations={
+        "title": "Executes Clickhouse dialect SQL query against blockchain balance transfers database",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def execute_balance_transfers_query(query: Annotated[str, Field(
+    description="The Clickhouse dialect SQL query to execute against balance transfers tables/views.")]) -> dict:
+    """
+    Execute a balance transfers query on the specified blockchain network.
+
+    Args:
+        query (str): The SQL query to execute against balance transfers tables/views.
+
+    Returns:
+        dict: The result of the balance transfers query.
+    """
+    balance_transfers_service = BalanceTransfersTool(get_clickhouse_connection_string(network))
+    result = await balance_transfers_service.balance_transfers_query(query)
     return result
 
  

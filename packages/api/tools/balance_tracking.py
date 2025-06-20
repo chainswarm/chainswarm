@@ -52,9 +52,6 @@ class BalanceTrackingTool:
         """
         Get balance tracking schema from ClickHouse with asset support
 
-        Args:
-            assets: List of asset symbols for example queries
-
         Returns:
             Dict containing the balance tracking schema with asset information
         """
@@ -89,6 +86,28 @@ class BalanceTrackingTool:
                         }
 
                 schema[table.name] = table_schema
+
+            # Add descriptions for tables and views
+            if "balance_changes" in schema:
+                schema["balance_changes"]["description"] = "Stores balance snapshots for addresses at specific block heights"
+                
+            if "balance_delta_changes" in schema:
+                schema["balance_delta_changes"]["description"] = "Stores balance changes (deltas) between consecutive blocks"
+                
+            if "known_addresses" in schema:
+                schema["known_addresses"]["description"] = "Stores information about known/labeled addresses"
+                
+            if "balance_daily_statistics_mv" in schema:
+                schema["balance_daily_statistics_mv"]["description"] = "Materialized view for daily balance statistics"
+                
+            if "available_assets_view" in schema:
+                schema["available_assets_view"]["description"] = "Simple view listing available assets"
+                
+            if "balance_significant_changes_view" in schema:
+                schema["balance_significant_changes_view"]["description"] = "Shows significant balance changes (delta > 100)"
+                
+            if "balances_current_view" in schema:
+                schema["balances_current_view"]["description"] = "Latest balance for each address and asset"
 
             return {
                 "name": "Balance Tracking Schema",
