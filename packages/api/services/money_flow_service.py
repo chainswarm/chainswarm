@@ -38,7 +38,7 @@ class MoneyFlowService:
         where_clause = " AND ".join(asset_filter_conditions)
 
         query = f"""
-                MATCH path = (start:Address {{address: $source_address}})-[rels:TO*BFS]-(target:Address {{address: $target_address}})
+                MATCH path = (start:Address {{address: $source_address}})-[rels:TO*BFS]->(target:Address {{address: $target_address}})
                 WHERE {where_clause}
 
                 // Collect all distinct nodes from the matched paths
@@ -64,10 +64,10 @@ class MoneyFlowService:
                          address: node.address,
                          transfer_count: node.transfer_count,
                          neighbor_count: node.neighbor_count,
-                         first_transfer_block_height: node.first_transfer_block_height,
-                         first_transfer_timestamp: node.first_transfer_timestamp,
-                         last_transfer_block_height: node.last_transfer_block_height,
-                         last_transfer_timestamp: node.last_transfer_timestamp,
+                         first_activity_block_height: node.first_activity_block_height,
+                         first_activity_timestamp: node.first_activity_timestamp,
+                         last_activity_block_height: node.last_activity_block_height,
+                         last_activity_timestamp: node.last_activity_timestamp,
                          badges: coalesce(node.labels, []),
                          community_id: coalesce(node.community_id, 0),
                          community_page_rank: coalesce(node.community_page_rank, 0.0)
@@ -82,10 +82,10 @@ class MoneyFlowService:
                     to_id: to_id,
                     volume: edge_data.volume,
                     transfer_count: edge_data.transfer_count,
-                    first_transfer_block_height: edge_data.first_transfer_block_height,
-                    first_transfer_timestamp: edge_data.first_transfer_timestamp,
-                    last_transfer_block_height: edge_data.last_transfer_block_height,
-                    last_transfer_timestamp: edge_data.last_transfer_timestamp
+                    first_activity_block_height: edge_data.first_activity_block_height,
+                    first_activity_timestamp: edge_data.first_activity_timestamp,
+                    last_activity_block_height: edge_data.last_activity_block_height,
+                    last_activity_timestamp: edge_data.last_activity_timestamp
                 }}) AS transfer_edges
 
                 // Unwind the combined list to produce a flat list of elements
@@ -170,10 +170,10 @@ class MoneyFlowService:
                      address: node.address,
                      transfer_count: node.transfer_count,
                      neighbor_count: node.neighbor_count,
-                     first_transfer_block_height: node.first_transfer_block_height,
-                     first_transfer_timestamp: node.first_transfer_timestamp,
-                     last_transfer_block_height: node.last_transfer_block_height,
-                     last_transfer_timestamp: node.last_transfer_timestamp,
+                     first_activity_block_height: node.first_activity_block_height,
+                     first_activity_timestamp: node.first_activity_timestamp,
+                     last_activity_block_height: node.last_activity_block_height,
+                     last_activity_timestamp: node.last_activity_timestamp,
                      badges: coalesce(node.labels, []),
                      community_id: coalesce(node.community_id, 0),
                      community_page_rank: coalesce(node.community_page_rank, 0.0)
@@ -188,10 +188,10 @@ class MoneyFlowService:
                 to_id: to_id,
                 volume: edge_data.volume,
                 transfer_count: edge_data.transfer_count,
-                first_transfer_block_height: edge_data.first_transfer_block_height,
-                first_transfer_timestamp: edge_data.first_transfer_timestamp,
-                last_transfer_block_height: edge_data.last_transfer_block_height,
-                last_transfer_timestamp: edge_data.last_transfer_timestamp
+                first_activity: edge_data.first_activity_block_height,
+                first_activity_timestamp: edge_data.first_activity_timestamp,
+                last_activity_block_height: edge_data.last_activity_block_height,
+                last_activity_timestamp: edge_data.last_activity_timestamp
             }}) AS transfer_edges
 
             // Unwind the combined list to produce a flat list of elements
