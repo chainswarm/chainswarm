@@ -52,7 +52,10 @@ class DimensionWeights(BaseModel):
         "Retrieves addresses with similar patterns based on vector embeddings.\n\n"
         "**Search Behavior:**\n"
         "The system will perform a vector similarity search using the specified embedding type "
-        "to find the most similar addresses based on their embedding vectors."
+        "to find the most similar addresses based on their embedding vectors.\n\n"
+        "**Usage Examples:**\n"
+        "1. To find addresses similar to a reference address, set query_type to 'by_address' and provide a reference_address.\n"
+        "2. To find addresses matching a specific network pattern, set query_type to 'by_network_pattern' and provide a network_pattern."
     ),
     response_description="List of similar addresses with similarity scores",
     responses={
@@ -139,68 +142,4 @@ async def find_similar_addresses(
         return []
     return result
 
-@router.get(
-    "/{network}/similarity-search/address/{address}",
-    summary="Find addresses similar to a reference address",
-    description=(
-        "Retrieves addresses with similar patterns to the reference address.\n\n"
-        "Uses the specified embedding type to find similar addresses based on "
-        "vector similarity to the reference address."
-    ),
-    response_description="List of similar addresses with similarity scores",
-    responses={
-        200: {"description": "Similar addresses retrieved successfully"},
-        400: {"description": "Invalid input parameters"},
-        404: {"description": "No similar addresses found"},
-        500: {"description": "Internal server error"}
-    }
-)
-async def find_similar_addresses_by_address(
-    network: str = Path(..., description="The blockchain network identifier", example="torus"),
-    address: str = Path(..., description="The reference address to find similar addresses to", example="5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f"),
-    embedding_type: EmbeddingType = Query(
-        EmbeddingType.network,
-        description="Type of embedding to use for similarity"
-    ),
-    limit: int = Query(
-        10,
-        description="Number of similar addresses to retrieve",
-        gt=0,
-        le=100
-    ),
-    similarity_metric: SimilarityMetric = Query(
-        SimilarityMetric.cosine,
-        description="Similarity metric to use"
-    ),
-    min_similarity_score: Optional[float] = Query(
-        None,
-        description="Minimum similarity threshold (0-1)",
-        ge=0,
-        le=1
-    ),
-    dimension_weights: Optional[DimensionWeights] = Body(
-        None,
-        description="Optional weights for each dimension (0.0-1.0) to focus on specific dimensions"
-    )
-):
-    memgraph_driver = get_memgraph_driver(network)
-    try:
-        similarity_search_service = SimilaritySearchService(memgraph_driver)
-        result = similarity_search_service.find_similar_addresses_by_address(
-            address=address,
-            embedding_type=embedding_type.value,
-            dimension_weights=dimension_weights.dict() if dimension_weights else None,
-            limit=limit,
-            similarity_metric=similarity_metric.value,
-            min_similarity_score=min_similarity_score
-        )
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        memgraph_driver.close()
-    
-    if not result:
-        return []
-    return result
+# GET endpoint removed - functionality consolidated into POST endpoint

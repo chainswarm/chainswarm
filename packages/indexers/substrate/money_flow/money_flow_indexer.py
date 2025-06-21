@@ -378,10 +378,6 @@ class BaseMoneyFlowIndexer:
                             f"Termination requested during PageRank, stopping after {processed_count}/{len(communities)} communities")
                         break
 
-                    # Log at DEBUG level instead of INFO
-                    logger.debug(f"Running PageRank for community {community} (asset: {self.asset})")
-                    community_start_time = time.time()
-
                     subgraph_query = f"""
                         MATCH p=(a1:Address {{community_id: {community!r}}})-[r:TO*1..3]->(a2:Address)
                         WITH project(p) AS community_graph
@@ -392,9 +388,6 @@ class BaseMoneyFlowIndexer:
                         transaction.run(subgraph_query)
 
                     processed_count += 1
-                    community_end_time = time.time()
-                    logger.debug(
-                        f"PageRank for community {community} took {community_end_time - community_start_time:.2f} seconds")
 
                 # Log summary after completion
                 end_time_total = time.time()

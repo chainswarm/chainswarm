@@ -137,7 +137,7 @@ class MoneyFlowConsumer:
             self.money_flow_indexer.index_blocks([block])
 
             # Run periodic tasks
-            once_per_block = 4 * 60 * 60 / self.partitioner.block_time_seconds
+            once_per_block = 16 * 60 * 60 / self.partitioner.block_time_seconds
             if block_height % once_per_block == 0 and not self.terminate_event.is_set():
                 # Run community detection with termination check
                 start_time = time.time()
@@ -154,15 +154,6 @@ class MoneyFlowConsumer:
                     end_time = time.time()
                     logger.success(f"Page rank with communities took {end_time - start_time} seconds")
 
-                """
-                ADD ANY OTHER PERIODIC TASKS HERE
-                https://memgraph.com/docs/advanced-algorithms/available-algorithms/degree_centrality
-                https://memgraph.com/docs/advanced-algorithms/available-algorithms/betweenness_centrality
-                https://memgraph.com/docs/advanced-algorithms/available-algorithms/katz_centrality
-                https://memgraph.com/docs/advanced-algorithms/available-algorithms/kmeans_clustering
-                """
-
-
                 # Update embeddings with termination check
                 if not self.terminate_event.is_set():
                     start_time = time.time()
@@ -170,7 +161,6 @@ class MoneyFlowConsumer:
                     self.money_flow_indexer.update_embeddings()
                     end_time = time.time()
                     logger.success(f"Updating embeddings took {end_time - start_time} seconds")
-
 
         except Exception as e:
             logger.error(f"Error processing block {block_height}: {e}")

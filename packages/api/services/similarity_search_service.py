@@ -397,6 +397,10 @@ class SimilaritySearchService:
         """
         Find addresses similar to a reference address.
         
+        Note: This method is now used internally by the service and by tools.
+        The API endpoint has been consolidated into the main POST endpoint
+        using query_type='by_address'.
+        
         Args:
             address: The reference address to find similar addresses for
             embedding_type: Type of embedding to use
