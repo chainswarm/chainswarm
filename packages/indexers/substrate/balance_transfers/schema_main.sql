@@ -26,8 +26,5 @@
 -- Include temporal analysis views
 -- @include schema_part8_temporal_analysis.sql
 
--- Include economic analysis views
--- @include schema_part9_economic_analysis.sql
-
 -- Include anomaly detection view
 -- @include schema_part10_anomaly_detection.sql

@@ -1,6 +1,6 @@
 -- Balance Transfers Schema - Part 1: Core Tables and Indexes
 -- Tables and views for tracking individual transfer transactions on Substrate networks
--- Simplified version with asset-specific hardcoded thresholds
+-- Asset-agnostic design with universal histogram bins
 
 -- Drop potentially invalid objects first to ensure clean recreation
 DROP VIEW IF EXISTS balance_transfers_address_relationships_mv;

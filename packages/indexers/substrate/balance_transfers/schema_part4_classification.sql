@@ -1,12 +1,12 @@
 -- Balance Transfers Schema - Part 4: Address Classification View
--- Classify addresses into behavioral categories with asset-specific thresholds
+-- Classify addresses into behavioral categories with asset-agnostic thresholds
 
 -- =============================================================================
 -- ADDRESS CLASSIFICATION VIEW
 -- =============================================================================
 
--- Address Classification View (Independent)
--- Classify addresses into behavioral categories with asset-specific thresholds
+-- Address Classification View
+-- Classify addresses into behavioral categories with asset-agnostic thresholds
 CREATE VIEW IF NOT EXISTS balance_transfers_address_classification_view AS
 SELECT
     address,
@@ -16,52 +16,25 @@ SELECT
     unique_recipients,
     unique_senders,
     
-    -- Primary Classification Logic with USD-Equivalent Thresholds
-    if(asset = 'TOR',
-        if(total_volume >= 1000000 AND unique_recipients >= 100, 'Exchange',
-        if(total_volume >= 1000000 AND unique_recipients < 10, 'Whale',
-        if(total_volume >= 100000 AND total_transactions >= 1000, 'High_Volume_Trader',
-        if(unique_recipients >= 50 AND unique_senders >= 50, 'Hub_Address',
-        if(total_transactions >= 100 AND total_volume < 10000, 'Retail_Active',
-        if(total_transactions < 10 AND total_volume >= 50000, 'Whale_Inactive',
-        if(total_transactions < 10 AND total_volume < 1000, 'Retail_Inactive', 'Regular_User'))))))),
-    if(asset = 'TAO',
-        if(total_volume >= 3000 AND unique_recipients >= 100, 'Exchange',
-        if(total_volume >= 3000 AND unique_recipients < 10, 'Whale',
-        if(total_volume >= 300 AND total_transactions >= 1000, 'High_Volume_Trader',
-        if(unique_recipients >= 50 AND unique_senders >= 50, 'Hub_Address',
-        if(total_transactions >= 100 AND total_volume < 30, 'Retail_Active',
-        if(total_transactions < 10 AND total_volume >= 150, 'Whale_Inactive',
-        if(total_transactions < 10 AND total_volume < 3, 'Retail_Inactive', 'Regular_User'))))))),
-    if(asset = 'DOT',
-        if(total_volume >= 250000 AND unique_recipients >= 100, 'Exchange',
-        if(total_volume >= 250000 AND unique_recipients < 10, 'Whale',
-        if(total_volume >= 25000 AND total_transactions >= 1000, 'High_Volume_Trader',
-        if(unique_recipients >= 50 AND unique_senders >= 50, 'Hub_Address',
-        if(total_transactions >= 100 AND total_volume < 2500, 'Retail_Active',
-        if(total_transactions < 10 AND total_volume >= 12500, 'Whale_Inactive',
-        if(total_transactions < 10 AND total_volume < 250, 'Retail_Inactive', 'Regular_User'))))))),
-        'Regular_User'))) as address_type,
+    -- Asset-agnostic classification logic based on behavioral patterns
+    CASE
+        WHEN total_volume >= 100000 AND unique_recipients >= 100 THEN 'Exchange'
+        WHEN total_volume >= 100000 AND unique_recipients < 10 THEN 'Whale'
+        WHEN total_volume >= 10000 AND total_transactions >= 1000 THEN 'High_Volume_Trader'
+        WHEN unique_recipients >= 50 AND unique_senders >= 50 THEN 'Hub_Address'
+        WHEN total_transactions >= 100 AND total_volume < 1000 THEN 'Retail_Active'
+        WHEN total_transactions < 10 AND total_volume >= 10000 THEN 'Whale_Inactive'
+        WHEN total_transactions < 10 AND total_volume < 100 THEN 'Retail_Inactive'
+        ELSE 'Regular_User'
+    END as address_type,
     
-    -- Volume Classification with USD-Equivalent Thresholds
-    if(asset = 'TOR',
-        if(total_volume >= 100000, 'Ultra_High',
-        if(total_volume >= 10000, 'High',
-        if(total_volume >= 1000, 'Medium',
-        if(total_volume >= 100, 'Low', 'Micro')))),
-    if(asset = 'TAO',
-        if(total_volume >= 300, 'Ultra_High',
-        if(total_volume >= 30, 'High',
-        if(total_volume >= 3, 'Medium',
-        if(total_volume >= 0.5, 'Low', 'Micro')))),
-    if(asset = 'DOT',
-        if(total_volume >= 25000, 'Ultra_High',
-        if(total_volume >= 2500, 'High',
-        if(total_volume >= 250, 'Medium',
-        if(total_volume >= 25, 'Low', 'Micro')))),
-        if(total_volume >= 100000, 'Ultra_High',
-        if(total_volume >= 10000, 'High',
-        if(total_volume >= 1000, 'Medium',
-        if(total_volume >= 100, 'Low', 'Micro'))))))) as volume_tier
+    -- Asset-agnostic volume classification
+    CASE
+        WHEN total_volume >= 100000 THEN 'Ultra_High'
+        WHEN total_volume >= 10000 THEN 'High'
+        WHEN total_volume >= 1000 THEN 'Medium'
+        WHEN total_volume >= 100 THEN 'Low'
+        ELSE 'Micro'
+    END as volume_tier
     
 FROM balance_transfers_address_behavior_profiles_view;

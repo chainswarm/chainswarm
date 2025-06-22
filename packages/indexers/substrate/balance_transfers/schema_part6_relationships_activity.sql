@@ -19,22 +19,13 @@ SELECT
     -- Relationship Strength Score
     least((transfer_count * 0.4 + log10(total_amount + 1) * 0.6) * 2.0, 10.0) as relationship_strength,
     
-    -- Relationship Type Classification with USD-Equivalent Thresholds
-    if(asset = 'TOR',
-        if(total_amount >= 10000 AND transfer_count >= 10, 'High_Value',
-        if(transfer_count >= 100, 'High_Frequency',
-        if(transfer_count >= 5, 'Regular', 'Casual'))),
-    if(asset = 'TAO',
-        if(total_amount >= 30 AND transfer_count >= 10, 'High_Value',
-        if(transfer_count >= 100, 'High_Frequency',
-        if(transfer_count >= 5, 'Regular', 'Casual'))),
-    if(asset = 'DOT',
-        if(total_amount >= 2500 AND transfer_count >= 10, 'High_Value',
-        if(transfer_count >= 100, 'High_Frequency',
-        if(transfer_count >= 5, 'Regular', 'Casual'))),
-        if(total_amount >= 10000 AND transfer_count >= 10, 'High_Value',
-        if(transfer_count >= 100, 'High_Frequency',
-        if(transfer_count >= 5, 'Regular', 'Casual')))))) as relationship_type
+    -- Asset-agnostic relationship type classification
+    CASE
+        WHEN total_amount >= 10000 AND transfer_count >= 10 THEN 'High_Value'
+        WHEN transfer_count >= 100 THEN 'High_Frequency'
+        WHEN transfer_count >= 5 THEN 'Regular'
+        ELSE 'Casual'
+    END as relationship_type
     
 FROM balance_transfers
 WHERE from_address != to_address
@@ -65,31 +56,14 @@ SELECT
     uniq(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as active_hours,
     toUInt8(avg(toHour(toDateTime(intDiv(block_timestamp, 1000))))) as peak_hour,
     
-    -- Transaction Size Distribution with Simplified USD-Equivalent Thresholds
-    if(asset = 'TOR', countIf(amount < 100),
-    if(asset = 'TAO', countIf(amount < 0.5),
-    if(asset = 'DOT', countIf(amount < 25),
-       countIf(amount < 100)))) as micro_transactions,
-    
-    if(asset = 'TOR', countIf(amount >= 100 AND amount < 1000),
-    if(asset = 'TAO', countIf(amount >= 0.5 AND amount < 3),
-    if(asset = 'DOT', countIf(amount >= 25 AND amount < 250),
-       countIf(amount >= 100 AND amount < 1000)))) as small_transactions,
-    
-    if(asset = 'TOR', countIf(amount >= 1000 AND amount < 10000),
-    if(asset = 'TAO', countIf(amount >= 3 AND amount < 30),
-    if(asset = 'DOT', countIf(amount >= 250 AND amount < 2500),
-       countIf(amount >= 1000 AND amount < 10000)))) as medium_transactions,
-    
-    if(asset = 'TOR', countIf(amount >= 10000 AND amount < 100000),
-    if(asset = 'TAO', countIf(amount >= 30 AND amount < 300),
-    if(asset = 'DOT', countIf(amount >= 2500 AND amount < 25000),
-       countIf(amount >= 10000 AND amount < 100000)))) as large_transactions,
-    
-    if(asset = 'TOR', countIf(amount >= 100000),
-    if(asset = 'TAO', countIf(amount >= 300),
-    if(asset = 'DOT', countIf(amount >= 25000),
-       countIf(amount >= 100000)))) as whale_transactions,
+    -- Asset-agnostic transaction size histogram
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
     
     -- Statistical Measures
     avg(amount) as daily_avg_amount,

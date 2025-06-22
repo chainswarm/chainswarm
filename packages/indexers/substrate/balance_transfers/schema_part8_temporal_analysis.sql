@@ -82,13 +82,15 @@ SELECT
     -- Activity consistency metrics
     transactions_per_active_day,
     
-    -- Week-over-week change (requires window functions)
-    weekly_volume - lagInFrame(weekly_volume, 1) OVER (
+    -- Week-over-week change (using ClickHouse-compatible functions)
+    weekly_volume - any(weekly_volume) OVER (
         PARTITION BY address, asset ORDER BY week_start
+        ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
     ) as volume_change_from_previous_week,
     
-    weekly_transactions - lagInFrame(weekly_transactions, 1) OVER (
+    weekly_transactions - any(weekly_transactions) OVER (
         PARTITION BY address, asset ORDER BY week_start
+        ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
     ) as transaction_count_change_from_previous_week
     
 FROM weekly_metrics

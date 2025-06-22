@@ -5,65 +5,87 @@
 -- NETWORK FLOW ANALYSIS VIEWS
 -- =============================================================================
 
--- Transaction Flow Aggregation View
+-- Transaction Flow Aggregation View (Optimized)
 -- Provides a high-level overview of network activity by day and asset
+-- Uses pre-aggregated timeseries materialized view for optimal performance
 CREATE VIEW IF NOT EXISTS balance_transfers_network_flow_view AS
+WITH daily_aggregates AS (
+    SELECT
+        toDate(period_start) as day,
+        asset,
+        
+        -- Basic volume metrics (aggregated from 4-hour periods)
+        sum(transaction_count) as transaction_count,
+        sum(total_volume) as total_volume,
+        max(unique_senders) as unique_senders,
+        max(unique_receivers) as unique_receivers,
+        max(active_addresses) as unique_addresses,
+        
+        -- Asset-agnostic transaction size histogram (aggregated from 4-hour periods)
+        sum(tx_count_lt_01) as tx_count_lt_01,
+        sum(tx_count_01_to_1) as tx_count_01_to_1,
+        sum(tx_count_1_to_10) as tx_count_1_to_10,
+        sum(tx_count_10_to_100) as tx_count_10_to_100,
+        sum(tx_count_100_to_1k) as tx_count_100_to_1k,
+        sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
+        sum(tx_count_gte_10k) as tx_count_gte_10k,
+        
+        -- Network density (average across 4-hour periods)
+        avg(network_density) as network_density,
+        
+        -- Fee metrics (aggregated from 4-hour periods)
+        sum(total_fees) as total_fees,
+        max(max_fee) as max_fee,
+        min(min_fee) as min_fee,
+        
+        -- Statistical measures (averaged across 4-hour periods)
+        avg(median_transfer_amount) as median_transaction_size,
+        avg(amount_std_dev) as avg_amount_std_dev,
+        
+        -- Min/max for transaction sizes
+        max(max_transfer_amount) as max_transaction_size,
+        min(min_transfer_amount) as min_transaction_size,
+        
+        -- Block information
+        min(period_start_block) as day_start_block,
+        max(period_end_block) as day_end_block
+        
+    FROM balance_transfers_volume_series_mv
+    GROUP BY toDate(period_start), asset
+)
 SELECT
-    toDate(toDateTime(intDiv(block_timestamp, 1000))) as day,
+    day,
     asset,
-    count() as transaction_count,
-    sum(amount) as total_volume,
-    count(DISTINCT from_address) as unique_senders,
-    count(DISTINCT to_address) as unique_receivers,
-    -- Total unique addresses (union of senders and receivers)
-    uniqExact(from_address) + uniqExact(to_address) - uniqExactIf(from_address, from_address = to_address) as unique_addresses,
+    transaction_count,
+    total_volume,
+    unique_senders,
+    unique_receivers,
+    unique_addresses,
+    tx_count_lt_01,
+    tx_count_01_to_1,
+    tx_count_1_to_10,
+    tx_count_10_to_100,
+    tx_count_100_to_1k,
+    tx_count_1k_to_10k,
+    tx_count_gte_10k,
+    network_density,
     
-    -- Transaction size distribution
-    countIf(
-        if(asset = 'TOR', amount < 100,
-        if(asset = 'TAO', amount < 0.5,
-        if(asset = 'DOT', amount < 25,
-           amount < 100)))
-    ) as micro_transactions,
+    -- Derived metrics (calculated from aggregated values)
+    CASE WHEN transaction_count > 0 THEN total_volume / transaction_count ELSE 0 END as avg_transaction_size,
+    max_transaction_size,
+    min_transaction_size,
     
-    countIf(
-        if(asset = 'TOR', amount >= 100 AND amount < 1000,
-        if(asset = 'TAO', amount >= 0.5 AND amount < 3,
-        if(asset = 'DOT', amount >= 25 AND amount < 250,
-           amount >= 100 AND amount < 1000)))
-    ) as small_transactions,
+    total_fees,
+    CASE WHEN transaction_count > 0 THEN total_fees / transaction_count ELSE 0 END as avg_fee,
+    max_fee,
+    min_fee,
     
-    countIf(
-        if(asset = 'TOR', amount >= 1000 AND amount < 10000,
-        if(asset = 'TAO', amount >= 3 AND amount < 30,
-        if(asset = 'DOT', amount >= 250 AND amount < 2500,
-           amount >= 1000 AND amount < 10000)))
-    ) as medium_transactions,
+    median_transaction_size,
+    avg_amount_std_dev,
     
-    countIf(
-        if(asset = 'TOR', amount >= 10000 AND amount < 100000,
-        if(asset = 'TAO', amount >= 30 AND amount < 300,
-        if(asset = 'DOT', amount >= 2500 AND amount < 25000,
-           amount >= 10000 AND amount < 100000)))
-    ) as large_transactions,
+    day_start_block,
+    day_end_block,
+    day_end_block - day_start_block + 1 as blocks_in_day
     
-    countIf(
-        if(asset = 'TOR', amount >= 100000,
-        if(asset = 'TAO', amount >= 300,
-        if(asset = 'DOT', amount >= 25000,
-           amount >= 100000)))
-    ) as whale_transactions,
-    
-    -- Network density (ratio of actual connections to possible connections)
-    uniqExact(from_address, to_address) / (uniqExact(from_address) * uniqExact(to_address)) as network_density,
-    
-    -- Average transaction size
-    avg(amount) as avg_transaction_size,
-    
-    -- Fee metrics
-    sum(fee) as total_fees,
-    avg(fee) as avg_fee
-    
-FROM balance_transfers
-GROUP BY day, asset
+FROM daily_aggregates
 ORDER BY day DESC, asset;
