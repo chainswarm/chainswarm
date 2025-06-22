@@ -62,7 +62,10 @@ CREATE TABLE IF NOT EXISTS balance_volume_series (
 ) ENGINE = ReplacingMergeTree(_version)
 PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(period_start_timestamp))
 ORDER BY (period_start_timestamp, network, asset)
-SETTINGS index_granularity = 8192
+SETTINGS index_granularity = 8192,
+    compress_on_disk = 1,
+    min_bytes_for_wide_part = 10485760,
+    storage_policy = 'tiered'
 COMMENT 'Stores transfer volume snapshots at fixed 4-hour intervals';
 
 -- Views for easier querying
@@ -231,9 +234,78 @@ FROM balance_volume_series
 GROUP BY day, network, asset
 ORDER BY day;
 
--- Simple view for available networks and assets
-CREATE VIEW IF NOT EXISTS balance_volume_series_available_assets_view AS
-SELECT DISTINCT network, asset
+-- View for rolling 30-day volume trends
+CREATE VIEW IF NOT EXISTS balance_volume_series_rolling_30d_view AS
+SELECT
+    period_start_timestamp,
+    network,
+    asset,
+    total_volume,
+    transaction_count,
+    -- Rolling sum of volume over 30 periods (5 days if 4-hour intervals)
+    sum(total_volume) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30p_volume,
+    -- Rolling average of transaction count
+    avg(transaction_count) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS avg_30p_tx_count,
+    -- Rolling sum of transaction categories to see trends in tx size distribution
+    sum(micro_tx_volume) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30p_micro_volume,
+    sum(small_tx_volume) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30p_small_volume,
+    sum(medium_tx_volume) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30p_medium_volume,
+    sum(large_tx_volume) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30p_large_volume,
+    sum(whale_tx_volume) OVER (
+        PARTITION BY network, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30p_whale_volume
 FROM balance_volume_series
-WHERE asset != ''
-ORDER BY network, asset;
+ORDER BY period_start_timestamp DESC;
+
+-- View for quantile analysis of transaction volumes
+CREATE VIEW IF NOT EXISTS balance_volume_series_quantiles_view AS
+SELECT
+    toStartOfDay(fromUnixTimestamp64Milli(period_start_timestamp)) AS day,
+    network,
+    asset,
+    -- Volume quantiles
+    quantile(0.10)(total_volume) AS q10_volume,
+    quantile(0.25)(total_volume) AS q25_volume,
+    quantile(0.50)(total_volume) AS median_volume,
+    quantile(0.75)(total_volume) AS q75_volume,
+    quantile(0.90)(total_volume) AS q90_volume,
+    quantile(0.99)(total_volume) AS q99_volume,
+    -- Transaction count quantiles
+    quantile(0.10)(transaction_count) AS q10_tx_count,
+    quantile(0.50)(transaction_count) AS median_tx_count,
+    quantile(0.90)(transaction_count) AS q90_tx_count,
+    -- Average transaction size (derived measure)
+    avg(total_volume / transaction_count) AS avg_tx_size,
+    -- Fee quantiles
+    quantile(0.10)(avg_fee) AS q10_fee,
+    quantile(0.50)(avg_fee) AS median_fee,
+    quantile(0.90)(avg_fee) AS q90_fee
+FROM balance_volume_series
+GROUP BY day, network, asset
+ORDER BY day DESC, network, asset;

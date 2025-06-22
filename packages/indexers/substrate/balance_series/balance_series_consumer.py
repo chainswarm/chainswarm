@@ -2,7 +2,7 @@ import argparse
 import traceback
 import time
 from loguru import logger
-from typing import Dict, Set, Optional, Any
+from typing import Dict, Set
 from datetime import datetime
 
 from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \

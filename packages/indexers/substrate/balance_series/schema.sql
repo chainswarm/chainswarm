@@ -45,7 +45,10 @@ CREATE TABLE IF NOT EXISTS balance_series (
 ) ENGINE = ReplacingMergeTree(_version)
 PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(period_start_timestamp))
 ORDER BY (period_start_timestamp, asset, address)
-SETTINGS index_granularity = 8192
+SETTINGS index_granularity = 8192,
+    compress_on_disk = 1,
+    min_bytes_for_wide_part = 10485760,
+    storage_policy = 'tiered'
 COMMENT 'Stores balance snapshots at fixed 4-hour intervals';
 
 -- Note: We track the processing state by querying the last record from the balance_series table
@@ -174,3 +177,38 @@ SELECT DISTINCT asset
 FROM balance_series
 WHERE asset != ''
 ORDER BY asset;
+
+-- View for rolling 30-day balance trends
+CREATE VIEW IF NOT EXISTS balance_series_rolling_30d_view AS
+SELECT
+    period_start_timestamp,
+    address,
+    asset,
+    total_balance,
+    sum(total_balance_change) OVER (
+        PARTITION BY address, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS rolling_30d_change,
+    avg(total_balance_percent_change) OVER (
+        PARTITION BY address, asset
+        ORDER BY period_start_timestamp ASC
+        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+    ) AS avg_30d_percent_change
+FROM balance_series
+ORDER BY period_start_timestamp DESC;
+
+-- View for quantile analysis of balances
+CREATE VIEW IF NOT EXISTS balance_series_quantiles_view AS
+SELECT
+    toStartOfDay(fromUnixTimestamp64Milli(period_start_timestamp)) AS day,
+    asset,
+    quantile(0.10)(total_balance) AS q10_balance,
+    quantile(0.25)(total_balance) AS q25_balance,
+    quantile(0.50)(total_balance) AS median_balance,
+    quantile(0.75)(total_balance) AS q75_balance,
+    quantile(0.90)(total_balance) AS q90_balance,
+    quantile(0.99)(total_balance) AS q99_balance
+FROM balance_series
+GROUP BY day, asset
+ORDER BY day DESC, asset;
