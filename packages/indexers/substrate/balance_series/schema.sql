@@ -13,8 +13,6 @@ CREATE TABLE IF NOT EXISTS balance_series (
     -- Block information for the snapshot
     -- Block height at the end of the period
     block_height UInt32,
-    -- Block hash at the end of the period
-    block_hash String,
     
     -- Address and balance information
     address String,

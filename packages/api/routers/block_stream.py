@@ -27,7 +27,7 @@ router = APIRouter(
         500: {"description": "Internal server error"}
     }
 )
-async def get_blocks_by_range(
+async def get_blocks_by_block_height_range(
     network: str = Path(..., description="The blockchain network identifier", example="torus"),
     start_height: int = Query(..., description="Starting block height (inclusive)", ge=0),
     end_height: int = Query(..., description="Ending block height (inclusive)", ge=0)
@@ -47,7 +47,7 @@ async def get_blocks_by_range(
             )
         
         block_stream_service = BlockStreamService(get_clickhouse_connection_string(network), network)
-        blocks = block_stream_service.get_blocks_by_range(start_height, end_height)
+        blocks = block_stream_service.get_blocks_by_block_height_range(start_height, end_height)
         
         return {
             "network": network,

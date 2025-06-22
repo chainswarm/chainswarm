@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS balance_transfers (
 ) ENGINE = ReplacingMergeTree(_version)
 PARTITION BY intDiv(block_height, {PARTITION_SIZE})
 ORDER BY (extrinsic_id, event_idx, asset)
-SETTINGS index_granularity = 8192
+SETTINGS
+    index_granularity = 8192,
+    compress_on_disk = 1,
+    min_bytes_for_wide_part = 10485760,
+    storage_policy = 'tiered'
 COMMENT 'Stores individual balance transfer transactions with associated fees';
 
 -- =============================================================================
@@ -76,6 +80,25 @@ ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_to_asset (from_ad
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_amount_timestamp (asset, amount, block_timestamp) TYPE minmax GRANULARITY 4;
 
 -- =============================================================================
+-- INDEXES FOR VOLUME SERIES MATERIALIZED VIEW
+-- =============================================================================
+
+-- Index for efficient period start lookups
+ALTER TABLE balance_transfers_volume_series_mv ADD INDEX IF NOT EXISTS idx_period_start period_start TYPE minmax GRANULARITY 4;
+
+-- Index for efficient asset lookups
+ALTER TABLE balance_transfers_volume_series_mv ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
+
+-- Composite index for efficient period-asset queries
+ALTER TABLE balance_transfers_volume_series_mv ADD INDEX IF NOT EXISTS idx_period_asset (period_start, asset) TYPE bloom_filter(0.01) GRANULARITY 4;
+
+-- Index for volume range queries
+ALTER TABLE balance_transfers_volume_series_mv ADD INDEX IF NOT EXISTS idx_total_volume total_volume TYPE minmax GRANULARITY 4;
+
+-- Index for transaction count range queries
+ALTER TABLE balance_transfers_volume_series_mv ADD INDEX IF NOT EXISTS idx_transaction_count transaction_count TYPE minmax GRANULARITY 4;
+
+-- =============================================================================
 -- BASIC VIEWS
 -- =============================================================================
 
@@ -98,23 +121,359 @@ FROM (
 )
 GROUP BY address, asset;
 
--- Materialized view for daily transfer volume
-CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_daily_volume_mv
+-- =============================================================================
+-- VOLUME SERIES MATERIALIZED VIEWS (4-Hour Intervals)
+-- Asset-agnostic design with client-defined categorization
+-- =============================================================================
+
+-- Base 4-hour interval materialized view for volume series
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_volume_series_mv
 ENGINE = AggregatingMergeTree()
-ORDER BY (date, asset)
+PARTITION BY toYYYYMM(period_start)
+ORDER BY (period_start, asset)
+SETTINGS
+    index_granularity = 8192,
+    compress_on_disk = 1,
+    min_bytes_for_wide_part = 10485760,
+    storage_policy = 'tiered'
 AS
 SELECT
-    toDate(toDateTime(intDiv(block_timestamp, 1000))) as date,
+    -- =============================================================================
+    -- TIME PERIOD INFORMATION (UTC-based 4-hour intervals aligned to midnight)
+    -- =============================================================================
+    toStartOfDay(toDateTime(intDiv(block_timestamp, 1000))) +
+    INTERVAL (intDiv(toHour(toDateTime(intDiv(block_timestamp, 1000))), 4) * 4) HOUR as period_start,
+    toStartOfDay(toDateTime(intDiv(block_timestamp, 1000))) +
+    INTERVAL ((intDiv(toHour(toDateTime(intDiv(block_timestamp, 1000))), 4) + 1) * 4) HOUR as period_end,
+    
+    -- =============================================================================
+    -- ASSET INFORMATION
+    -- =============================================================================
     asset,
-    count() as transfer_count,
+    
+    -- =============================================================================
+    -- BASIC VOLUME METRICS
+    -- =============================================================================
+    count() as transaction_count,
     uniqExact(from_address) as unique_senders,
     uniqExact(to_address) as unique_receivers,
     sum(amount) as total_volume,
     sum(fee) as total_fees,
     avg(amount) as avg_transfer_amount,
-    max(amount) as max_transfer_amount
+    max(amount) as max_transfer_amount,
+    min(amount) as min_transfer_amount,
+    median(amount) as median_transfer_amount,
+    
+    -- =============================================================================
+    -- AMOUNT DISTRIBUTION QUANTILES (Client can define thresholds)
+    -- =============================================================================
+    quantile(0.10)(amount) as amount_p10,
+    quantile(0.25)(amount) as amount_p25,
+    quantile(0.50)(amount) as amount_p50,
+    quantile(0.75)(amount) as amount_p75,
+    quantile(0.90)(amount) as amount_p90,
+    quantile(0.95)(amount) as amount_p95,
+    quantile(0.99)(amount) as amount_p99,
+    
+    -- =============================================================================
+    -- NETWORK ACTIVITY METRICS
+    -- =============================================================================
+    uniq(from_address, to_address) as unique_address_pairs,
+    uniqExact(from_address) + uniqExact(to_address) as active_addresses,
+    
+    -- Network density calculation (ratio of actual connections to possible connections)
+    CASE
+        WHEN (uniqExact(from_address) + uniqExact(to_address)) > 1 THEN
+            toFloat64(uniq(from_address, to_address)) /
+            (toFloat64(uniqExact(from_address) + uniqExact(to_address)) *
+             toFloat64(uniqExact(from_address) + uniqExact(to_address) - 1) / 2.0)
+        ELSE 0.0
+    END as network_density,
+    
+    -- =============================================================================
+    -- TEMPORAL ACTIVITY PATTERNS
+    -- =============================================================================
+    
+    -- Activity by time of day (4-hour period start hour)
+    toHour(period_start) as period_hour,
+    
+    -- Activity distribution within the 4-hour window
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(period_start)) as hour_0_tx_count,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(period_start) + 1) as hour_1_tx_count,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(period_start) + 2) as hour_2_tx_count,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(period_start) + 3) as hour_3_tx_count,
+    
+    -- =============================================================================
+    -- STATISTICAL MEASURES
+    -- =============================================================================
+    stddevPop(amount) as amount_std_dev,
+    varPop(amount) as amount_variance,
+    skewPop(amount) as amount_skewness,
+    kurtPop(amount) as amount_kurtosis,
+    
+    -- Fee statistics
+    avg(fee) as avg_fee,
+    max(fee) as max_fee,
+    min(fee) as min_fee,
+    stddevPop(fee) as fee_std_dev,
+    median(fee) as median_fee,
+    
+    -- =============================================================================
+    -- BLOCK INFORMATION
+    -- =============================================================================
+    min(block_height) as period_start_block,
+    max(block_height) as period_end_block,
+    max(block_height) - min(block_height) + 1 as blocks_in_period,
+    
+    -- =============================================================================
+    -- HISTOGRAM BINS FOR CLIENT-SIDE CATEGORIZATION
+    -- =============================================================================
+    
+    -- Amount histogram bins (optimized ranges)
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
+    
+    -- Volume histogram bins (corresponding volumes)
+    sumIf(amount, amount < 0.1) as volume_lt_01,
+    sumIf(amount, amount >= 0.1 AND amount < 1) as volume_01_to_1,
+    sumIf(amount, amount >= 1 AND amount < 10) as volume_1_to_10,
+    sumIf(amount, amount >= 10 AND amount < 100) as volume_10_to_100,
+    sumIf(amount, amount >= 100 AND amount < 1000) as volume_100_to_1k,
+    sumIf(amount, amount >= 1000 AND amount < 10000) as volume_1k_to_10k,
+    sumIf(amount, amount >= 10000) as volume_gte_10k
+
 FROM balance_transfers
-GROUP BY date, asset;
+GROUP BY
+    period_start,
+    period_end,
+    asset
+COMMENT 'Base 4-hour interval materialized view for transfer volume analysis - asset agnostic with client-defined categorization';
+
+-- =============================================================================
+-- AGGREGATION VIEWS (Daily, Weekly, Monthly)
+-- =============================================================================
+
+-- Daily aggregation view
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_daily_view AS
+SELECT
+    toDate(period_start) as date,
+    asset,
+    
+    -- Basic aggregations
+    sum(transaction_count) as daily_transaction_count,
+    max(unique_senders) as max_unique_senders,
+    max(unique_receivers) as max_unique_receivers,
+    sum(total_volume) as daily_total_volume,
+    sum(total_fees) as daily_total_fees,
+    sum(total_volume) / sum(transaction_count) as daily_avg_transfer_amount,
+    max(max_transfer_amount) as daily_max_transfer_amount,
+    min(min_transfer_amount) as daily_min_transfer_amount,
+    
+    -- Network metrics
+    max(active_addresses) as max_daily_active_addresses,
+    avg(network_density) as avg_daily_network_density,
+    
+    -- Statistical aggregations
+    avg(amount_std_dev) as avg_daily_amount_std_dev,
+    avg(median_transfer_amount) as avg_daily_median_amount,
+    
+    -- Histogram aggregations
+    sum(tx_count_lt_01) as daily_tx_count_lt_01,
+    sum(tx_count_01_to_1) as daily_tx_count_01_to_1,
+    sum(tx_count_1_to_10) as daily_tx_count_1_to_10,
+    sum(tx_count_10_to_100) as daily_tx_count_10_to_100,
+    sum(tx_count_100_to_1k) as daily_tx_count_100_to_1k,
+    sum(tx_count_1k_to_10k) as daily_tx_count_1k_to_10k,
+    sum(tx_count_gte_10k) as daily_tx_count_gte_10k,
+    
+    sum(volume_lt_01) as daily_volume_lt_01,
+    sum(volume_01_to_1) as daily_volume_01_to_1,
+    sum(volume_1_to_10) as daily_volume_1_to_10,
+    sum(volume_10_to_100) as daily_volume_10_to_100,
+    sum(volume_100_to_1k) as daily_volume_100_to_1k,
+    sum(volume_1k_to_10k) as daily_volume_1k_to_10k,
+    sum(volume_gte_10k) as daily_volume_gte_10k,
+    
+    -- Block information
+    min(period_start_block) as daily_start_block,
+    max(period_end_block) as daily_end_block
+    
+FROM balance_transfers_volume_series_mv
+GROUP BY date, asset
+ORDER BY date DESC, asset;
+
+-- Weekly aggregation view
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_weekly_view AS
+SELECT
+    toStartOfWeek(period_start) as week_start,
+    asset,
+    
+    -- Basic aggregations
+    sum(transaction_count) as weekly_transaction_count,
+    max(unique_senders) as max_unique_senders,
+    max(unique_receivers) as max_unique_receivers,
+    sum(total_volume) as weekly_total_volume,
+    sum(total_fees) as weekly_total_fees,
+    sum(total_volume) / sum(transaction_count) as weekly_avg_transfer_amount,
+    max(max_transfer_amount) as weekly_max_transfer_amount,
+    
+    -- Network metrics
+    max(active_addresses) as max_weekly_active_addresses,
+    avg(network_density) as avg_weekly_network_density,
+    
+    -- Histogram aggregations
+    sum(tx_count_lt_01) as weekly_tx_count_lt_01,
+    sum(tx_count_01_to_1) as weekly_tx_count_01_to_1,
+    sum(tx_count_1_to_10) as weekly_tx_count_1_to_10,
+    sum(tx_count_10_to_100) as weekly_tx_count_10_to_100,
+    sum(tx_count_100_to_1k) as weekly_tx_count_100_to_1k,
+    sum(tx_count_1k_to_10k) as weekly_tx_count_1k_to_10k,
+    sum(tx_count_gte_10k) as weekly_tx_count_gte_10k,
+    
+    sum(volume_lt_01) as weekly_volume_lt_01,
+    sum(volume_01_to_1) as weekly_volume_01_to_1,
+    sum(volume_1_to_10) as weekly_volume_1_to_10,
+    sum(volume_10_to_100) as weekly_volume_10_to_100,
+    sum(volume_100_to_1k) as weekly_volume_100_to_1k,
+    sum(volume_1k_to_10k) as weekly_volume_1k_to_10k,
+    sum(volume_gte_10k) as weekly_volume_gte_10k,
+    
+    -- Block information
+    min(period_start_block) as weekly_start_block,
+    max(period_end_block) as weekly_end_block
+    
+FROM balance_transfers_volume_series_mv
+GROUP BY week_start, asset
+ORDER BY week_start DESC, asset;
+
+-- Monthly aggregation view
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_monthly_view AS
+SELECT
+    toStartOfMonth(period_start) as month_start,
+    asset,
+    
+    -- Basic aggregations
+    sum(transaction_count) as monthly_transaction_count,
+    max(unique_senders) as max_unique_senders,
+    max(unique_receivers) as max_unique_receivers,
+    sum(total_volume) as monthly_total_volume,
+    sum(total_fees) as monthly_total_fees,
+    sum(total_volume) / sum(transaction_count) as monthly_avg_transfer_amount,
+    max(max_transfer_amount) as monthly_max_transfer_amount,
+    
+    -- Network metrics
+    max(active_addresses) as max_monthly_active_addresses,
+    avg(network_density) as avg_monthly_network_density,
+    
+    -- Histogram aggregations
+    sum(tx_count_lt_01) as monthly_tx_count_lt_01,
+    sum(tx_count_01_to_1) as monthly_tx_count_01_to_1,
+    sum(tx_count_1_to_10) as monthly_tx_count_1_to_10,
+    sum(tx_count_10_to_100) as monthly_tx_count_10_to_100,
+    sum(tx_count_100_to_1k) as monthly_tx_count_100_to_1k,
+    sum(tx_count_1k_to_10k) as monthly_tx_count_1k_to_10k,
+    sum(tx_count_gte_10k) as monthly_tx_count_gte_10k,
+    
+    sum(volume_lt_01) as monthly_volume_lt_01,
+    sum(volume_01_to_1) as monthly_volume_01_to_1,
+    sum(volume_1_to_10) as monthly_volume_1_to_10,
+    sum(volume_10_to_100) as monthly_volume_10_to_100,
+    sum(volume_100_to_1k) as monthly_volume_100_to_1k,
+    sum(volume_1k_to_10k) as monthly_volume_1k_to_10k,
+    sum(volume_gte_10k) as monthly_volume_gte_10k,
+    
+    -- Block information
+    min(period_start_block) as monthly_start_block,
+    max(period_end_block) as monthly_end_block
+    
+FROM balance_transfers_volume_series_mv
+GROUP BY month_start, asset
+ORDER BY month_start DESC, asset;
+
+-- =============================================================================
+-- ANALYSIS VIEWS
+-- =============================================================================
+
+-- Volume trends view with rolling averages
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_trends_view AS
+SELECT
+    period_start,
+    asset,
+    total_volume,
+    transaction_count,
+    
+    -- Rolling averages (7 periods = ~28 hours)
+    avg(total_volume) OVER (
+        PARTITION BY asset
+        ORDER BY period_start
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) as rolling_7_period_avg_volume,
+    
+    avg(transaction_count) OVER (
+        PARTITION BY asset
+        ORDER BY period_start
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) as rolling_7_period_avg_tx_count,
+    
+    -- Rolling averages (30 periods = ~5 days)
+    avg(total_volume) OVER (
+        PARTITION BY asset
+        ORDER BY period_start
+        ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
+    ) as rolling_30_period_avg_volume,
+    
+    -- Volume change from previous period
+    total_volume - lag(total_volume, 1) OVER (
+        PARTITION BY asset
+        ORDER BY period_start
+    ) as volume_change,
+    
+    -- Percentage change from previous period
+    CASE
+        WHEN lag(total_volume, 1) OVER (PARTITION BY asset ORDER BY period_start) > 0 THEN
+            ((total_volume - lag(total_volume, 1) OVER (PARTITION BY asset ORDER BY period_start)) /
+             lag(total_volume, 1) OVER (PARTITION BY asset ORDER BY period_start)) * 100
+        ELSE 0
+    END as volume_change_percent
+    
+FROM balance_transfers_volume_series_mv
+ORDER BY period_start DESC, asset;
+
+-- Volume quantiles view for distribution analysis
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_quantiles_view AS
+SELECT
+    toDate(period_start) as date,
+    asset,
+    
+    -- Volume quantiles
+    quantile(0.10)(total_volume) as q10_volume,
+    quantile(0.25)(total_volume) as q25_volume,
+    quantile(0.50)(total_volume) as median_volume,
+    quantile(0.75)(total_volume) as q75_volume,
+    quantile(0.90)(total_volume) as q90_volume,
+    quantile(0.99)(total_volume) as q99_volume,
+    
+    -- Transaction count quantiles
+    quantile(0.10)(transaction_count) as q10_tx_count,
+    quantile(0.50)(transaction_count) as median_tx_count,
+    quantile(0.90)(transaction_count) as q90_tx_count,
+    
+    -- Average transaction size (derived measure)
+    avg(total_volume / transaction_count) as avg_tx_size,
+    
+    -- Fee quantiles
+    quantile(0.10)(avg_fee) as q10_fee,
+    quantile(0.50)(avg_fee) as median_fee,
+    quantile(0.90)(avg_fee) as q90_fee
+    
+FROM balance_transfers_volume_series_mv
+GROUP BY date, asset
+ORDER BY date DESC, asset;
 
 -- Simple view for available assets list
 CREATE VIEW IF NOT EXISTS available_transfer_assets_view AS
@@ -168,12 +527,14 @@ SELECT
     countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 12 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) <= 17) as afternoon_transactions,
     countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 18 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) <= 23) as evening_transactions,
     
-    -- Simplified transaction size counts
-    countIf(amount < 10) as micro_transactions,
-    countIf(amount >= 10 AND amount < 100) as small_transactions,
-    countIf(amount >= 100 AND amount < 1000) as medium_transactions,
-    countIf(amount >= 1000 AND amount < 10000) as large_transactions,
-    countIf(amount >= 10000) as whale_transactions,
+    -- Asset-agnostic transaction size histogram
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
     
     -- Behavioral Indicators
     stddevPopIf(amount, address = from_address) as sent_amount_variance,
@@ -203,53 +564,26 @@ SELECT
     unique_recipients,
     unique_senders,
     
-    -- Primary Classification Logic with USD-Equivalent Thresholds
-    if(asset = 'TOR',
-        if(total_volume >= 1000000 AND unique_recipients >= 100, 'Exchange',
-        if(total_volume >= 1000000 AND unique_recipients < 10, 'Whale',
-        if(total_volume >= 100000 AND total_transactions >= 1000, 'High_Volume_Trader',
-        if(unique_recipients >= 50 AND unique_senders >= 50, 'Hub_Address',
-        if(total_transactions >= 100 AND total_volume < 10000, 'Retail_Active',
-        if(total_transactions < 10 AND total_volume >= 50000, 'Whale_Inactive',
-        if(total_transactions < 10 AND total_volume < 1000, 'Retail_Inactive', 'Regular_User'))))))),
-    if(asset = 'TAO',
-        if(total_volume >= 3000 AND unique_recipients >= 100, 'Exchange',
-        if(total_volume >= 3000 AND unique_recipients < 10, 'Whale',
-        if(total_volume >= 300 AND total_transactions >= 1000, 'High_Volume_Trader',
-        if(unique_recipients >= 50 AND unique_senders >= 50, 'Hub_Address',
-        if(total_transactions >= 100 AND total_volume < 30, 'Retail_Active',
-        if(total_transactions < 10 AND total_volume >= 150, 'Whale_Inactive',
-        if(total_transactions < 10 AND total_volume < 3, 'Retail_Inactive', 'Regular_User'))))))),
-    if(asset = 'DOT',
-        if(total_volume >= 250000 AND unique_recipients >= 100, 'Exchange',
-        if(total_volume >= 250000 AND unique_recipients < 10, 'Whale',
-        if(total_volume >= 25000 AND total_transactions >= 1000, 'High_Volume_Trader',
-        if(unique_recipients >= 50 AND unique_senders >= 50, 'Hub_Address',
-        if(total_transactions >= 100 AND total_volume < 2500, 'Retail_Active',
-        if(total_transactions < 10 AND total_volume >= 12500, 'Whale_Inactive',
-        if(total_transactions < 10 AND total_volume < 250, 'Retail_Inactive', 'Regular_User'))))))),
-        'Regular_User'))) as address_type,
+    -- Asset-agnostic classification logic based on behavioral patterns
+    CASE
+        WHEN total_volume >= 100000 AND unique_recipients >= 100 THEN 'Exchange'
+        WHEN total_volume >= 100000 AND unique_recipients < 10 THEN 'Whale'
+        WHEN total_volume >= 10000 AND total_transactions >= 1000 THEN 'High_Volume_Trader'
+        WHEN unique_recipients >= 50 AND unique_senders >= 50 THEN 'Hub_Address'
+        WHEN total_transactions >= 100 AND total_volume < 1000 THEN 'Retail_Active'
+        WHEN total_transactions < 10 AND total_volume >= 10000 THEN 'Whale_Inactive'
+        WHEN total_transactions < 10 AND total_volume < 100 THEN 'Retail_Inactive'
+        ELSE 'Regular_User'
+    END as address_type,
     
-    -- Volume Classification with USD-Equivalent Thresholds
-    if(asset = 'TOR',
-        if(total_volume >= 100000, 'Ultra_High',
-        if(total_volume >= 10000, 'High',
-        if(total_volume >= 1000, 'Medium',
-        if(total_volume >= 100, 'Low', 'Micro')))),
-    if(asset = 'TAO',
-        if(total_volume >= 300, 'Ultra_High',
-        if(total_volume >= 30, 'High',
-        if(total_volume >= 3, 'Medium',
-        if(total_volume >= 0.5, 'Low', 'Micro')))),
-    if(asset = 'DOT',
-        if(total_volume >= 25000, 'Ultra_High',
-        if(total_volume >= 2500, 'High',
-        if(total_volume >= 250, 'Medium',
-        if(total_volume >= 25, 'Low', 'Micro')))),
-        if(total_volume >= 100000, 'Ultra_High',
-        if(total_volume >= 10000, 'High',
-        if(total_volume >= 1000, 'Medium',
-        if(total_volume >= 100, 'Low', 'Micro'))))))) as volume_tier
+    -- Asset-agnostic volume classification
+    CASE
+        WHEN total_volume >= 100000 THEN 'Ultra_High'
+        WHEN total_volume >= 10000 THEN 'High'
+        WHEN total_volume >= 1000 THEN 'Medium'
+        WHEN total_volume >= 100 THEN 'Low'
+        ELSE 'Micro'
+    END as volume_tier
     
 FROM balance_transfers_address_behavior_profiles_view;
 
@@ -270,28 +604,28 @@ SELECT
     CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END as unusual_time_pattern,
     CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END as fixed_amount_pattern,
     CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END as single_recipient_pattern,
-    CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END as large_infrequent_pattern,
+    CASE WHEN abp.tx_count_gte_10k > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END as large_infrequent_pattern,
     
     -- Composite Suspicion Score (0-4)
     (CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
      CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
      CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-     CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) as suspicion_score,
+     CASE WHEN abp.tx_count_gte_10k > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) as suspicion_score,
     
     -- Risk Level
     CASE
         WHEN (CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
               CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
               CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-              CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 3 THEN 'High'
+              CASE WHEN abp.tx_count_gte_10k > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 3 THEN 'High'
         WHEN (CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
               CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
               CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-              CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 2 THEN 'Medium'
+              CASE WHEN abp.tx_count_gte_10k > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 2 THEN 'Medium'
         WHEN (CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
               CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
               CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-              CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 1 THEN 'Low'
+              CASE WHEN abp.tx_count_gte_10k > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 1 THEN 'Low'
         ELSE 'Normal'
     END as risk_level
     
@@ -317,36 +651,12 @@ SELECT
     -- Relationship Strength Score
     least((transfer_count * 0.4 + log10(total_amount + 1) * 0.6) * 2.0, 10.0) as relationship_strength,
     
-    -- Relationship Type Classification with USD-Equivalent Thresholds
-    CASE asset
-        WHEN 'TOR' THEN
-            CASE
-                WHEN total_amount >= 10000 AND transfer_count >= 10 THEN 'High_Value'  -- >= $10K USD
-                WHEN transfer_count >= 100 THEN 'High_Frequency'
-                WHEN transfer_count >= 5 THEN 'Regular'
-                ELSE 'Casual'
-            END
-        WHEN 'TAO' THEN
-            CASE
-                WHEN total_amount >= 30 AND transfer_count >= 10 THEN 'High_Value'     -- >= $10K USD (rounded)
-                WHEN transfer_count >= 100 THEN 'High_Frequency'
-                WHEN transfer_count >= 5 THEN 'Regular'
-                ELSE 'Casual'
-            END
-        WHEN 'DOT' THEN
-            CASE
-                WHEN total_amount >= 2500 AND transfer_count >= 10 THEN 'High_Value'   -- >= $10K USD (10K/4)
-                WHEN transfer_count >= 100 THEN 'High_Frequency'
-                WHEN transfer_count >= 5 THEN 'Regular'
-                ELSE 'Casual'
-            END
-        ELSE
-            CASE
-                WHEN total_amount >= 10000 AND transfer_count >= 10 THEN 'High_Value'
-                WHEN transfer_count >= 100 THEN 'High_Frequency'
-                WHEN transfer_count >= 5 THEN 'Regular'
-                ELSE 'Casual'
-            END
+    -- Asset-agnostic relationship type classification
+    CASE
+        WHEN total_amount >= 10000 AND transfer_count >= 10 THEN 'High_Value'
+        WHEN transfer_count >= 100 THEN 'High_Frequency'
+        WHEN transfer_count >= 5 THEN 'Regular'
+        ELSE 'Casual'
     END as relationship_type
     
 FROM balance_transfers
@@ -378,41 +688,14 @@ SELECT
     uniq(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as active_hours,
     toUInt8(avg(toHour(toDateTime(intDiv(block_timestamp, 1000))))) as peak_hour,
     
-    -- Transaction Size Distribution with Simplified USD-Equivalent Thresholds
-    CASE asset
-        WHEN 'TOR' THEN countIf(amount < 100)          -- < $100 USD
-        WHEN 'TAO' THEN countIf(amount < 0.5)          -- < $175 USD (rounded)
-        WHEN 'DOT' THEN countIf(amount < 25)           -- < $100 USD
-        ELSE countIf(amount < 100)
-    END as micro_transactions,
-    
-    CASE asset
-        WHEN 'TOR' THEN countIf(amount >= 100 AND amount < 1000)     -- $100-$1K USD
-        WHEN 'TAO' THEN countIf(amount >= 0.5 AND amount < 3)        -- $175-$1K USD
-        WHEN 'DOT' THEN countIf(amount >= 25 AND amount < 250)       -- $100-$1K USD
-        ELSE countIf(amount >= 100 AND amount < 1000)
-    END as small_transactions,
-    
-    CASE asset
-        WHEN 'TOR' THEN countIf(amount >= 1000 AND amount < 10000)   -- $1K-$10K USD
-        WHEN 'TAO' THEN countIf(amount >= 3 AND amount < 30)         -- $1K-$10K USD
-        WHEN 'DOT' THEN countIf(amount >= 250 AND amount < 2500)     -- $1K-$10K USD
-        ELSE countIf(amount >= 1000 AND amount < 10000)
-    END as medium_transactions,
-    
-    CASE asset
-        WHEN 'TOR' THEN countIf(amount >= 10000 AND amount < 100000) -- $10K-$100K USD
-        WHEN 'TAO' THEN countIf(amount >= 30 AND amount < 300)       -- $10K-$100K USD
-        WHEN 'DOT' THEN countIf(amount >= 2500 AND amount < 25000)   -- $10K-$100K USD
-        ELSE countIf(amount >= 10000 AND amount < 100000)
-    END as large_transactions,
-    
-    CASE asset
-        WHEN 'TOR' THEN countIf(amount >= 100000)      -- >= $100K USD
-        WHEN 'TAO' THEN countIf(amount >= 300)         -- >= $100K USD
-        WHEN 'DOT' THEN countIf(amount >= 25000)       -- >= $100K USD
-        ELSE countIf(amount >= 100000)
-    END as whale_transactions,
+    -- Asset-agnostic transaction size histogram
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
     
     -- Statistical Measures
     avg(amount) as daily_avg_amount,
