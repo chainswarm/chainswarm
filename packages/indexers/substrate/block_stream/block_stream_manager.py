@@ -46,7 +46,97 @@ class BlockStreamManager:
         self.substrate_node = SubstrateNode(network, get_substrate_node_url(network), terminate_event)
         self.block_stream_indexer = BlockStreamIndexer(connection_params, self.partitioner)
 
-    def get_blocks_by_range(self, start_height: int, end_height: int, only_with_addresses: bool = False) -> List[Dict[str, Any]]:
+    def _result_row_to_blocks(self, result):
+        """
+        Map a row from the ClickHouse result to a block dictionary.
+        """
+
+        blocks = []
+        current_block = None
+        current_block_height = None
+
+        for row in result.result_rows:
+            block_height = row[0]
+
+            # If we're starting a new block
+            if current_block_height != block_height:
+                # Add the previous block to the list if it exists
+                if current_block is not None:
+                    blocks.append(current_block)
+
+                # Start a new block
+                current_block_height = block_height
+                current_block = {
+                    'block_height': block_height,
+                    'block_hash': row[1],
+                    'timestamp': row[2],
+                    'extrinsics': [],
+                    'events': [],
+                    'addresses': row[9] if len(row) > 9 else []
+                }
+
+            extrinsic_ids = row[3]
+            extrinsic_hashes = row[4]
+            signers = row[5]
+            call_modules = row[6]
+            call_functions = row[7]
+            statuses = row[8]
+
+            for i in range(len(extrinsic_ids)):
+                extrinsic = {
+                    'extrinsic_id': extrinsic_ids[i],
+                    'extrinsic_hash': extrinsic_hashes[i],
+                    'signer': signers[i],
+                    'call_module': call_modules[i],
+                    'call_function': call_functions[i],
+                    'status': statuses[i]
+                }
+
+                # Only add if not already in the list
+                if not any(e['extrinsic_id'] == extrinsic['extrinsic_id'] for e in current_block['extrinsics']):
+                    current_block['extrinsics'].append(extrinsic)
+
+            # Process events
+            event_idxs = row[10]
+            event_extrinsic_ids = row[11]
+            module_ids = row[12]
+            event_ids = row[13]
+            attributes_json = row[14]
+
+            for i in range(len(event_idxs)):
+                try:
+                    attributes = json.loads(attributes_json[i])
+                except json.JSONDecodeError:
+                    attributes = {}
+
+                # Parse event_idx to get the index
+                parts = event_idxs[i].split('-')
+                if len(parts) == 2:
+                    event_index = int(parts[1])
+                else:
+                    event_index = i
+
+                event = {
+                    'event_idx': event_idxs[i],
+                    'extrinsic_id': event_extrinsic_ids[i],
+                    'module_id': module_ids[i],
+                    'event_id': event_ids[i],
+                    'attributes': attributes,
+                    'block_height': block_height,
+                    'event_index': event_index
+                }
+
+                # Only add if not already in the list
+                if not any(e['event_idx'] == event['event_idx'] for e in current_block['events']):
+                    current_block['events'].append(event)
+
+        # Add the last block if it exists
+        if current_block is not None:
+            blocks.append(current_block)
+
+        return blocks
+
+    def get_blocks_by_block_height_range(self, start_height: int, end_height: int, only_with_addresses: bool = False) -> List[Dict[str, Any]]:
         """
         Get blocks within a specified height range for indexing operations.
         
@@ -85,109 +175,78 @@ class BlockStreamManager:
             """
             
             result = self.client.query(query)
-            
-            # Process results into the expected format
-            blocks = []
-            current_block = None
-            current_block_height = None
-            
-            for row in result.result_rows:
-                block_height = row[0]
-                
-                # If we're starting a new block
-                if current_block_height != block_height:
-                    # Add the previous block to the list if it exists
-                    if current_block is not None:
-                        blocks.append(current_block)
-                    
-                    # Start a new block
-                    current_block_height = block_height
-                    current_block = {
-                        'block_height': block_height,
-                        'block_hash': row[1],
-                        'timestamp': row[2],
-                        'extrinsics': [],
-                        'events': []
-                    }
-                
-                extrinsic_ids = row[3]
-                extrinsic_hashes = row[4]
-                signers = row[5]
-                call_modules = row[6]
-                call_functions = row[7]
-                statuses = row[8]
-                
-                for i in range(len(extrinsic_ids)):
-                    extrinsic = {
-                        'extrinsic_id': extrinsic_ids[i],
-                        'extrinsic_hash': extrinsic_hashes[i],
-                        'signer': signers[i],
-                        'call_module': call_modules[i],
-                        'call_function': call_functions[i],
-                        'status': statuses[i]
-                    }
-                    
-                    # Only add if not already in the list
-                    if not any(e['extrinsic_id'] == extrinsic['extrinsic_id'] for e in current_block['extrinsics']):
-                        current_block['extrinsics'].append(extrinsic)
-                
-                # Process events
-                event_idxs = row[10]
-                event_extrinsic_ids = row[11]
-                module_ids = row[12]
-                event_ids = row[13]
-                attributes_json = row[14]
-                
-                for i in range(len(event_idxs)):
-                    try:
-                        attributes = json.loads(attributes_json[i])
-                    except json.JSONDecodeError:
-                        attributes = {}
-                    
-                    # Parse event_idx to get the index
-                    parts = event_idxs[i].split('-')
-                    if len(parts) == 2:
-                        event_index = int(parts[1])
-                    else:
-                        event_index = i
-                        
-                    event = {
-                        'event_idx': event_idxs[i],
-                        'extrinsic_id': event_extrinsic_ids[i],
-                        'module_id': module_ids[i],
-                        'event_id': event_ids[i],
-                        'attributes': attributes,
-                        'block_height': block_height,
-                        'event_index': event_index
-                    }
-                    
-                    # Only add if not already in the list
-                    if not any(e['event_idx'] == event['event_idx'] for e in current_block['events']):
-                        current_block['events'].append(event)
-            
-            # Add the last block if it exists
-            if current_block is not None:
-                blocks.append(current_block)
-            
-            return blocks
-            
+            return self._result_row_to_blocks(result)
+
         except Exception as e:
             logger.error(f"Error querying blocks by range: {e}")
             raise
 
-    def get_blocks_with_addresses_by_range(self, start_height: int, end_height: int) -> List[Dict[str, Any]]:
+    def get_blocks_by_block_timestamp_range(self, start_timestamp: int, end_timestamp: int, only_with_addresses: bool = False) -> List[Dict[str, Any]]:
         """
-        Get blocks within a specified height range that have address interactions.
-        Used by indexing components that need to process blocks with addresses.
-        
+        Get blocks within a specified timestamp range for indexing operations.
         Args:
-            start_height: Starting block height (inclusive)
-            end_height: Ending block height (inclusive)
-            
-        Returns:
-            List of block dictionaries that have addresses
+            start_timestamp: Starting timestamp (inclusive)
+            end_timestamp: Ending timestamp (inclusive)
+            only_with_addresses: If True, only return blocks that have addresses
         """
-        return self.get_blocks_by_range(start_height, end_height, only_with_addresses=True)
+        try:
+            address_filter = "AND arrayExists(x -> x != '', addresses)" if only_with_addresses else ""
+
+            query = f"""
+                SELECT
+                    block_height,
+                    block_hash,
+                    block_timestamp,
+                    transactions.extrinsic_id,
+                    transactions.extrinsic_hash,
+                    transactions.signer,
+                    transactions.call_module,
+                    transactions.call_function,
+                    transactions.status,
+                    addresses,
+                    events.event_idx,
+                    events.extrinsic_id as event_extrinsic_id,
+                    events.module_id,
+                    events.event_id,
+                    events.attributes
+                FROM block_stream
+                WHERE block_timestamp >= {start_timestamp} AND block_timestamp <= {end_timestamp} {address_filter}
+                ORDER BY block_height
+            """
+
+            result = self.client.query(query)
+            return self._result_row_to_blocks(result)
+
+        except Exception as e:
+            logger.error(f"Error querying blocks by range: {e}")
+            raise
+
+    def get_block_by_nearest_timestamp(self, timestamp: int) -> Dict[str, Any]:
+        """
+        Get the block closest to a specified timestamp.
+
+        Args:
+            timestamp: The timestamp to search for
+
+        Returns:
+            A dictionary containing the block data closest to the given timestamp
+        """
+        try:
+            result = self.client.query(f"""
+                SELECT *
+                FROM block_stream
+                WHERE block_timestamp <= {timestamp}
+                ORDER BY block_timestamp DESC
+                LIMIT 1
+            """)
+
+            if result.result_rows:
+                return self._result_row_to_blocks(result)[0]
+            else:
+                return {}
+        except Exception as e:
+            logger.error(f"Error getting block by nearest timestamp: {e}")
+            return {}
 
     def get_latest_block_height(self) -> int:
         """
@@ -207,7 +266,7 @@ class BlockStreamManager:
         except Exception as e:
             logger.error(f"Error getting latest block height: {e}")
             return 0
-    
+
     def close(self):
         """Close the ClickHouse connection"""
         if hasattr(self, 'client'):

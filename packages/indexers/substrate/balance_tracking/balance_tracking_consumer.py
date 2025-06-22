@@ -98,7 +98,7 @@ class BalanceTrackingConsumer:
                     logger.info(f"Fetching blocks from {start_height} to {end_height}")
                     
                     # Get blocks with address interactions in batch
-                    blocks_with_addresses = self.block_stream_manager.get_blocks_with_addresses_by_range(start_height, end_height)
+                    blocks_with_addresses = self.block_stream_manager.get_blocks_by_block_height_range(start_height, end_height, only_with_addresses=True)
                     
                     if not blocks_with_addresses:
                         logger.warning(f"No blocks with address interactions returned for range {start_height}-{end_height}")

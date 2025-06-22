@@ -48,30 +48,8 @@ ORDER BY (period_start_timestamp, asset, address)
 SETTINGS index_granularity = 8192
 COMMENT 'Stores balance snapshots at fixed 4-hour intervals';
 
--- Balance Series Processing State
--- Tracks the processing state of the balance series indexer
-CREATE TABLE IF NOT EXISTS balance_series_state (
-    -- Network and asset information
-    network String,
-    asset String,
-    
-    -- Last processed period
-    -- End timestamp of the last processed period
-    last_processed_timestamp UInt64,
-    -- Block height at the end of the last processed period
-    last_processed_block_height UInt32,
-    
-    -- Next period to process
-    -- Start timestamp of the next period to process
-    next_period_timestamp UInt64,
-    
-    -- Versioning for updates
-    _version UInt64
-    
-) ENGINE = ReplacingMergeTree(_version)
-ORDER BY (network, asset)
-SETTINGS index_granularity = 8192
-COMMENT 'Tracks the processing state of the balance series indexer';
+-- Note: We track the processing state by querying the last record from the balance_series table
+-- instead of maintaining a separate state table. This simplifies the schema and code.
 
 -- Views for easier querying
 

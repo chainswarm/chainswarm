@@ -82,7 +82,7 @@ class MoneyFlowConsumer:
                     
                     # Fetch blocks with address interactions from the block stream
                     logger.info(f"Fetching blocks with address interactions from {current_height} to {end_height}")
-                    blocks_with_addresses = self.block_stream_manager.get_blocks_with_addresses_by_range(current_height, end_height)
+                    blocks_with_addresses = self.block_stream_manager.get_blocks_by_block_height_range(current_height, end_height, only_with_addresses=True)
                     
                     # Only proceed if we weren't terminated during block fetching
                     if not self.terminate_event.is_set() and blocks_with_addresses:

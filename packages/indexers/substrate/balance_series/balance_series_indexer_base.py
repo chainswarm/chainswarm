@@ -24,6 +24,7 @@ class BalanceSeriesIndexerBase:
         self.asset = get_network_asset(network)
         self.period_hours = period_hours
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
+        self.first_block_timestamp = None  # Will be set by the consumer if available
         
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
@@ -179,8 +180,6 @@ class BalanceSeriesIndexerBase:
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])
-                logger.success(f"Recorded balance series for period {period_start_timestamp}-{period_end_timestamp} "
-                              f"for {len(balance_data)} addresses")
 
         except Exception as e:
             logger.error(f"Error recording balance series for period {period_start_timestamp}-{period_end_timestamp}: {e}")
@@ -234,19 +233,7 @@ class BalanceSeriesIndexerBase:
             Tuple of (last_processed_timestamp, last_processed_block_height) or (0, 0) if no records exist
         """
         try:
-            # First check if we have state information
-            result = self.client.query(f'''
-                SELECT last_processed_timestamp, last_processed_block_height
-                FROM balance_series_state
-                WHERE network = '{self.network}' AND asset = '{self.asset}'
-                ORDER BY _version DESC
-                LIMIT 1
-            ''')
-            
-            if result.result_rows and result.result_rows[0][0] is not None:
-                return result.result_rows[0][0], result.result_rows[0][1]
-            
-            # If no state information, check the balance_series table
+            # Query the balance_series table for the latest period
             result = self.client.query(f'''
                 SELECT period_end_timestamp, block_height
                 FROM balance_series
@@ -261,37 +248,10 @@ class BalanceSeriesIndexerBase:
             return 0, 0
         except Exception as e:
             logger.error(f"Error getting latest processed period: {e}")
-            return 0, 0
+            raise e
 
-    def update_processing_state(self, last_processed_timestamp: int, last_processed_block_height: int, next_period_timestamp: int):
-        """Update the processing state for the balance series indexer
-        
-        Args:
-            last_processed_timestamp: End timestamp of the last processed period
-            last_processed_block_height: Block height at the end of the last processed period
-            next_period_timestamp: Start timestamp of the next period to process
-        """
-        try:
-            state_data = [(
-                self.network,
-                self.asset,
-                last_processed_timestamp,
-                last_processed_block_height,
-                next_period_timestamp,
-                self.version
-            )]
-            
-            self.client.insert('balance_series_state', state_data, column_names=[
-                'network', 'asset', 'last_processed_timestamp', 'last_processed_block_height',
-                'next_period_timestamp', '_version'
-            ])
-            
-            logger.info(f"Updated balance series processing state: last_processed={last_processed_timestamp}, "
-                       f"next_period={next_period_timestamp}")
-            
-        except Exception as e:
-            logger.error(f"Error updating balance series processing state: {e}")
-            raise
+    # The update_processing_state method has been removed as we now track state
+    # by querying the last record from the balance_series table directly
 
     def get_next_period_to_process(self) -> Tuple[int, int]:
         """Get the next period to process
@@ -300,21 +260,16 @@ class BalanceSeriesIndexerBase:
             Tuple of (next_period_start, next_period_end) timestamps in milliseconds
         """
         try:
-            # Check if we have state information
-            result = self.client.query(f'''
-                SELECT next_period_timestamp
-                FROM balance_series_state
-                WHERE network = '{self.network}' AND asset = '{self.asset}'
-                ORDER BY _version DESC
-                LIMIT 1
-            ''')
+            # Get the latest processed period
+            last_processed_timestamp, _ = self.get_latest_processed_period()
             
-            if result.result_rows and result.result_rows[0][0] is not None:
-                next_period_start = result.result_rows[0][0]
+            if last_processed_timestamp > 0:
+                # The next period starts at the end of the last processed period
+                next_period_start = last_processed_timestamp
                 next_period_end = next_period_start + self.period_ms
                 return next_period_start, next_period_end
             
-            # If no state information, return Unix epoch start
+            # If no processed periods found, return Unix epoch start
             # The actual initialization will be handled by the consumer
             # which will query the blockchain's first block timestamp
             epoch_start = 0  # Unix epoch in milliseconds
@@ -348,83 +303,22 @@ class BalanceSeriesIndexerBase:
         
         return period_start, period_end
 
-    def insert_genesis_balances(self, genesis_balances, network):
+    def init_genesis_balances(self, block_info):
         """Insert genesis balances into the balance_series table
+        
+        This is a template method that must be implemented by network-specific indexers.
+        Each network should implement its own logic for inserting genesis balances.
         
         Args:
             genesis_balances: List of (address, amount) tuples
             network: Network identifier (e.g., 'torus')
+            block_height: Height of the first block (default: 0)
+            block_hash: Hash of the first block (default: None, will use 'genesis')
+            block_timestamp: Timestamp of the first block in milliseconds (default: None)
+                            If provided, use this as the period_start_timestamp
+                            instead of 0 (Unix epoch)
         """
-        if not genesis_balances:
-            logger.warning("No genesis balances provided")
-            return
-            
-        try:
-            # Check if genesis balances already exist in balance_series
-            result = self.client.query(f"""
-                SELECT COUNT(*) FROM balance_series
-                WHERE period_start_timestamp = 0 AND asset = '{self.asset}'
-            """)
-            
-            if result.result_rows and result.result_rows[0][0] > 0:
-                logger.info(f"Genesis balance records already exist for {network} - skipping insertion")
-                return
-                
-            # Use timestamp 0 for genesis records
-            period_start_timestamp = 0
-            period_end_timestamp = self.period_ms
-            block_height = 0
-            block_hash = "genesis"
-            
-            # Prepare data for balance_series insertion
-            balance_data = []
-            for address, amount in genesis_balances:
-                # Convert genesis balances to decimal units
-                free_balance = convert_to_decimal_units(amount, network)
-                reserved_balance = Decimal(0)
-                staked_balance = Decimal(0)
-                total_balance = free_balance + reserved_balance + staked_balance
-                
-                # For genesis balances, there are no previous balances, so changes are the same as current balances
-                balance_data.append((
-                    period_start_timestamp,
-                    period_end_timestamp,
-                    block_height,
-                    block_hash,
-                    address,
-                    self.asset,
-                    free_balance,
-                    reserved_balance,
-                    staked_balance,
-                    total_balance,
-                    free_balance,  # free_balance_change = free_balance for genesis
-                    reserved_balance,  # reserved_balance_change = reserved_balance for genesis
-                    staked_balance,  # staked_balance_change = staked_balance for genesis
-                    total_balance,  # total_balance_change = total_balance for genesis
-                    Decimal(0),  # No percentage change for genesis
-                    self.version
-                ))
-            
-            # Insert data in batches to avoid memory issues
-            batch_size = 1000
-            for i in range(0, len(balance_data), batch_size):
-                batch = balance_data[i:i + batch_size]
-                self.client.insert('balance_series', batch, column_names=[
-                    'period_start_timestamp', 'period_end_timestamp', 'block_height', 'block_hash',
-                    'address', 'asset', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
-                    'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
-                    'total_balance_percent_change', '_version'
-                ])
-                logger.info(f"Inserted batch {i//batch_size + 1}/{(len(balance_data) + batch_size - 1)//batch_size} of genesis balance records")
-            
-            # Update processing state
-            self.update_processing_state(period_end_timestamp, block_height, period_end_timestamp)
-            
-            logger.success(f"Successfully inserted {len(balance_data)} genesis balance records for {network}")
-            
-        except Exception as e:
-            logger.error(f"Error inserting genesis records: {e}")
-            raise
+        raise NotImplementedError("init_genesis_balances must be implemented by subclasses")
     
     def close(self):
         """Close the ClickHouse connection"""

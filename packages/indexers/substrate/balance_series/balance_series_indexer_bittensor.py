@@ -2,10 +2,10 @@ import traceback
 from typing import Dict, Any
 from loguru import logger
 
-from packages.indexers.substrate.balance_series.balance_series_indexer import BalanceSeriesIndexer
+from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
 
 
-class BittensorBalanceSeriesIndexer(BalanceSeriesIndexer):
+class BittensorBalanceSeriesIndexer(BalanceSeriesIndexerBase):
     """
     Bittensor-specific implementation of the BalanceSeriesIndexer.
     Handles Bittensor-specific balance series functionality.
@@ -34,3 +34,6 @@ class BittensorBalanceSeriesIndexer(BalanceSeriesIndexer):
             
         except Exception as e:
             logger.error(f"Error initializing Bittensor-specific configurations: {e}", error=e, trb=traceback.format_exc())
+    
+    def insert_genesis_balances(self, genesis_balances, network, block_height, block_hash, block_timestamp):
+        pass
