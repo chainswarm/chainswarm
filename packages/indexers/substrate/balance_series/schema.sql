@@ -90,26 +90,6 @@ SELECT
 FROM balance_series
 GROUP BY date, address, asset;
 
--- View for significant balance changes (>1% or >100 tokens)
-CREATE VIEW IF NOT EXISTS balance_series_significant_changes_view AS
-SELECT
-    period_start_timestamp,
-    period_end_timestamp,
-    block_height,
-    address,
-    asset,
-    free_balance,
-    reserved_balance,
-    staked_balance,
-    total_balance,
-    free_balance_change,
-    reserved_balance_change,
-    staked_balance_change,
-    total_balance_change,
-    total_balance_percent_change
-FROM balance_series
-WHERE abs(total_balance_percent_change) > 0.01 OR abs(total_balance_change) > 100
-ORDER BY period_start_timestamp DESC, abs(total_balance_percent_change) DESC;
 
 -- Materialized view for weekly balance statistics
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_series_weekly_mv
@@ -170,45 +150,3 @@ ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_block_height block_height
 
 -- Composite indexes for efficient asset-address queries
 ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_asset_address (asset, address) TYPE bloom_filter(0.01) GRANULARITY 4;
-
--- Simple view for available assets list
-CREATE VIEW IF NOT EXISTS balance_series_available_assets_view AS
-SELECT DISTINCT asset
-FROM balance_series
-WHERE asset != ''
-ORDER BY asset;
-
--- View for rolling 30-day balance trends
-CREATE VIEW IF NOT EXISTS balance_series_rolling_30d_view AS
-SELECT
-    period_start_timestamp,
-    address,
-    asset,
-    total_balance,
-    sum(total_balance_change) OVER (
-        PARTITION BY address, asset
-        ORDER BY period_start_timestamp ASC
-        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
-    ) AS rolling_30d_change,
-    avg(total_balance_percent_change) OVER (
-        PARTITION BY address, asset
-        ORDER BY period_start_timestamp ASC
-        ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
-    ) AS avg_30d_percent_change
-FROM balance_series
-ORDER BY period_start_timestamp DESC;
-
--- View for quantile analysis of balances
-CREATE VIEW IF NOT EXISTS balance_series_quantiles_view AS
-SELECT
-    toStartOfDay(fromUnixTimestamp64Milli(period_start_timestamp)) AS day,
-    asset,
-    quantile(0.10)(total_balance) AS q10_balance,
-    quantile(0.25)(total_balance) AS q25_balance,
-    quantile(0.50)(total_balance) AS median_balance,
-    quantile(0.75)(total_balance) AS q75_balance,
-    quantile(0.90)(total_balance) AS q90_balance,
-    quantile(0.99)(total_balance) AS q99_balance
-FROM balance_series
-GROUP BY day, asset
-ORDER BY day DESC, asset;
