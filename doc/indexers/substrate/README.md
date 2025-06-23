@@ -40,14 +40,14 @@ The ecosystem follows a layered architecture where each indexer builds upon the 
 
 ### [Known Addresses Service](./known_addresses.md)
 
-**Purpose**: Stores labeled addresses in a database for later enrichment of data from other indexers.
+**Purpose**: Stores labeled addresses in a database that are accessed directly by the API layer.
 
 **Key Features**:
 - Address labeling for improved readability and identification
 - Metadata management including source tracking and categorization
 - Versioned updates to maintain data consistency
 - External data integration from repository sources
-- Provides enrichment data that can be used by all other indexers
+- Data is accessed directly by the API layer (REST or MCP), not by other indexers
 
 ### [Money Flow Indexer](./money_flow.md)
 
@@ -70,26 +70,27 @@ The Substrate Indexers form an integrated ecosystem where data flows from raw bl
    - Balance Series Indexer tracks balance changes over time
    - Money Flow Indexer builds a transaction graph for network analysis
 
-3. **Enrichment Service**: The Known Addresses Service stores labeled addresses in a database that can be used to enrich data from all other indexers, improving the readability and usability of the data. This is not part of the main data flow but serves as a supplementary service.
+3. **Standalone Service**: The Known Addresses Service stores labeled addresses in a database that is accessed directly by the API layer (REST or MCP), not by other indexers. This service operates completely independently from the indexer data flow.
 
 4. **API Layer**: Each indexer exposes its data through specialized API endpoints, enabling applications to access the processed data for various use cases.
 
 ## Data Flow Between Indexers
 
 ```
-┌─────────────────┐
-│  Substrate Node │
-└────────┬────────┘
-         │ Raw Blockchain Data
-         ▼
 ┌─────────────────┐      ┌─────────────────┐
-│  Block Stream   │      │ Known Addresses │
-│    Indexer      │      │    Service      │
-└────────┬────────┘      └────────┬────────┘
+│  Substrate Node │      │ Known Addresses │
+└────────┬────────┘      │    Service      │
+         │               └────────┬────────┘
+         │ Raw Blockchain Data    │
+         ▼                        │
+┌─────────────────┐               │
+│  Block Stream   │               │
+│    Indexer      │               │
+└────────┬────────┘               │
          │                        │
          ├────────────┬───────────┘
-         │            │            │ Address Labels
-         │            │            │ for Enrichment
+         │            │            │
+         │            │            │
          ▼            ▼            ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │ Balance Series  │ │Balance Transfers│ │   Money Flow    │
@@ -118,7 +119,7 @@ The Substrate Indexers form an integrated ecosystem where data flows from raw bl
 
 4. **Block Stream → Money Flow**: The Block Stream Indexer provides transaction data that the Money Flow Indexer uses to build a graph representation of the transaction network.
 
-5. **Known Addresses → Enrichment**: The Known Addresses Service stores labeled addresses in a database that can be used to enrich data from all other indexers, making it more accessible and meaningful. This is not part of the main data flow but serves as a supplementary service for data enrichment.
+5. **Known Addresses → API Layer**: The Known Addresses Service stores labeled addresses in a database that is accessed directly by the API layer (REST or MCP). It operates completely independently from the indexer data flow.
 
 ## Use Cases
 
@@ -130,7 +131,7 @@ The Substrate Indexers ecosystem supports a wide range of analytical use cases:
 
 3. **Balance Monitoring**: Track account balance changes and identify significant fluctuations with the Balance Series Indexer.
 
-4. **Entity Recognition**: Identify and label significant addresses (exchanges, whales, etc.) with the Known Addresses Indexer.
+4. **Entity Recognition**: Identify and label significant addresses (exchanges, whales, etc.) with the Known Addresses Service.
 
 5. **Network Analysis**: Visualize transaction networks, detect communities, and identify important addresses with the Money Flow Indexer.
 
