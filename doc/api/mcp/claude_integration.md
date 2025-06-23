@@ -14,7 +14,7 @@ The `mcp-proxy` Python package acts as a bridge between Claude and the Torus blo
 
 1. Install the package using pip:
    ```powershell
-   pip install git+https://github.com/sparfenyuk/mcp-proxy.git
+   pip install mcp-proxy
    ```
 
 2. Verify the installation:

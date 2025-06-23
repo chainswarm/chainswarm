@@ -21,7 +21,7 @@ For those who want to get started quickly:
 1. **Install mcp-proxy**:
    ```powershell
    # Install the mcp-proxy Python package
-   pip install git+https://github.com/sparfenyuk/mcp-proxy.git
+   pip install mcp-proxy
    ```
 
 2. **Configure Claude desktop**:

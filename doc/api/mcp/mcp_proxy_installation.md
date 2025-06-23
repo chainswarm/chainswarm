@@ -20,10 +20,10 @@ The package is available at: https://github.com/sparfenyuk/mcp-proxy
 
 ### 1. Install the mcp-proxy Package
 
-The `mcp-proxy` package can be installed using pip directly from GitHub:
+The `mcp-proxy` package can be installed using pip:
 
 ```powershell
-pip install git+https://github.com/sparfenyuk/mcp-proxy.git
+pip install mcp-proxy
 ```
 
 This will install the package and its dependencies, and make the `mcp-proxy` executable available in your Python environment.
@@ -72,13 +72,13 @@ If you encounter issues installing the package:
 
 ```powershell
 # Try installing with verbose output
-pip install -v git+https://github.com/sparfenyuk/mcp-proxy.git
+pip install -v mcp-proxy
 
 # If you have permission issues, try installing for the current user only
-pip install --user git+https://github.com/sparfenyuk/mcp-proxy.git
+pip install --user mcp-proxy
 
 # If you need to upgrade an existing installation
-pip install --upgrade git+https://github.com/sparfenyuk/mcp-proxy.git
+pip install --upgrade mcp-proxy
 ```
 
 ### Executable Not Found
