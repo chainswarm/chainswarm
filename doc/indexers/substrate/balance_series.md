@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Balance Series indexer tracks account balance changes over time on Substrate networks. It provides a comprehensive solution for monitoring and analyzing balance fluctuations with the following key features:
+The Balance Series indexer tracks account balance changes over time on Substrate networks. It consumes data from the Block Stream indexer and provides a comprehensive solution for monitoring and analyzing balance fluctuations with the following key features:
 
 - **Time-series tracking** with fixed 4-hour interval snapshots
 - **Multi-balance type support** (free, reserved, staked, total)

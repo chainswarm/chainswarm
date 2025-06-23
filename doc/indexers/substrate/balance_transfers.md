@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Balance Transfers indexer tracks individual transfer transactions between addresses on Substrate networks. It provides a comprehensive solution for analyzing transaction patterns, network activity, and address behaviors with the following key features:
+The Balance Transfers indexer tracks individual transfer transactions between addresses on Substrate networks. It consumes data from the Block Stream indexer and provides a comprehensive solution for analyzing transaction patterns, network activity, and address behaviors with the following key features:
 
 - **Asset-agnostic design** with universal histogram bins for consistent analysis across different assets
 - **Multi-level time aggregation** (4-hour, daily, weekly, monthly) for temporal analysis

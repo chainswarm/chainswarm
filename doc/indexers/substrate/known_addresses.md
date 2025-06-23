@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Known Addresses indexer provides a system for storing, managing, and retrieving labeled blockchain addresses across Substrate networks. It serves as a reference database that maps cryptographic addresses to human-readable labels and metadata, with the following key features:
+The Known Addresses indexer provides a system for storing, managing, and retrieving labeled blockchain addresses across Substrate networks. Unlike other indexers that consume data from the Block Stream indexer, the Known Addresses service functions as an independent enrichment service that maps cryptographic addresses to human-readable labels and metadata. It offers the following key features:
 
 - **Address labeling** for improved readability and identification
 - **Metadata management** including source tracking and categorization
@@ -177,6 +177,15 @@ The system provides a REST API for accessing known addresses:
 - **GET /{network}/known-addresses**: Retrieves known addresses with pagination
 - Optional filtering by specific addresses
 - Standardized pagination with metadata (page, page_size, total_items, total_pages)
+
+### Relationship with Other Indexers
+
+The Known Addresses service operates as an independent enrichment service rather than part of the main data flow. Unlike the Balance Transfers, Balance Series, and Money Flow indexers which consume data from the Block Stream indexer, the Known Addresses service:
+
+1. Maintains its own independent data source and update cycle
+2. Provides enrichment data that can be joined with results from other indexers
+3. Does not depend on the Block Stream indexer for its core functionality
+4. Serves as a supplementary service that enhances the value of data from other indexers
 
 ### Usage in Other Indexers
 

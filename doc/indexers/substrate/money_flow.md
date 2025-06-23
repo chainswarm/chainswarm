@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Money Flow indexer implements a graph-based approach to tracking and analyzing cryptocurrency transactions across different blockchain networks. Unlike traditional relational database approaches, the graph model represents blockchain addresses as nodes and transactions as directed edges, enabling powerful network analysis capabilities.
+The Money Flow indexer implements a graph-based approach to tracking and analyzing cryptocurrency transactions across different blockchain networks. It consumes data from the Block Stream indexer and unlike traditional relational database approaches, the graph model represents blockchain addresses as nodes and transactions as directed edges, enabling powerful network analysis capabilities.
 
 This document provides technical details about the Money Flow schema, its implementation, and how to effectively query and analyze transaction networks.
 

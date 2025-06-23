@@ -38,15 +38,16 @@ The ecosystem follows a layered architecture where each indexer builds upon the 
 - Change tracking between periods with absolute and percentage metrics
 - Multi-level time aggregation for temporal analysis
 
-### [Known Addresses Indexer](./known_addresses.md)
+### [Known Addresses Service](./known_addresses.md)
 
-**Purpose**: Maps cryptographic addresses to human-readable labels and metadata to improve data readability.
+**Purpose**: Stores labeled addresses in a database for later enrichment of data from other indexers.
 
 **Key Features**:
 - Address labeling for improved readability and identification
 - Metadata management including source tracking and categorization
 - Versioned updates to maintain data consistency
 - External data integration from repository sources
+- Provides enrichment data that can be used by all other indexers
 
 ### [Money Flow Indexer](./money_flow.md)
 
@@ -62,14 +63,14 @@ The ecosystem follows a layered architecture where each indexer builds upon the 
 
 The Substrate Indexers form an integrated ecosystem where data flows from raw blockchain events to specialized analytical structures:
 
-1. **Data Capture Layer**: The Block Stream Indexer serves as the entry point, capturing raw blockchain data from Substrate nodes and storing it in a structured format.
+1. **Data Capture Layer**: The Block Stream Indexer serves as the foundation and entry point, capturing raw blockchain data from Substrate nodes and storing it in a structured format.
 
 2. **Specialized Processing Layer**: Three specialized indexers consume and transform the block stream data:
    - Balance Transfers Indexer extracts and analyzes transfer events
    - Balance Series Indexer tracks balance changes over time
    - Money Flow Indexer builds a transaction graph for network analysis
 
-3. **Enrichment Layer**: The Known Addresses Indexer enhances all other indexers by providing human-readable labels for cryptographic addresses, improving the readability and usability of the data.
+3. **Enrichment Service**: The Known Addresses Service stores labeled addresses in a database that can be used to enrich data from all other indexers, improving the readability and usability of the data. This is not part of the main data flow but serves as a supplementary service.
 
 4. **API Layer**: Each indexer exposes its data through specialized API endpoints, enabling applications to access the processed data for various use cases.
 
@@ -81,50 +82,43 @@ The Substrate Indexers form an integrated ecosystem where data flows from raw bl
 └────────┬────────┘
          │ Raw Blockchain Data
          ▼
-┌─────────────────┐
-│  Block Stream   │◄───┐
-│    Indexer      │    │
-└────────┬────────┘    │ Address
-         │             │ Labels
-         ├─────────────┘
-         │
-         ├─────────────┐
-         │             │
-         ▼             ▼
-┌─────────────────┐ ┌─────────────────┐
-│ Balance Series  │ │Balance Transfers│
-│    Indexer      │ │    Indexer      │
-└────────┬────────┘ └────────┬────────┘
-         │                    │
-         │                    │
-         │                    ▼
-         │          ┌─────────────────┐
-         │          │   Money Flow    │
-         │          │    Indexer      │
-         │          └────────┬────────┘
-         │                   │
-         ▼                   ▼
-┌──────────────────────────────────────┐
-│              API Layer               │
-└──────────────────────────────────────┘
-         │                   │
-         ▼                   ▼
-┌──────────────────────────────────────┐
-│           Applications               │
-└──────────────────────────────────────┘
+┌─────────────────┐      ┌─────────────────┐
+│  Block Stream   │      │ Known Addresses │
+│    Indexer      │      │    Service      │
+└────────┬────────┘      └────────┬────────┘
+         │                        │
+         ├────────────┬───────────┘
+         │            │            │ Address Labels
+         │            │            │ for Enrichment
+         ▼            ▼            ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ Balance Series  │ │Balance Transfers│ │   Money Flow    │
+│    Indexer      │ │    Indexer      │ │    Indexer      │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                    │                   │
+         │                    │                   │
+         ▼                    ▼                   ▼
+┌──────────────────────────────────────────────────────────┐
+│                       API Layer                          │
+└──────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────┐
+│                     Applications                         │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Key Data Flows:
 
-1. **Block Stream → Balance Transfers**: The Block Stream Indexer provides transaction and event data that the Balance Transfers Indexer uses to extract and analyze transfer events.
+1. **Substrate Node → Block Stream**: The Substrate Node provides raw blockchain data that the Block Stream Indexer captures and processes as the foundation for all other indexers.
 
-2. **Block Stream → Balance Series**: The Block Stream Indexer provides block and event data that the Balance Series Indexer uses to track account balance changes over time.
+2. **Block Stream → Balance Transfers**: The Block Stream Indexer provides transaction and event data that the Balance Transfers Indexer uses to extract and analyze transfer events.
 
-3. **Block Stream → Money Flow**: The Block Stream Indexer provides transaction data that the Money Flow Indexer uses to build a graph representation of the transaction network.
+3. **Block Stream → Balance Series**: The Block Stream Indexer provides block and event data that the Balance Series Indexer uses to track account balance changes over time.
 
-4. **Known Addresses → All Indexers**: The Known Addresses Indexer provides human-readable labels that enhance the data from all other indexers, making it more accessible and meaningful.
+4. **Block Stream → Money Flow**: The Block Stream Indexer provides transaction data that the Money Flow Indexer uses to build a graph representation of the transaction network.
 
-5. **Balance Transfers → Money Flow**: While the Money Flow Indexer primarily consumes data from the Block Stream Indexer, it can also leverage the aggregated transfer data from the Balance Transfers Indexer for additional insights.
+5. **Known Addresses → Enrichment**: The Known Addresses Service stores labeled addresses in a database that can be used to enrich data from all other indexers, making it more accessible and meaningful. This is not part of the main data flow but serves as a supplementary service for data enrichment.
 
 ## Use Cases
 
