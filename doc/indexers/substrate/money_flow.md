@@ -278,7 +278,7 @@ def _process_transfer_events(self, transaction, timestamp, events):
    - Incrementing the transfer count (`r.transfer_count = r.transfer_count + 1`)
    - Updating the timestamp of the last activity
 
-This aggregation approach means that no matter how many transfers occur between the same two addresses, there will only be a single edge in the graph representing their relationship, with accumulated metrics.
+This aggregation approach means that transfers between the same two addresses in the same direction are accumulated into a single edge with aggregated metrics. If transfers occur in both directions between two addresses (A→B and B→A), two separate edges will be created and maintained, each aggregating transfers in its respective direction.
 
 ## Comparison with Balance Transfers Indexer
 
@@ -286,10 +286,10 @@ While both the Money Flow and Balance Transfers indexers track cryptocurrency tr
 
 | Feature | Money Flow Indexer | Balance Transfers Indexer |
 |---------|-------------------|--------------------------|
-| **Storage Model** | Graph database (Neo4j) | Relational database (ClickHouse) |
+| **Storage Model** | Graph database (Memgraph, Neo4j compatible) | Relational database (ClickHouse) |
 | **Transaction Storage** | Aggregates transactions between the same addresses | Stores each individual transaction separately |
 | **Primary Focus** | Network structure and relationships | Temporal patterns and statistical analysis |
-| **Edge Representation** | One edge per address pair with accumulated metrics | N/A (uses relational tables) |
+| **Edge Representation** | Directional edges between addresses with accumulated metrics (can have two edges between the same addresses for bidirectional transfers) | N/A (uses relational tables) |
 | **Query Capabilities** | Path finding, community detection, network analysis | Time-series analysis, volume trends, address profiling |
 
 This fundamental difference in design makes the Money Flow indexer ideal for analyzing the structure of transaction networks, while the Balance Transfers indexer excels at temporal analysis and individual transaction history.
