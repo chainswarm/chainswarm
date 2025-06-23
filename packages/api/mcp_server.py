@@ -57,7 +57,7 @@ async def get_user_guide():
 
     return f"""
 
-RETURN EXACT TEXT BELOW  WITHOUT CHANGES: 
+RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     `
     # {network.upper()} Blockchain Analytics MCP Server
     
@@ -70,7 +70,9 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     This server connects to multiple data sources to give you complete blockchain insights:
     - **Aggregated Money Flow Graph**: Aggregated transaction connections between addresses
     - **Similarity Search**: Find addresses with similar behavior patterns
-    - **Balances**: Historical balance transfers, balances at given point in time, balance change deltas, known addresses lookup
+    - **Balance Series**: Historical balance tracking with 4-hour interval snapshots
+    - **Balance Transfers**: Detailed transaction analysis and address behavior profiling
+    - **Known Addresses**: Database of labeled addresses (exchanges, treasuries, bridges, etc.)
     
     
     ## 🌊 Money Flow Analysis
@@ -89,28 +91,59 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - "What addresses are most connected to [ADDRESS]?"
     - "Map the transaction network with 2 degrees of separation from [ADDRESS]"
     
-    ## 💰 Account Balance Analytics
+    ## 📊 Balance Series Analytics
     
-    **What it does**: Tracks balance changes over time, analyzes transfer transactions between addresses, and maintains a database of known/labeled addresses (exchanges, treasuries, bridges, etc.).
+    **What it does**: Tracks account balance changes over time with fixed 4-hour interval snapshots, supporting multiple balance types (free, reserved, staked, total).
     
     **You can ask about**:
-    - Historical balance changes for any address
-    - Known addresses and their labels/purposes
+    - Historical balance snapshots at different time scales
+    - Balance change trends and volatility
+    - Multi-level time aggregation (daily, weekly, monthly)
+    - Balance composition (free, reserved, staked)
+    
+    **Example questions**:
+    - "What's the current balance for [ADDRESS]?"
+    - "Show me the balance history for [ADDRESS] over the last month"
+    - "How has the staked balance for [ADDRESS] changed weekly?"
+    - "What was the total balance for [ADDRESS] at the end of last month?"
+    - "Which addresses had the largest balance increases last week?"
+    - "Plot the balance trend for [ADDRESS] over the past quarter"
+    
+    ## 💸 Balance Transfers Analysis
+    
+    **What it does**: Tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators.
+    
+    **You can ask about**:
     - Transaction history with detailed records
     - Address behavior patterns and classifications
-    - Relationship analysis between addresses
-    - Network flow and economic indicators
-    - Suspicious activity and anomaly detection
+    - Network activity metrics and trends
+    - Transaction size distribution and patterns
+    - Economic indicators like token velocity
+    - Temporal patterns in transaction activity
+    
+    **Example questions**:
+    - "Show me all transactions for [ADDRESS]"
+    - "What's the transaction volume trend for [ASSET] over the last quarter?"
+    - "Identify addresses with high transaction frequency but low volume"
+    - "What's the distribution of transaction sizes for [ASSET]?"
+    - "Show me addresses classified as 'whales' for [ASSET]"
+    - "Analyze the transaction relationship between [ADDRESS1] and [ADDRESS2]"
+    - "What's the token velocity for [ASSET] over time?"
+    
+    ## 🏷️ Known Addresses
+    
+    **What it does**: Maintains a database of labeled addresses for contextual analysis.
+    
+    **You can ask about**:
+    - Well-known addresses and their purposes
+    - Addresses by category (exchanges, treasuries, etc.)
+    - Entity identification for unknown addresses
     
     **Example questions**:
     - "What are the well-known addresses on this blockchain?"
-    - "Show me the transaction history for [ADDRESS]"
-    - "What's the balance history of [ADDRESS] over the last month?"
+    - "List all exchange addresses"
     - "Find all treasury and DAO addresses"
-    - "Identify addresses with suspicious transaction patterns"
-    - "Analyze the relationship between [ADDRESS1] and [ADDRESS2]"
-    - "What's the token velocity for [ASSET] over the last quarter?"
-    - "Show me addresses classified as 'whales' for [ASSET]"
+    - "Is [ADDRESS] a known entity?"
     
     ## 🔍 Similarity & Pattern Detection
     
@@ -131,18 +164,21 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     ## 💡 Advanced Analytics
     
     Combine multiple data sources for comprehensive insights:
-    - "Analyze the complete profile of [ADDRESS] including connections, history, and similar addresses"
-    - "Map the ecosystem around [KNOWN_ENTITY] showing all related addresses"
-    - "Find the flow of [AMOUNT] tokens from [SOURCE] and trace where they went"
-    - "What's the network structure of major token holders?"
+    - "Analyze the complete profile of [ADDRESS] including balance history, transactions, and connections"
+    - "Map the ecosystem around [KNOWN_ENTITY] showing all related addresses and transaction patterns"
+    - "Track the flow of [AMOUNT] tokens from [SOURCE] and analyze where they went"
+    - "Compare transaction patterns between [ADDRESS1] and [ADDRESS2] over time"
+    - "Identify potential wash trading by finding circular transaction patterns"
     
     ## 🎯 Pro Tips
     
     1. **Start Broad**: Ask general questions first, then drill down into specifics
     2. **Use Address Labels**: Ask about "exchanges", "bridges", "treasuries" to find known entities
     3. **Combine Approaches**: Use flow analysis + balance history + similarity for complete pictures
-    4. **Historical Analysis**: Include time ranges for balance and transaction queries
-    5. **Network Exploration**: Start with 1-2 degree connections, expand if needed
+    4. **Time-Based Analysis**: Specify time ranges for more focused results (daily, weekly, monthly)
+    5. **Asset Filtering**: Specify assets of interest for more relevant results
+    6. **Transaction Size Bins**: Use standardized size categories (<0.1, 0.1-1, 1-10, 10-100, etc.)
+    7. **Address Classification**: Look for address types like "Exchange", "Whale", "High_Volume_Trader"
     
     ## ⚡ Quick Reference
     
@@ -150,8 +186,9 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - "What are the well-known addresses?" (Great starting point)
     - "Show me the most active addresses" (Find network hubs)
     - "Trace [ADDRESS] connections" (Explore around specific address)
-    - "Find path between [ADDR1] and [ADDR2]" (Direct relationship analysis)
-    - "List all [TYPE] addresses" (Find specific entity types)
+    - "Show balance history for [ADDRESS]" (Track balance changes)
+    - "Analyze transaction patterns for [ADDRESS]" (Behavioral analysis)
+    - "Find addresses similar to [ADDRESS]" (Pattern matching)
     
     Just ask your questions in natural language - the assistant will use the appropriate tools and data sources to provide comprehensive blockchain insights!
     `
@@ -199,7 +236,7 @@ Your task is to help users analyze blockchain data using the available tools.
 - Usage: Specify addresses, depth (1-5 hops), and direction (in/out/all)
 
 **Path Finding**
-- Tool: `money_flow_shortest_path` 
+- Tool: `money_flow_shortest_path`
 - Purpose: Find transaction paths between two specific addresses
 - Usage: Provide source and target addresses, optionally filter by assets
 
@@ -244,14 +281,14 @@ WITH a.community_id as community, collect(a) as addresses
 RETURN community, [addr IN addresses | addr][0..3] as top_addresses
 
 // ✅ CORRECT: Split into separate operations
-MATCH (a:Address) 
+MATCH (a:Address)
 WHERE a.community_page_rank  IS NOT NULL
 WITH a.community_id as community, max(a.community_page_rank ) as max_rank
-MATCH (b:Address) 
+MATCH (b:Address)
 WHERE b.community_page_rank  = max_rank AND b.community_id = community
-RETURN community, b.address, b.community_page_rank 
+RETURN community, b.address, b.community_page_rank
 ORDER BY community ASC
-``` 
+```
 
 
 ### 🎯 Pattern Recognition Tool
@@ -262,101 +299,218 @@ ORDER BY community ASC
 - **Schema**: {similarity_schema}
 - Usage: Vector-based similarity matching for behavioral analysis
 
-### 💰 Account Balance Analytics
+### 📊 Balance Series Analytics
 
-**Balance Tracking**
+**Balance Series Query**
 - Tool: `balance_tracking_query`
-- Purpose: Historical balance changes, balance change deltas, known addresses
+- Purpose: Analyze balance snapshots over time with fixed 4-hour intervals
 - **Database**: ClickHouse
 - **Schema**: {balance_schema}
-- **Core Tables**:
-  - `balance_changes`: Stores balance snapshots for addresses at specific block heights
-  - `balance_delta_changes`: Stores balance changes (deltas) between consecutive blocks
-- **Available Views**:
-  - `balances_current_view`: Latest balance for each address and asset
-  - `balance_significant_changes_view`: Significant balance changes (delta > 100)
-  - `balance_daily_statistics_mv`: Daily balance statistics
-  - `available_assets_view`: Simple view listing available assets
+
+**Core Table**:
+- `balance_series`: Stores balance snapshots at fixed 4-hour intervals with the following key fields:
+  - `period_start_timestamp`, `period_end_timestamp`: Define the 4-hour interval (Unix timestamps in milliseconds)
+  - `block_height`: Block height at the end of the period
+  - `address`: Account address being tracked
+  - `asset`: Token or currency being tracked
+  - `free_balance`, `reserved_balance`, `staked_balance`, `total_balance`: Different balance types
+  - `free_balance_change`, `reserved_balance_change`, `staked_balance_change`, `total_balance_change`: Absolute change since previous period
+  - `total_balance_percent_change`: Percentage change in total balance
+
+**Available Views**:
+- `balance_series_latest_view`: Latest balance snapshot for each address and asset
+- `balance_series_daily_view`: Daily balance aggregations with end-of-day balances and daily changes
+- `balance_series_weekly_mv`: Weekly balance statistics with end-of-week balances and weekly changes
+- `balance_series_monthly_mv`: Monthly balance statistics with end-of-month balances and monthly changes
 
 **Example Queries**:
 ```sql
 -- Get current balance for an address
-SELECT * FROM balances_current_view
-WHERE address = '0x123...' AND asset = 'TOR';
+SELECT * FROM balance_series_latest_view
+WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+ORDER BY asset;
 
--- Find significant balance changes
-SELECT * FROM balance_significant_changes_view
-WHERE address = '0x123...'
-ORDER BY block_height DESC LIMIT 10;
+-- Get daily balance history for an address and asset
+SELECT date, end_of_day_total_balance, daily_total_balance_change
+FROM balance_series_daily_view
+WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+  AND asset = 'DOT'
+ORDER BY date DESC;
 
--- Get daily balance statistics
-SELECT * FROM balance_daily_statistics_mv
-WHERE address = '0x123...' AND asset = 'TOR'
-ORDER BY date DESC LIMIT 30;
+-- Analyze monthly balance trends
+SELECT month_start,
+       end_of_month_total_balance,
+       monthly_total_balance_change
+FROM balance_series_monthly_mv
+WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+  AND asset = 'DOT'
+ORDER BY month_start DESC;
+
+-- Find addresses with significant balance increases
+SELECT address, asset, total_balance_change, total_balance_percent_change
+FROM balance_series
+WHERE period_start_timestamp >= toUnixTimestamp64Milli(toDateTime('2023-01-01 00:00:00'))
+  AND total_balance_percent_change > 10
+ORDER BY total_balance_percent_change DESC
+LIMIT 20;
+
+-- Compare free vs staked balance composition
+SELECT
+    address,
+    asset,
+    free_balance,
+    staked_balance,
+    reserved_balance,
+    total_balance,
+    free_balance / total_balance * 100 AS free_percentage,
+    staked_balance / total_balance * 100 AS staked_percentage,
+    reserved_balance / total_balance * 100 AS reserved_percentage
+FROM balance_series_latest_view
+WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+  AND total_balance > 0;
 ```
 
-**Balance Transfers Analysis**
+### 💸 Balance Transfers Analysis
+
+**Balance Transfers Query**
 - Tool: `balance_transfers_query`
 - Purpose: Analyze individual transfer transactions between addresses
 - **Database**: ClickHouse
 - **Schema**: {balance_transfers_schema}
-- **Core Table**:
-  - `balance_transfers`: Stores individual transfer transactions between addresses
-- **Available Views**:
-  - **Basic Views**:
-    - `balance_transfers_statistics_view`: Basic statistics by address and asset
-    - `balance_transfers_daily_volume_mv`: Materialized view for daily transfer volume
-    - `available_transfer_assets_view`: Simple view listing available assets
-  
-  - **Behavior Analysis**:
-    - `balance_transfers_address_behavior_profiles_view`: Comprehensive behavioral analysis for each address
-    - `balance_transfers_address_classification_view`: Classifies addresses into behavioral categories
-    - `balance_transfers_suspicious_activity_view`: Identifies potentially suspicious activity patterns
-  
-  - **Relationship Analysis**:
-    - `balance_transfers_address_relationships_view`: Tracks relationships between addresses
-    - `balance_transfers_address_activity_patterns_view`: Analyzes temporal and behavioral patterns
-  
-  - **Network Analysis**:
-    - `balance_transfers_network_flow_view`: High-level overview of network activity
-    - `balance_transfers_periodic_activity_view`: Activity patterns over weekly time periods
-    - `balance_transfers_seasonality_view`: Temporal patterns in transaction activity
-  
-  - **Economic Analysis**:
-    - `balance_transfers_velocity_view`: Measures token circulation speed
-    - `balance_transfers_liquidity_concentration_view`: Analyzes holding concentration
-    - `balance_transfers_holding_time_view`: Analyzes token holding duration
-  
-  - **Anomaly Detection**:
-    - `balance_transfers_basic_anomaly_view`: Detects unusual transaction patterns
+
+**Core Table**:
+- `balance_transfers`: Stores individual transfer transactions with the following key fields:
+  - `extrinsic_id`, `event_idx`: Uniquely identify a transaction
+  - `block_height`, `block_timestamp`: Blockchain location and time information
+  - `from_address`, `to_address`: Transaction participants
+  - `asset`: Token or currency being transferred
+  - `amount`: Value transferred
+  - `fee`: Transaction cost
+
+**Key View Categories**:
+
+1. **Network Analytics Views** (Daily, Weekly, Monthly):
+   - `balance_transfers_network_daily_view`
+   - `balance_transfers_network_weekly_view`
+   - `balance_transfers_network_monthly_view`
+   
+   These views provide consistent metrics across different time scales, including transaction counts, volumes, unique participants, network density, fee statistics, and transaction size distribution.
+
+2. **Address Analytics View**:
+   - `balance_transfers_address_analytics_view`
+   
+   Provides comprehensive metrics for each address, including transaction counts, volume metrics, temporal patterns, transaction size distribution, and address classification.
+
+3. **Volume Aggregation Views** (Daily, Weekly, Monthly):
+   - `balance_transfers_volume_daily_view`
+   - `balance_transfers_volume_weekly_view`
+   - `balance_transfers_volume_monthly_view`
+   
+   These views aggregate transaction volumes at different time scales with detailed metrics.
+
+4. **Analysis Views**:
+   - `balance_transfers_volume_trends_view`: Calculates rolling averages for trend analysis
+   - `balance_transfers_volume_quantiles_view`: Provides distribution analysis for transaction volumes
+
+**Transaction Size Histogram Bins**:
+Balance transfers uses standardized bins for consistent analysis across different assets:
+- < 0.1
+- 0.1 to < 1
+- 1 to < 10
+- 10 to < 100
+- 100 to < 1,000
+- 1,000 to < 10,000
+- ≥ 10,000
+
+**Address Classification**:
+The system automatically classifies addresses into behavioral categories:
+- `Exchange`: High volume (≥100,000) with many recipients (≥100)
+- `Whale`: High volume (≥100,000) with few recipients (<10)
+- `High_Volume_Trader`: Significant volume (≥10,000) with many transactions (≥1,000)
+- `Hub_Address`: Many connections (≥50 recipients and ≥50 senders)
+- `Retail_Active`: Many transactions (≥100) but lower volume (<1,000)
+- `Whale_Inactive`: Few transactions (<10) but high volume (≥10,000)
+- `Retail_Inactive`: Few transactions (<10) and low volume (<100)
+- `Regular_User`: Default classification for other addresses
 
 **Example Queries**:
 ```sql
--- Get basic statistics for an address
-SELECT * FROM balance_transfers_statistics_view
-WHERE address = '0x123...' AND asset = 'TOR';
+-- Get basic transaction history for an address
+SELECT
+    block_timestamp,
+    block_height,
+    from_address,
+    to_address,
+    asset,
+    amount,
+    fee
+FROM balance_transfers
+WHERE from_address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+   OR to_address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+ORDER BY block_timestamp DESC
+LIMIT 50;
 
--- Find suspicious activity
-SELECT * FROM balance_transfers_suspicious_activity_view
-WHERE risk_level = 'High'
-ORDER BY suspicion_score DESC LIMIT 10;
+-- Analyze address behavior profile
+SELECT * FROM balance_transfers_address_analytics_view
+WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+  AND asset = 'DOT';
 
--- Analyze relationships between addresses
-SELECT * FROM balance_transfers_address_relationships_view
-WHERE from_address = '0x123...' OR to_address = '0x123...'
-ORDER BY relationship_strength DESC;
+-- Find potential exchange addresses
+SELECT address, total_volume, unique_recipients, unique_senders, address_type
+FROM balance_transfers_address_analytics_view
+WHERE address_type = 'Exchange'
+ORDER BY total_volume DESC
+LIMIT 10;
 
--- Analyze token velocity
-SELECT * FROM balance_transfers_velocity_view
-WHERE asset = 'TOR'
-ORDER BY month DESC LIMIT 12;
+-- Analyze network activity trends
+SELECT
+    period,
+    asset,
+    transaction_count,
+    total_volume,
+    unique_addresses,
+    avg_transaction_size,
+    avg_network_density
+FROM balance_transfers_network_daily_view
+WHERE asset = 'DOT'
+  AND period >= toDate('2023-01-01')
+ORDER BY period DESC
+LIMIT 30;
+
+-- Analyze transaction size distribution
+SELECT
+    asset,
+    sum(tx_count_lt_01) as tx_count_lt_01,
+    sum(tx_count_01_to_1) as tx_count_01_to_1,
+    sum(tx_count_1_to_10) as tx_count_1_to_10,
+    sum(tx_count_10_to_100) as tx_count_10_to_100,
+    sum(tx_count_100_to_1k) as tx_count_100_to_1k,
+    sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
+    sum(tx_count_gte_10k) as tx_count_gte_10k
+FROM balance_transfers_network_monthly_view
+WHERE period = toStartOfMonth(toDate('2023-01-01'))
+GROUP BY asset;
+
+-- Analyze volume trends with rolling averages
+SELECT
+    period_start,
+    asset,
+    total_volume,
+    rolling_7_period_avg_volume,
+    rolling_30_period_avg_volume
+FROM balance_transfers_volume_trends_view
+WHERE asset = 'DOT'
+ORDER BY period_start DESC
+LIMIT 30;
 ```
 
 **ClickHouse Query Guidelines:**
 - Use ClickHouse SQL dialect (not standard SQL)
-- Available aggregation functions: `sum()`, `avg()`, `max()`, `min()`, `count()`
-- Time functions: `toStartOfDay()`, `toStartOfMonth()`, etc.
-- Array functions: `arrayJoin()`, `arrayElement()`, etc.
+- Available aggregation functions: `sum()`, `avg()`, `max()`, `min()`, `count()`, `quantile()`
+- Time functions: `toStartOfDay()`, `toStartOfMonth()`, `toStartOfWeek()`, `toDate()`, `toDateTime()`
+- Timestamp conversion: `fromUnixTimestamp64Milli()`, `toUnixTimestamp64Milli()`
+- Conditional aggregation: `sumIf()`, `countIf()`, `avgIf()`
+- Statistical functions: `stddevPop()`, `varPop()`, `skewPop()`, `kurtPop()`
  
 ## 🎯 Success Metrics
 
@@ -365,6 +519,9 @@ A successful analysis should:
 - Provide accurate data based on real database structure
 - Combine multiple data sources for comprehensive insights
 - Handle errors gracefully and adjust queries accordingly
+- Leverage appropriate time aggregation levels (4-hour, daily, weekly, monthly)
+- Use standardized transaction size bins for consistent analysis
+- Consider address classifications for behavioral analysis
 
 Remember: The schema information provided is authoritative - use it as your ground truth for database structure.
 """
