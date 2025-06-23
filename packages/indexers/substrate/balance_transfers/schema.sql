@@ -283,12 +283,8 @@ SELECT
     max_fee,
     min_fee,
     median_transaction_size,
-    avg_amount_std_dev,
-    
-    -- Block information
-    period_start_block,
-    period_end_block,
-    period_end_block - period_start_block + 1 as blocks_in_period
+    avg_amount_std_dev
+
 
 FROM daily_aggregates
 ORDER BY period DESC, asset;
@@ -357,12 +353,8 @@ SELECT
     max_fee,
     min_fee,
     median_transfer_amount as median_transaction_size,
-    amount_std_dev as avg_amount_std_dev,
-    
-    -- Block information
-    period_start_block,
-    period_end_block,
-    period_end_block - period_start_block + 1 as blocks_in_period
+    amount_std_dev as avg_amount_std_dev
+
     
 FROM weekly_base
 ORDER BY period DESC, asset;
@@ -583,99 +575,7 @@ SELECT
     sent_amount_variance,
     received_amount_variance,
     active_days,
-    
-    -- COMPUTED SUSPICION INDICATORS
-    CASE 
-        WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 
-        THEN 1 ELSE 0 
-    END as unusual_time_pattern,
-    
-    CASE 
-        WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 
-        THEN 1 ELSE 0 
-    END as fixed_amount_pattern,
-    
-    CASE 
-        WHEN unique_recipients = 1 AND total_transactions >= 50 
-        THEN 1 ELSE 0 
-    END as single_recipient_pattern,
-    
-    CASE 
-        WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 
-        THEN 1 ELSE 0 
-    END as large_infrequent_pattern,
-    
-    -- COMPUTED RISK SCORE (sum of all indicators)
-    (CASE 
-        WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 
-        THEN 1 ELSE 0 
-    END +
-    CASE 
-        WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 
-        THEN 1 ELSE 0 
-    END +
-    CASE 
-        WHEN unique_recipients = 1 AND total_transactions >= 50 
-        THEN 1 ELSE 0 
-    END +
-    CASE 
-        WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 
-        THEN 1 ELSE 0 
-    END) as risk_score,
-    
-    -- RISK LEVEL
-    CASE
-        WHEN (CASE 
-                WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN unique_recipients = 1 AND total_transactions >= 50 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 
-                THEN 1 ELSE 0 
-             END) >= 3 THEN 'High'
-        WHEN (CASE 
-                WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN unique_recipients = 1 AND total_transactions >= 50 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 
-                THEN 1 ELSE 0 
-             END) >= 2 THEN 'Medium'
-        WHEN (CASE 
-                WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN unique_recipients = 1 AND total_transactions >= 50 
-                THEN 1 ELSE 0 
-             END +
-             CASE 
-                WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 
-                THEN 1 ELSE 0 
-             END) >= 1 THEN 'Low'
-        ELSE 'Normal'
-    END as risk_level,
-    
+
     -- ADDRESS CLASSIFICATION
     CASE
         WHEN total_volume >= 100000 AND unique_recipients >= 100 THEN 'Exchange'
@@ -686,69 +586,10 @@ SELECT
         WHEN total_transactions < 10 AND total_volume >= 10000 THEN 'Whale_Inactive'
         WHEN total_transactions < 10 AND total_volume < 100 THEN 'Retail_Inactive'
         ELSE 'Regular_User'
-    END as address_type,
-    
-    -- VOLUME CLASSIFICATION
-    CASE
-        WHEN total_volume >= 100000 THEN 'Ultra_High'
-        WHEN total_volume >= 10000 THEN 'High'
-        WHEN total_volume >= 1000 THEN 'Medium'
-        WHEN total_volume >= 100 THEN 'Low'
-        ELSE 'Micro'
-    END as volume_tier
-    
+    END as address_type
+
 FROM address_combined_metrics
 WHERE total_transactions > 0;
-
--- =============================================================================
--- DAILY PATTERNS VIEW 
--- =============================================================================
-
--- Daily Activity Patterns View (enhanced from both patterns views)
-CREATE VIEW IF NOT EXISTS balance_transfers_daily_patterns_view AS
-SELECT
-    from_address,
-    to_address,
-    asset,
-    toDate(toDateTime(intDiv(block_timestamp, 1000))) as activity_date,
-    count() as daily_transactions,
-    sum(amount) as daily_volume,
-    avg(amount) as daily_avg_amount,
-    min(amount) as daily_min_amount,
-    max(amount) as daily_max_amount,
-    uniq(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as active_hours_count,
-    
-    -- Daily histogram
-    countIf(amount < 0.1) as daily_tx_count_lt_01,
-    countIf(amount >= 0.1 AND amount < 1) as daily_tx_count_01_to_1,
-    countIf(amount >= 1 AND amount < 10) as daily_tx_count_1_to_10,
-    countIf(amount >= 10 AND amount < 100) as daily_tx_count_10_to_100,
-    countIf(amount >= 100 AND amount < 1000) as daily_tx_count_100_to_1k,
-    countIf(amount >= 1000 AND amount < 10000) as daily_tx_count_1k_to_10k,
-    countIf(amount >= 10000) as daily_tx_count_gte_10k,
-    
-    -- Statistical Measures
-    median(amount) as daily_median_amount,
-    stddevPop(amount) as daily_amount_variance,
-    
-    -- Daily fee analysis
-    sum(fee) as daily_fees,
-    avg(fee) as daily_avg_fee,
-    
-    -- Hourly Distribution Analysis
-    groupArray(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as hourly_activity,
-    toUInt8(avg(toHour(toDateTime(intDiv(block_timestamp, 1000))))) as peak_hour,
-    
-    -- Time distribution
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 0 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 6) as night_transactions,
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 6 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 12) as morning_transactions,
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 12 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 18) as afternoon_transactions,
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 18 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 24) as evening_transactions
-
-FROM balance_transfers
-WHERE from_address != to_address
-GROUP BY from_address, to_address, asset, activity_date
-ORDER BY activity_date DESC, daily_volume DESC;
 
 -- =============================================================================
 -- VOLUME AGGREGATION VIEWS
