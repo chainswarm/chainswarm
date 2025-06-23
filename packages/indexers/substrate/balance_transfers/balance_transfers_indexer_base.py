@@ -42,12 +42,7 @@ class BalanceTransfersIndexerBase:
         """Initialize tables for balance transfers from split schema files"""
         # Schema files in order of execution
         schema_files = [
-            'schema_part1_core.sql',                    # Core tables and indexes
-            'schema_part2_basic_views.sql',             # Volume series materialized view + aggregations
-            'schema_part3_address_analytics.sql',       # Consolidated: behavior, classification, suspicious activity
-            'schema_part4_network_analytics.sql',       # Consolidated: network flow + temporal analysis
-            'schema_part5_transaction_analytics.sql',   # Consolidated: relationships + anomaly detection
-            'schema_part6_network_flow.sql'             # Existing optimized network flow view (renamed for sequential numbering)
+            'schema.sql',                    # Core tables and indexes
         ]
         
         try:
