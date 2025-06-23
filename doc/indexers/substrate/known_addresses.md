@@ -170,14 +170,6 @@ The Known Addresses service includes a dedicated import service that:
 5. Removes outdated entries no longer present in the source
 6. Updates the network's last update timestamp
 
-### API Integration
-
-The system provides a REST API for accessing known addresses:
-
-- **GET /{network}/known-addresses**: Retrieves known addresses with pagination
-- Optional filtering by specific addresses
-- Standardized pagination with metadata (page, page_size, total_items, total_pages)
-
 ### Relationship with Other Indexers
 
 The Known Addresses service operates as a completely standalone service that is separate from the indexer data flow. Unlike the Balance Transfers, Balance Series, and Money Flow indexers which consume data from the Block Stream indexer, the Known Addresses service:

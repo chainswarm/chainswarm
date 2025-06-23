@@ -123,8 +123,53 @@ GROUP BY date, address, asset;
 
 Two materialized views provide aggregated data at weekly and monthly levels:
 
-- `balance_series_weekly_mv`: Aggregates data from the start of each week
-- `balance_series_monthly_mv`: Aggregates data from the start of each month
+#### Weekly Materialized View
+
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_series_weekly_mv
+ENGINE = AggregatingMergeTree()
+ORDER BY (week_start, asset, address)
+AS
+SELECT
+    toStartOfWeek(fromUnixTimestamp64Milli(period_start_timestamp)) as week_start,
+    address,
+    asset,
+    argMax(free_balance, period_start_timestamp) as end_of_week_free_balance,
+    argMax(reserved_balance, period_start_timestamp) as end_of_week_reserved_balance,
+    argMax(staked_balance, period_start_timestamp) as end_of_week_staked_balance,
+    argMax(total_balance, period_start_timestamp) as end_of_week_total_balance,
+    sum(free_balance_change) as weekly_free_balance_change,
+    sum(reserved_balance_change) as weekly_reserved_balance_change,
+    sum(staked_balance_change) as weekly_staked_balance_change,
+    sum(total_balance_change) as weekly_total_balance_change,
+    max(block_height) as last_block_of_week
+FROM balance_series
+GROUP BY week_start, address, asset;
+```
+
+#### Monthly Materialized View
+
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_series_monthly_mv
+ENGINE = AggregatingMergeTree()
+ORDER BY (month_start, asset, address)
+AS
+SELECT
+    toStartOfMonth(fromUnixTimestamp64Milli(period_start_timestamp)) as month_start,
+    address,
+    asset,
+    argMax(free_balance, period_start_timestamp) as end_of_month_free_balance,
+    argMax(reserved_balance, period_start_timestamp) as end_of_month_reserved_balance,
+    argMax(staked_balance, period_start_timestamp) as end_of_month_staked_balance,
+    argMax(total_balance, period_start_timestamp) as end_of_month_total_balance,
+    sum(free_balance_change) as monthly_free_balance_change,
+    sum(reserved_balance_change) as monthly_reserved_balance_change,
+    sum(staked_balance_change) as monthly_staked_balance_change,
+    sum(total_balance_change) as monthly_total_balance_change,
+    max(block_height) as last_block_of_month
+FROM balance_series
+GROUP BY month_start, address, asset;
+```
 
 These views calculate:
 - End-of-period balances for each balance type

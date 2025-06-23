@@ -208,9 +208,9 @@ def index_block(self, session, block):
     self._process_network_specific_events(transaction, timestamp, events_by_type)
 ```
 
-### Transfer Processing
+### Transfer Processing and Aggregation
 
-The core of the Money Flow indexer is the processing of transfer events:
+The core of the Money Flow indexer is the processing and aggregation of transfer events:
 
 ```python
 def _process_transfer_events(self, transaction, timestamp, events):
@@ -226,8 +226,8 @@ def _process_transfer_events(self, transaction, timestamp, events):
             sender.first_activity_block_height = $block_height,
             sender.last_activity_block_height = $block_height,
             sender.transfer_count = 1
-          SET 
-            sender.last_activity_timestamp = $timestamp, 
+          SET
+            sender.last_activity_timestamp = $timestamp,
             sender.last_activity_block_height = $block_height,
             sender.transfer_count = coalesce(sender.transfer_count, 0) + 1
               
@@ -268,11 +268,37 @@ def _process_transfer_events(self, transaction, timestamp, events):
         # ... execution code ...
 ```
 
+**Key Aggregation Mechanism**: The code above demonstrates how the Money Flow indexer aggregates transactions:
+
+1. When a transfer occurs between two addresses, the indexer first ensures both addresses exist as nodes in the graph.
+2. Then it looks for an existing relationship (edge) between these addresses using the `MERGE` operation.
+3. If this is the first transfer between these addresses (`ON CREATE SET`), it creates a new relationship with initial values.
+4. If a relationship already exists (`ON MATCH SET`), it **updates the existing relationship** by:
+   - Adding the new amount to the total volume (`r.volume = r.volume + $amount`)
+   - Incrementing the transfer count (`r.transfer_count = r.transfer_count + 1`)
+   - Updating the timestamp of the last activity
+
+This aggregation approach means that no matter how many transfers occur between the same two addresses, there will only be a single edge in the graph representing their relationship, with accumulated metrics.
+
+## Comparison with Balance Transfers Indexer
+
+While both the Money Flow and Balance Transfers indexers track cryptocurrency transactions, they serve different purposes and use different approaches:
+
+| Feature | Money Flow Indexer | Balance Transfers Indexer |
+|---------|-------------------|--------------------------|
+| **Storage Model** | Graph database (Neo4j) | Relational database (ClickHouse) |
+| **Transaction Storage** | Aggregates transactions between the same addresses | Stores each individual transaction separately |
+| **Primary Focus** | Network structure and relationships | Temporal patterns and statistical analysis |
+| **Edge Representation** | One edge per address pair with accumulated metrics | N/A (uses relational tables) |
+| **Query Capabilities** | Path finding, community detection, network analysis | Time-series analysis, volume trends, address profiling |
+
+This fundamental difference in design makes the Money Flow indexer ideal for analyzing the structure of transaction networks, while the Balance Transfers indexer excels at temporal analysis and individual transaction history.
+
 ## Common Query Patterns
 
 ### 1. Shortest Path Between Addresses
 
-Find the shortest path between two addresses:
+Find the shortest path between two addresses (each edge represents an aggregated flow of funds):
 
 ```cypher
 MATCH path = (start:Address {address: 'SOURCE_ADDRESS'})-[rels:TO*BFS]->(target:Address {address: 'TARGET_ADDRESS'})
@@ -302,17 +328,19 @@ ORDER BY a.community_page_rank DESC
 LIMIT 10
 ```
 
-### 4. High-Value Transfers
+### 4. High-Value Transfer Relationships
 
-Find high-value transfers:
+Find high-value aggregated transfer relationships:
 
 ```cypher
 MATCH (sender:Address)-[r:TO]->(receiver:Address)
 WHERE r.asset = 'TOR' AND r.volume > 1000
-RETURN sender.address, receiver.address, r.volume
+RETURN sender.address, receiver.address, r.volume, r.transfer_count, r.volume / r.transfer_count as avg_transfer
 ORDER BY r.volume DESC
 LIMIT 20
 ```
+
+This query returns address pairs with high total volume, showing the aggregated volume, number of transfers, and average transfer amount between them.
 
 ### 5. Address Similarity Search
 
@@ -325,25 +353,10 @@ YIELD node, score
 RETURN node.address, score
 ```
 
-## API Endpoints
-
-The Money Flow schema is exposed through several API endpoints:
-
-1. **Shortest Path**: `GET /{network}/money-flow/path/shortest`
-   - Finds the shortest path between two addresses
-
-2. **Explore Address**: `GET /{network}/money-flow/path/explore/address`
-   - Explores connections from a set of addresses with depth and direction control
-
-3. **Explore Transaction**: `GET /{network}/money-flow/path/explore/transaction`
-   - Explores connections from addresses involved in a specific transaction
-
-4. **Explore Block**: `GET /{network}/money-flow/path/explore/block`
-   - Explores connections from addresses involved in a specific block
-
-5. **Schema**: `GET /{network}/money-flow/schema`
-   - Returns schema information for the money flow graph
-
 ## Conclusion
 
-The Money Flow schema provides a powerful graph-based approach to analyzing cryptocurrency transactions. By modeling addresses as nodes and transfers as edges, it enables advanced network analysis capabilities like path finding, community detection, and PageRank scoring. The schema supports multiple Substrate-based networks with network-specific event handling, making it a versatile tool for blockchain analytics.
+The Money Flow schema provides a powerful graph-based approach to analyzing cryptocurrency transactions. By modeling addresses as nodes and aggregated transfers as edges, it enables advanced network analysis capabilities like path finding, community detection, and PageRank scoring.
+
+The key advantage of this aggregation approach is that it creates a more concise and meaningful representation of the transaction network, focusing on the relationships between addresses rather than individual transactions. This makes complex network analyses more efficient and reveals patterns that might be obscured in transaction-by-transaction analysis.
+
+The schema supports multiple Substrate-based networks with network-specific event handling, making it a versatile tool for blockchain analytics.
