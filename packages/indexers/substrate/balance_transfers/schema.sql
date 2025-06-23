@@ -33,6 +33,7 @@ DROP VIEW IF EXISTS balance_transfers_address_analytics_view;
 DROP VIEW IF EXISTS balance_transfers_daily_patterns_view;
 
 -- Drop existing materialized views
+DROP VIEW IF EXISTS balance_transfers_volume_series_mv;
 DROP VIEW IF EXISTS balance_transfers_daily_mv;
 
 -- =============================================================================
@@ -60,7 +61,7 @@ CREATE TABLE IF NOT EXISTS balance_transfers (
     _version UInt64
     
 ) ENGINE = ReplacingMergeTree(_version)
-PARTITION BY intDiv(block_height, {PARTITION_SIZE})
+PARTITION BY intDiv(block_height, 100000)
 ORDER BY (extrinsic_id, event_idx, asset)
 SETTINGS
     index_granularity = 8192
@@ -99,85 +100,13 @@ ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_date toDate(toDateTime
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_to_asset (from_address, to_address, asset) TYPE bloom_filter(0.01) GRANULARITY 4;
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_amount_timestamp (asset, amount, block_timestamp) TYPE minmax GRANULARITY 4;
 
--- =============================================================================
--- REUSABLE FUNCTIONS
--- =============================================================================
-
--- Function to classify amounts into histogram bins
-CREATE FUNCTION IF NOT EXISTS getAmountBin(amount Decimal128(18)) 
-RETURNS String
-LANGUAGE SQL
-DETERMINISTIC
-AS $$
-    CASE
-        WHEN amount < 0.1 THEN 'lt_01'
-        WHEN amount >= 0.1 AND amount < 1 THEN '01_to_1'
-        WHEN amount >= 1 AND amount < 10 THEN '1_to_10'
-        WHEN amount >= 10 AND amount < 100 THEN '10_to_100'
-        WHEN amount >= 100 AND amount < 1000 THEN '100_to_1k'
-        WHEN amount >= 1000 AND amount < 10000 THEN '1k_to_10k'
-        ELSE 'gte_10k'
-    END
-$$;
-
--- Function to calculate risk score based on transaction patterns
-CREATE FUNCTION IF NOT EXISTS calculateRiskScore(
-    total_transactions UInt64,
-    night_transactions UInt64,
-    avg_sent_amount Decimal128(18),
-    sent_amount_variance Decimal128(18),
-    unique_recipients UInt64,
-    tx_count_gte_10k UInt64
-) RETURNS UInt8
-LANGUAGE SQL
-DETERMINISTIC
-AS $$
-    toUInt8(
-        -- Unusual time pattern
-        CASE 
-            WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 
-            THEN 1 ELSE 0 
-        END +
-        -- Fixed amount pattern
-        CASE 
-            WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 
-            THEN 1 ELSE 0 
-        END +
-        -- Single recipient pattern
-        CASE 
-            WHEN unique_recipients = 1 AND total_transactions >= 50 
-            THEN 1 ELSE 0 
-        END +
-        -- Large infrequent pattern
-        CASE 
-            WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 
-            THEN 1 ELSE 0 
-        END
-    )
-$$;
-
--- Function to calculate network density (standardized)
-CREATE FUNCTION IF NOT EXISTS calculateNetworkDensity(
-    unique_pairs UInt64,
-    total_addresses UInt64
-) RETURNS Float64
-LANGUAGE SQL
-DETERMINISTIC
-AS $$
-    CASE
-        WHEN total_addresses > 1 THEN
-            toFloat64(unique_pairs) / 
-            (toFloat64(total_addresses) * toFloat64(total_addresses - 1) / 2.0)
-        ELSE 0.0
-    END
-$$;
 
 -- =============================================================================
 -- BASE 4-HOUR MATERIALIZED VIEW (with consistent naming)
 -- =============================================================================
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_volume_series_mv
-ENGINE = AggregatingMergeTree()
+ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(period_start)
 ORDER BY (period_start, asset)
 SETTINGS
@@ -186,7 +115,6 @@ AS
 SELECT
     -- Time period information
     toStartOfInterval(toDateTime(intDiv(block_timestamp, 1000)), INTERVAL 4 HOUR) as period_start,
-    toStartOfInterval(toDateTime(intDiv(block_timestamp, 1000)), INTERVAL 4 HOUR) + INTERVAL 4 HOUR as period_end,
     
     -- Asset information
     asset,
@@ -215,11 +143,13 @@ SELECT
     uniq(from_address, to_address) as unique_address_pairs,
     uniqExact(from_address) + uniqExact(to_address) as active_addresses,
     
-    -- Network density calculation (using function)
-    calculateNetworkDensity(
-        uniq(from_address, to_address),
-        uniqExact(from_address) + uniqExact(to_address)
-    ) as network_density,
+    -- Network density calculation (inlined)
+    CASE
+        WHEN uniqExact(from_address) + uniqExact(to_address) > 1 THEN
+            toFloat64(uniq(from_address, to_address)) /
+            (toFloat64(uniqExact(from_address) + uniqExact(to_address)) * toFloat64(uniqExact(from_address) + uniqExact(to_address) - 1) / 2.0)
+        ELSE 0.0
+    END as network_density,
     
     -- Temporal activity patterns
     toHour(period_start) as period_hour,
@@ -242,37 +172,34 @@ SELECT
     max(block_height) as period_end_block,
     max(block_height) - min(block_height) + 1 as blocks_in_period,
     
-    -- Histogram bins using function
-    countIf(getAmountBin(amount) = 'lt_01') as tx_count_lt_01,
-    countIf(getAmountBin(amount) = '01_to_1') as tx_count_01_to_1,
-    countIf(getAmountBin(amount) = '1_to_10') as tx_count_1_to_10,
-    countIf(getAmountBin(amount) = '10_to_100') as tx_count_10_to_100,
-    countIf(getAmountBin(amount) = '100_to_1k') as tx_count_100_to_1k,
-    countIf(getAmountBin(amount) = '1k_to_10k') as tx_count_1k_to_10k,
-    countIf(getAmountBin(amount) = 'gte_10k') as tx_count_gte_10k,
+    -- Histogram bins (inlined)
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
     
     -- Volume histogram bins
-    sumIf(amount, getAmountBin(amount) = 'lt_01') as volume_lt_01,
-    sumIf(amount, getAmountBin(amount) = '01_to_1') as volume_01_to_1,
-    sumIf(amount, getAmountBin(amount) = '1_to_10') as volume_1_to_10,
-    sumIf(amount, getAmountBin(amount) = '10_to_100') as volume_10_to_100,
-    sumIf(amount, getAmountBin(amount) = '100_to_1k') as volume_100_to_1k,
-    sumIf(amount, getAmountBin(amount) = '1k_to_10k') as volume_1k_to_10k,
-    sumIf(amount, getAmountBin(amount) = 'gte_10k') as volume_gte_10k
-
+    sumIf(amount, amount < 0.1) as volume_lt_01,
+    sumIf(amount, amount >= 0.1 AND amount < 1) as volume_01_to_1,
+    sumIf(amount, amount >= 1 AND amount < 10) as volume_1_to_10,
+    sumIf(amount, amount >= 10 AND amount < 100) as volume_10_to_100,
+    sumIf(amount, amount >= 100 AND amount < 1000) as volume_100_to_1k,
+    sumIf(amount, amount >= 1000 AND amount < 10000) as volume_1k_to_10k,
+    sumIf(amount, amount >= 10000) as volume_gte_10k
 FROM balance_transfers
 GROUP BY
-    period_start,
-    period_end,
-    asset
-COMMENT 'Base 4-hour interval materialized view for transfer volume analysis';
+    toStartOfInterval(toDateTime(intDiv(block_timestamp, 1000)), INTERVAL 4 HOUR),
+    asset;
 
 -- =============================================================================
 -- DAILY MATERIALIZED VIEW (with consistent naming)
 -- =============================================================================
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_daily_mv
-ENGINE = AggregatingMergeTree()
+ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(date)
 ORDER BY (date, asset)
 SETTINGS
@@ -326,10 +253,8 @@ SELECT
     -- Block information
     min(period_start_block) as start_block,
     max(period_end_block) as end_block
-    
 FROM balance_transfers_volume_series_mv
-GROUP BY date, asset
-COMMENT 'Daily aggregation materialized view for efficient weekly/monthly rollups';
+GROUP BY date, asset;
 
 -- =============================================================================
 -- NETWORK ANALYTICS VIEWS (with consistent naming)
@@ -370,122 +295,149 @@ SELECT
     start_block as period_start_block,
     end_block as period_end_block,
     end_block - start_block + 1 as blocks_in_period
-
 FROM balance_transfers_daily_mv
 ORDER BY period DESC, asset;
 
 -- Weekly Network Analytics View (uses daily MV with consistent naming)
 CREATE VIEW IF NOT EXISTS balance_transfers_network_weekly_view AS
+WITH weekly_aggregates AS (
+    SELECT
+        toStartOfWeek(date) as period,
+        asset,
+        sum(transaction_count) as total_transactions,
+        sum(total_volume) as total_volume_sum,
+        max(unique_senders) as unique_senders,
+        max(unique_receivers) as unique_receivers,
+        max(active_addresses) as unique_addresses,
+        sum(tx_count_lt_01) as tx_count_lt_01,
+        sum(tx_count_01_to_1) as tx_count_01_to_1,
+        sum(tx_count_1_to_10) as tx_count_1_to_10,
+        sum(tx_count_10_to_100) as tx_count_10_to_100,
+        sum(tx_count_100_to_1k) as tx_count_100_to_1k,
+        sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
+        sum(tx_count_gte_10k) as tx_count_gte_10k,
+        avg(avg_network_density) as avg_network_density,
+        sum(total_fees) as total_fees_sum,
+        max(max_transaction_amount) as max_transaction_amount,
+        min(min_transaction_amount) as min_transaction_amount,
+        max(max_fee) as max_fee,
+        min(min_fee) as min_fee,
+        avg(median_transaction_amount) as median_transaction_amount,
+        avg(avg_amount_std_dev) as avg_amount_std_dev,
+        min(start_block) as period_start_block,
+        max(end_block) as period_end_block
+    FROM balance_transfers_daily_mv
+    GROUP BY toStartOfWeek(date), asset
+)
 SELECT
     'weekly' as period_type,
-    toStartOfWeek(date) as period,
+    period,
     asset,
-    
-    -- Aggregate from daily data
-    sum(transaction_count) as transaction_count,
-    sum(total_volume) as total_volume,
-    max(unique_senders) as unique_senders,       -- Consistent: no max_ prefix
-    max(unique_receivers) as unique_receivers,   -- Consistent: no max_ prefix
-    max(active_addresses) as unique_addresses,
-    
-    -- Histogram aggregations
-    sum(tx_count_lt_01) as tx_count_lt_01,
-    sum(tx_count_01_to_1) as tx_count_01_to_1,
-    sum(tx_count_1_to_10) as tx_count_1_to_10,
-    sum(tx_count_10_to_100) as tx_count_10_to_100,
-    sum(tx_count_100_to_1k) as tx_count_100_to_1k,
-    sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
-    sum(tx_count_gte_10k) as tx_count_gte_10k,
-    
-    -- Network and fee metrics
-    avg(avg_network_density) as avg_network_density,
-    sum(total_fees) as total_fees,
-    
-    -- Calculated fields (consistent naming)
-    CASE 
-        WHEN sum(transaction_count) > 0 
-        THEN sum(total_volume) / sum(transaction_count) 
-        ELSE 0 
+    total_transactions as transaction_count,
+    total_volume_sum as total_volume,
+    unique_senders,
+    unique_receivers,
+    unique_addresses,
+    tx_count_lt_01,
+    tx_count_01_to_1,
+    tx_count_1_to_10,
+    tx_count_10_to_100,
+    tx_count_100_to_1k,
+    tx_count_1k_to_10k,
+    tx_count_gte_10k,
+    avg_network_density,
+    total_fees_sum as total_fees,
+    CASE
+        WHEN total_transactions > 0
+        THEN total_volume_sum / total_transactions
+        ELSE 0
     END as avg_transaction_amount,
-    
-    max(max_transaction_amount) as max_transaction_amount,
-    min(min_transaction_amount) as min_transaction_amount,
-    
-    CASE 
-        WHEN sum(transaction_count) > 0 
-        THEN sum(total_fees) / sum(transaction_count) 
-        ELSE 0 
+    max_transaction_amount,
+    min_transaction_amount,
+    CASE
+        WHEN total_transactions > 0
+        THEN total_fees_sum / total_transactions
+        ELSE 0
     END as avg_fee,
-    
-    max(max_fee) as max_fee,
-    min(min_fee) as min_fee,
-    avg(median_transaction_amount) as median_transaction_amount,
-    avg(avg_amount_std_dev) as avg_amount_std_dev,
-    
-    -- Block information
-    min(start_block) as period_start_block,
-    max(end_block) as period_end_block,
-    max(end_block) - min(start_block) + 1 as blocks_in_period
-    
-FROM balance_transfers_daily_mv
-GROUP BY toStartOfWeek(date), asset
+    max_fee,
+    min_fee,
+    median_transaction_amount,
+    avg_amount_std_dev,
+    period_start_block,
+    period_end_block,
+    period_end_block - period_start_block + 1 as blocks_in_period
+FROM weekly_aggregates
 ORDER BY period DESC, asset;
 
 -- Monthly Network Analytics View (uses daily MV with consistent naming)
 CREATE VIEW IF NOT EXISTS balance_transfers_network_monthly_view AS
+WITH monthly_aggregates AS (
+    SELECT
+        toStartOfMonth(date) as period,
+        asset,
+        sum(transaction_count) as total_transactions,
+        sum(total_volume) as total_volume_sum,
+        max(unique_senders) as unique_senders,
+        max(unique_receivers) as unique_receivers,
+        max(active_addresses) as unique_addresses,
+        sum(tx_count_lt_01) as tx_count_lt_01,
+        sum(tx_count_01_to_1) as tx_count_01_to_1,
+        sum(tx_count_1_to_10) as tx_count_1_to_10,
+        sum(tx_count_10_to_100) as tx_count_10_to_100,
+        sum(tx_count_100_to_1k) as tx_count_100_to_1k,
+        sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
+        sum(tx_count_gte_10k) as tx_count_gte_10k,
+        avg(avg_network_density) as avg_network_density,
+        sum(total_fees) as total_fees_sum,
+        max(max_transaction_amount) as max_transaction_amount,
+        min(min_transaction_amount) as min_transaction_amount,
+        max(max_fee) as max_fee,
+        min(min_fee) as min_fee,
+        avg(median_transaction_amount) as median_transaction_amount,
+        avg(avg_amount_std_dev) as avg_amount_std_dev,
+        min(start_block) as period_start_block,
+        max(end_block) as period_end_block
+    FROM balance_transfers_daily_mv
+    GROUP BY toStartOfMonth(date), asset
+)
 SELECT
     'monthly' as period_type,
-    toStartOfMonth(date) as period,
+    period,
     asset,
-    
-    -- Same aggregation pattern as weekly
-    sum(transaction_count) as transaction_count,
-    sum(total_volume) as total_volume,
-    max(unique_senders) as unique_senders,       -- Consistent: no max_ prefix
-    max(unique_receivers) as unique_receivers,   -- Consistent: no max_ prefix
-    max(active_addresses) as unique_addresses,
-    
-    -- Histogram aggregations
-    sum(tx_count_lt_01) as tx_count_lt_01,
-    sum(tx_count_01_to_1) as tx_count_01_to_1,
-    sum(tx_count_1_to_10) as tx_count_1_to_10,
-    sum(tx_count_10_to_100) as tx_count_10_to_100,
-    sum(tx_count_100_to_1k) as tx_count_100_to_1k,
-    sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
-    sum(tx_count_gte_10k) as tx_count_gte_10k,
-    
-    -- Network and fee metrics
-    avg(avg_network_density) as avg_network_density,
-    sum(total_fees) as total_fees,
-    
-    -- Calculated fields (consistent naming)
-    CASE 
-        WHEN sum(transaction_count) > 0 
-        THEN sum(total_volume) / sum(transaction_count) 
-        ELSE 0 
+    total_transactions as transaction_count,
+    total_volume_sum as total_volume,
+    unique_senders,
+    unique_receivers,
+    unique_addresses,
+    tx_count_lt_01,
+    tx_count_01_to_1,
+    tx_count_1_to_10,
+    tx_count_10_to_100,
+    tx_count_100_to_1k,
+    tx_count_1k_to_10k,
+    tx_count_gte_10k,
+    avg_network_density,
+    total_fees_sum as total_fees,
+    CASE
+        WHEN total_transactions > 0
+        THEN total_volume_sum / total_transactions
+        ELSE 0
     END as avg_transaction_amount,
-    
-    max(max_transaction_amount) as max_transaction_amount,
-    min(min_transaction_amount) as min_transaction_amount,
-    
-    CASE 
-        WHEN sum(transaction_count) > 0 
-        THEN sum(total_fees) / sum(transaction_count) 
-        ELSE 0 
+    max_transaction_amount,
+    min_transaction_amount,
+    CASE
+        WHEN total_transactions > 0
+        THEN total_fees_sum / total_transactions
+        ELSE 0
     END as avg_fee,
-    
-    max(max_fee) as max_fee,
-    min(min_fee) as min_fee,
-    avg(median_transaction_amount) as median_transaction_amount,
-    avg(avg_amount_std_dev) as avg_amount_std_dev,
-    
-    -- Block information
-    min(start_block) as period_start_block,
-    max(end_block) as period_end_block,
-    max(end_block) - min(start_block) + 1 as blocks_in_period
-    
-FROM balance_transfers_daily_mv
-GROUP BY toStartOfMonth(date), asset
+    max_fee,
+    min_fee,
+    median_transaction_amount,
+    avg_amount_std_dev,
+    period_start_block,
+    period_end_block,
+    period_end_block - period_start_block + 1 as blocks_in_period
+FROM monthly_aggregates
 ORDER BY period DESC, asset;
 
 -- =============================================================================
@@ -514,14 +466,14 @@ WITH address_base_metrics AS (
         countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 12 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 18) as afternoon_transactions,
         countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 18 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 24) as evening_transactions,
         
-        -- Histogram bins using function
-        countIf(getAmountBin(amount) = 'lt_01') as tx_count_lt_01,
-        countIf(getAmountBin(amount) = '01_to_1') as tx_count_01_to_1,
-        countIf(getAmountBin(amount) = '1_to_10') as tx_count_1_to_10,
-        countIf(getAmountBin(amount) = '10_to_100') as tx_count_10_to_100,
-        countIf(getAmountBin(amount) = '100_to_1k') as tx_count_100_to_1k,
-        countIf(getAmountBin(amount) = '1k_to_10k') as tx_count_1k_to_10k,
-        countIf(getAmountBin(amount) = 'gte_10k') as tx_count_gte_10k,
+        -- Histogram bins (inlined)
+        countIf(amount < 0.1) as tx_count_lt_01,
+        countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+        countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+        countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+        countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+        countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+        countIf(amount >= 10000) as tx_count_gte_10k,
         
         -- Statistical measures
         varPop(amount) as sent_amount_variance,
@@ -630,24 +582,50 @@ SELECT
     received_amount_variance,
     active_days,
     
-    -- Risk score using function
-    calculateRiskScore(
-        total_transactions,
-        night_transactions,
-        avg_sent_amount,
-        sent_amount_variance,
-        unique_recipients,
-        tx_count_gte_10k
+    -- Risk score (inlined calculation)
+    toUInt8(
+        -- Unusual time pattern
+        CASE
+            WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8
+            THEN 1 ELSE 0
+        END +
+        -- Fixed amount pattern
+        CASE
+            WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20
+            THEN 1 ELSE 0
+        END +
+        -- Single recipient pattern
+        CASE
+            WHEN unique_recipients = 1 AND total_transactions >= 50
+            THEN 1 ELSE 0
+        END +
+        -- Large infrequent pattern
+        CASE
+            WHEN tx_count_gte_10k > 0 AND total_transactions <= 5
+            THEN 1 ELSE 0
+        END
     ) as risk_score,
     
     -- Risk level based on score
     CASE
-        WHEN calculateRiskScore(total_transactions, night_transactions, avg_sent_amount, 
-                               sent_amount_variance, unique_recipients, tx_count_gte_10k) >= 3 THEN 'High'
-        WHEN calculateRiskScore(total_transactions, night_transactions, avg_sent_amount, 
-                               sent_amount_variance, unique_recipients, tx_count_gte_10k) >= 2 THEN 'Medium'
-        WHEN calculateRiskScore(total_transactions, night_transactions, avg_sent_amount, 
-                               sent_amount_variance, unique_recipients, tx_count_gte_10k) >= 1 THEN 'Low'
+        WHEN toUInt8(
+            CASE WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 THEN 1 ELSE 0 END +
+            CASE WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 THEN 1 ELSE 0 END +
+            CASE WHEN unique_recipients = 1 AND total_transactions >= 50 THEN 1 ELSE 0 END +
+            CASE WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 THEN 1 ELSE 0 END
+        ) >= 3 THEN 'High'
+        WHEN toUInt8(
+            CASE WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 THEN 1 ELSE 0 END +
+            CASE WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 THEN 1 ELSE 0 END +
+            CASE WHEN unique_recipients = 1 AND total_transactions >= 50 THEN 1 ELSE 0 END +
+            CASE WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 THEN 1 ELSE 0 END
+        ) >= 2 THEN 'Medium'
+        WHEN toUInt8(
+            CASE WHEN total_transactions > 0 AND toFloat64(night_transactions) >= toFloat64(total_transactions) * 0.8 THEN 1 ELSE 0 END +
+            CASE WHEN avg_sent_amount > 0 AND sent_amount_variance < avg_sent_amount * 0.05 AND total_transactions >= 20 THEN 1 ELSE 0 END +
+            CASE WHEN unique_recipients = 1 AND total_transactions >= 50 THEN 1 ELSE 0 END +
+            CASE WHEN tx_count_gte_10k > 0 AND total_transactions <= 5 THEN 1 ELSE 0 END
+        ) >= 1 THEN 'Low'
         ELSE 'Normal'
     END as risk_level,
     
@@ -692,7 +670,6 @@ SELECT
         WHEN total_volume >= 100 THEN 'Low'
         ELSE 'Micro'
     END as volume_tier
-    
 FROM address_combined_metrics
 WHERE total_transactions > 0;
 
@@ -713,14 +690,14 @@ SELECT
     max(amount) as daily_max_amount,
     uniq(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as active_hours_count,
     
-    -- Daily histogram using function
-    countIf(getAmountBin(amount) = 'lt_01') as daily_tx_count_lt_01,
-    countIf(getAmountBin(amount) = '01_to_1') as daily_tx_count_01_to_1,
-    countIf(getAmountBin(amount) = '1_to_10') as daily_tx_count_1_to_10,
-    countIf(getAmountBin(amount) = '10_to_100') as daily_tx_count_10_to_100,
-    countIf(getAmountBin(amount) = '100_to_1k') as daily_tx_count_100_to_1k,
-    countIf(getAmountBin(amount) = '1k_to_10k') as daily_tx_count_1k_to_10k,
-    countIf(getAmountBin(amount) = 'gte_10k') as daily_tx_count_gte_10k,
+    -- Daily histogram (inlined)
+    countIf(amount < 0.1) as daily_tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as daily_tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as daily_tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as daily_tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as daily_tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as daily_tx_count_1k_to_10k,
+    countIf(amount >= 10000) as daily_tx_count_gte_10k,
     
     -- Statistical Measures
     median(amount) as daily_median_amount,
@@ -739,7 +716,6 @@ SELECT
     countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 6 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 12) as morning_transactions,
     countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 12 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 18) as afternoon_transactions,
     countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) >= 18 AND toHour(toDateTime(intDiv(block_timestamp, 1000))) < 24) as evening_transactions
-
 FROM balance_transfers
 WHERE from_address != to_address
 GROUP BY from_address, to_address, asset, activity_date
@@ -797,102 +773,139 @@ SELECT
     -- Block information
     start_block as daily_start_block,
     end_block as daily_end_block
-    
 FROM balance_transfers_daily_mv
 ORDER BY date DESC, asset;
 
 -- Weekly volume view (aggregates from daily MV with consistent naming)
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_weekly_view AS
+WITH weekly_volume_aggregates AS (
+    SELECT
+        toStartOfWeek(date) as week_start,
+        asset,
+        sum(transaction_count) as total_transactions,
+        max(unique_senders) as unique_senders,
+        max(unique_receivers) as unique_receivers,
+        sum(total_volume) as total_volume_sum,
+        sum(total_fees) as total_fees_sum,
+        max(max_transaction_amount) as max_transaction_amount,
+        max(active_addresses) as active_addresses,
+        sum(tx_count_lt_01) as tx_count_lt_01,
+        sum(tx_count_01_to_1) as tx_count_01_to_1,
+        sum(tx_count_1_to_10) as tx_count_1_to_10,
+        sum(tx_count_10_to_100) as tx_count_10_to_100,
+        sum(tx_count_100_to_1k) as tx_count_100_to_1k,
+        sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
+        sum(tx_count_gte_10k) as tx_count_gte_10k,
+        sum(volume_lt_01) as volume_lt_01,
+        sum(volume_01_to_1) as volume_01_to_1,
+        sum(volume_1_to_10) as volume_1_to_10,
+        sum(volume_10_to_100) as volume_10_to_100,
+        sum(volume_100_to_1k) as volume_100_to_1k,
+        sum(volume_1k_to_10k) as volume_1k_to_10k,
+        sum(volume_gte_10k) as volume_gte_10k,
+        min(start_block) as start_block,
+        max(end_block) as end_block
+    FROM balance_transfers_daily_mv
+    GROUP BY week_start, asset
+)
 SELECT
-    toStartOfWeek(date) as week_start,
+    week_start,
     asset,
-    
-    -- Aggregations from daily (consistent naming)
-    sum(transaction_count) as weekly_transaction_count,
-    max(unique_senders) as unique_senders,       -- Consistent
-    max(unique_receivers) as unique_receivers,   -- Consistent
-    sum(total_volume) as weekly_total_volume,
-    sum(total_fees) as weekly_total_fees,
+    total_transactions as weekly_transaction_count,
+    unique_senders,
+    unique_receivers,
+    total_volume_sum as weekly_total_volume,
+    total_fees_sum as weekly_total_fees,
     CASE
-        WHEN sum(transaction_count) > 0
-        THEN sum(total_volume) / sum(transaction_count)
+        WHEN total_transactions > 0
+        THEN total_volume_sum / total_transactions
         ELSE 0
     END as weekly_avg_transaction_amount,
-    max(max_transaction_amount) as weekly_max_transaction_amount,
-    
-    -- Network metrics
-    max(active_addresses) as weekly_active_addresses,
-    
-    -- Histogram aggregations
-    sum(tx_count_lt_01) as weekly_tx_count_lt_01,
-    sum(tx_count_01_to_1) as weekly_tx_count_01_to_1,
-    sum(tx_count_1_to_10) as weekly_tx_count_1_to_10,
-    sum(tx_count_10_to_100) as weekly_tx_count_10_to_100,
-    sum(tx_count_100_to_1k) as weekly_tx_count_100_to_1k,
-    sum(tx_count_1k_to_10k) as weekly_tx_count_1k_to_10k,
-    sum(tx_count_gte_10k) as weekly_tx_count_gte_10k,
-    
-    sum(volume_lt_01) as weekly_volume_lt_01,
-    sum(volume_01_to_1) as weekly_volume_01_to_1,
-    sum(volume_1_to_10) as weekly_volume_1_to_10,
-    sum(volume_10_to_100) as weekly_volume_10_to_100,
-    sum(volume_100_to_1k) as weekly_volume_100_to_1k,
-    sum(volume_1k_to_10k) as weekly_volume_1k_to_10k,
-    sum(volume_gte_10k) as weekly_volume_gte_10k,
-    
-    -- Block information
-    min(start_block) as weekly_start_block,
-    max(end_block) as weekly_end_block
-    
-FROM balance_transfers_daily_mv
-GROUP BY week_start, asset
+    max_transaction_amount as weekly_max_transaction_amount,
+    active_addresses as weekly_active_addresses,
+    tx_count_lt_01 as weekly_tx_count_lt_01,
+    tx_count_01_to_1 as weekly_tx_count_01_to_1,
+    tx_count_1_to_10 as weekly_tx_count_1_to_10,
+    tx_count_10_to_100 as weekly_tx_count_10_to_100,
+    tx_count_100_to_1k as weekly_tx_count_100_to_1k,
+    tx_count_1k_to_10k as weekly_tx_count_1k_to_10k,
+    tx_count_gte_10k as weekly_tx_count_gte_10k,
+    volume_lt_01 as weekly_volume_lt_01,
+    volume_01_to_1 as weekly_volume_01_to_1,
+    volume_1_to_10 as weekly_volume_1_to_10,
+    volume_10_to_100 as weekly_volume_10_to_100,
+    volume_100_to_1k as weekly_volume_100_to_1k,
+    volume_1k_to_10k as weekly_volume_1k_to_10k,
+    volume_gte_10k as weekly_volume_gte_10k,
+    start_block as weekly_start_block,
+    end_block as weekly_end_block
+FROM weekly_volume_aggregates
 ORDER BY week_start DESC, asset;
 
 -- Monthly volume view (aggregates from daily MV with consistent naming)
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_monthly_view AS
+WITH monthly_volume_aggregates AS (
+    SELECT
+        toStartOfMonth(date) as month_start,
+        asset,
+        sum(transaction_count) as total_transactions,
+        max(unique_senders) as unique_senders,
+        max(unique_receivers) as unique_receivers,
+        sum(total_volume) as total_volume_sum,
+        sum(total_fees) as total_fees_sum,
+        max(max_transaction_amount) as max_transaction_amount,
+        max(active_addresses) as active_addresses,
+        sum(tx_count_lt_01) as tx_count_lt_01,
+        sum(tx_count_01_to_1) as tx_count_01_to_1,
+        sum(tx_count_1_to_10) as tx_count_1_to_10,
+        sum(tx_count_10_to_100) as tx_count_10_to_100,
+        sum(tx_count_100_to_1k) as tx_count_100_to_1k,
+        sum(tx_count_1k_to_10k) as tx_count_1k_to_10k,
+        sum(tx_count_gte_10k) as tx_count_gte_10k,
+        sum(volume_lt_01) as volume_lt_01,
+        sum(volume_01_to_1) as volume_01_to_1,
+        sum(volume_1_to_10) as volume_1_to_10,
+        sum(volume_10_to_100) as volume_10_to_100,
+        sum(volume_100_to_1k) as volume_100_to_1k,
+        sum(volume_1k_to_10k) as volume_1k_to_10k,
+        sum(volume_gte_10k) as volume_gte_10k,
+        min(start_block) as start_block,
+        max(end_block) as end_block
+    FROM balance_transfers_daily_mv
+    GROUP BY month_start, asset
+)
 SELECT
-    toStartOfMonth(date) as month_start,
+    month_start,
     asset,
-    
-    -- Aggregations from daily (consistent naming)
-    sum(transaction_count) as monthly_transaction_count,
-    max(unique_senders) as unique_senders,       -- Consistent
-    max(unique_receivers) as unique_receivers,   -- Consistent
-    sum(total_volume) as monthly_total_volume,
-    sum(total_fees) as monthly_total_fees,
+    total_transactions as monthly_transaction_count,
+    unique_senders,
+    unique_receivers,
+    total_volume_sum as monthly_total_volume,
+    total_fees_sum as monthly_total_fees,
     CASE
-        WHEN sum(transaction_count) > 0
-        THEN sum(total_volume) / sum(transaction_count)
+        WHEN total_transactions > 0
+        THEN total_volume_sum / total_transactions
         ELSE 0
     END as monthly_avg_transaction_amount,
-    max(max_transaction_amount) as monthly_max_transaction_amount,
-    
-    -- Network metrics
-    max(active_addresses) as monthly_active_addresses,
-    
-    -- Histogram aggregations
-    sum(tx_count_lt_01) as monthly_tx_count_lt_01,
-    sum(tx_count_01_to_1) as monthly_tx_count_01_to_1,
-    sum(tx_count_1_to_10) as monthly_tx_count_1_to_10,
-    sum(tx_count_10_to_100) as monthly_tx_count_10_to_100,
-    sum(tx_count_100_to_1k) as monthly_tx_count_100_to_1k,
-    sum(tx_count_1k_to_10k) as monthly_tx_count_1k_to_10k,
-    sum(tx_count_gte_10k) as monthly_tx_count_gte_10k,
-    
-    sum(volume_lt_01) as monthly_volume_lt_01,
-    sum(volume_01_to_1) as monthly_volume_01_to_1,
-    sum(volume_1_to_10) as monthly_volume_1_to_10,
-    sum(volume_10_to_100) as monthly_volume_10_to_100,
-    sum(volume_100_to_1k) as monthly_volume_100_to_1k,
-    sum(volume_1k_to_10k) as monthly_volume_1k_to_10k,
-    sum(volume_gte_10k) as monthly_volume_gte_10k,
-    
-    -- Block information
-    min(start_block) as monthly_start_block,
-    max(end_block) as monthly_end_block
-    
-FROM balance_transfers_daily_mv
-GROUP BY month_start, asset
+    max_transaction_amount as monthly_max_transaction_amount,
+    active_addresses as monthly_active_addresses,
+    tx_count_lt_01 as monthly_tx_count_lt_01,
+    tx_count_01_to_1 as monthly_tx_count_01_to_1,
+    tx_count_1_to_10 as monthly_tx_count_1_to_10,
+    tx_count_10_to_100 as monthly_tx_count_10_to_100,
+    tx_count_100_to_1k as monthly_tx_count_100_to_1k,
+    tx_count_1k_to_10k as monthly_tx_count_1k_to_10k,
+    tx_count_gte_10k as monthly_tx_count_gte_10k,
+    volume_lt_01 as monthly_volume_lt_01,
+    volume_01_to_1 as monthly_volume_01_to_1,
+    volume_1_to_10 as monthly_volume_1_to_10,
+    volume_10_to_100 as monthly_volume_10_to_100,
+    volume_100_to_1k as monthly_volume_100_to_1k,
+    volume_1k_to_10k as monthly_volume_1k_to_10k,
+    volume_gte_10k as monthly_volume_gte_10k,
+    start_block as monthly_start_block,
+    end_block as monthly_end_block
+FROM monthly_volume_aggregates
 ORDER BY month_start DESC, asset;
 
 -- =============================================================================
@@ -941,7 +954,6 @@ SELECT
         ) * 0.5 THEN 'Drop'
         ELSE 'Normal'
     END as volume_trend
-    
 FROM balance_transfers_volume_series_mv
 ORDER BY period_start DESC, asset;
 
@@ -950,55 +962,103 @@ ORDER BY period_start DESC, asset;
 -- =============================================================================
 
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_quantiles_view AS
+WITH daily_metrics AS (
+    SELECT
+        toDate(period_start) as date,
+        asset,
+        total_volume,
+        transaction_count,
+        network_density,
+        avg_fee,
+        max_fee
+    FROM balance_transfers_volume_series_mv
+),
+daily_quantiles AS (
+    SELECT
+        date,
+        asset,
+        quantile(0.10)(total_volume) as q10_volume,
+        quantile(0.25)(total_volume) as q25_volume,
+        quantile(0.50)(total_volume) as median_volume,
+        quantile(0.75)(total_volume) as q75_volume,
+        quantile(0.90)(total_volume) as q90_volume,
+        quantile(0.95)(total_volume) as q95_volume,
+        quantile(0.99)(total_volume) as q99_volume,
+        quantile(0.05)(total_volume) as q05_volume,
+        quantile(0.10)(transaction_count) as q10_tx_count,
+        quantile(0.25)(transaction_count) as q25_tx_count,
+        quantile(0.50)(transaction_count) as median_tx_count,
+        quantile(0.75)(transaction_count) as q75_tx_count,
+        quantile(0.90)(transaction_count) as q90_tx_count,
+        quantile(0.99)(transaction_count) as q99_tx_count,
+        max(total_volume) as max_volume,
+        min(total_volume) as min_volume,
+        stddevPop(total_volume) as volume_std_dev,
+        varPop(total_volume) as volume_variance,
+        count() as periods_in_day,
+        sum(total_volume) as daily_total_volume,
+        avg(transaction_count) as avg_period_tx_count,
+        stddevPop(transaction_count) as tx_count_std_dev,
+        min(network_density) as min_network_density,
+        max(network_density) as max_network_density,
+        avg(network_density) as avg_network_density,
+        quantile(0.50)(avg_fee) as median_avg_fee,
+        quantile(0.90)(max_fee) as q90_max_fee
+    FROM daily_metrics
+    GROUP BY date, asset
+),
+daily_with_outliers AS (
+    SELECT
+        dq.*,
+        countIf(dm.total_volume > dq.q95_volume) as high_volume_periods,
+        countIf(dm.total_volume < dq.q05_volume) as low_volume_periods
+    FROM daily_quantiles dq
+    CROSS JOIN daily_metrics dm
+    WHERE dq.date = dm.date AND dq.asset = dm.asset
+    GROUP BY
+        dq.date, dq.asset, dq.q10_volume, dq.q25_volume, dq.median_volume,
+        dq.q75_volume, dq.q90_volume, dq.q95_volume, dq.q99_volume, dq.q05_volume,
+        dq.q10_tx_count, dq.q25_tx_count, dq.median_tx_count, dq.q75_tx_count,
+        dq.q90_tx_count, dq.q99_tx_count, dq.max_volume, dq.min_volume,
+        dq.volume_std_dev, dq.volume_variance, dq.periods_in_day, dq.daily_total_volume,
+        dq.avg_period_tx_count, dq.tx_count_std_dev, dq.min_network_density,
+        dq.max_network_density, dq.avg_network_density, dq.median_avg_fee, dq.q90_max_fee
+)
 SELECT
-    toDate(period_start) as date,
+    date,
     asset,
-    
-    -- Volume quantiles
-    quantile(0.10)(total_volume) as q10_volume,
-    quantile(0.25)(total_volume) as q25_volume,
-    quantile(0.50)(total_volume) as median_volume,
-    quantile(0.75)(total_volume) as q75_volume,
-    quantile(0.90)(total_volume) as q90_volume,
-    quantile(0.99)(total_volume) as q99_volume,
-    
-    -- Transaction count quantiles
-    quantile(0.10)(transaction_count) as q10_tx_count,
-    quantile(0.25)(transaction_count) as q25_tx_count,
-    quantile(0.50)(transaction_count) as median_tx_count,
-    quantile(0.75)(transaction_count) as q75_tx_count,
-    quantile(0.90)(transaction_count) as q90_tx_count,
-    quantile(0.99)(transaction_count) as q99_tx_count,
-    
-    -- Distribution metrics
-    max(total_volume) - min(total_volume) as volume_range,
-    stddevPop(total_volume) as volume_std_dev,
-    varPop(total_volume) as volume_variance,
-    
-    -- Outlier detection
-    count() as periods_in_day,
-    countIf(total_volume > quantile(0.95)(total_volume)) as high_volume_periods,
-    countIf(total_volume < quantile(0.05)(total_volume)) as low_volume_periods,
-    
-    -- Concentration metrics
-    sum(total_volume) as daily_total_volume,
-    max(total_volume) / sum(total_volume) as max_volume_concentration,
-    
-    -- Period statistics
-    avg(transaction_count) as avg_period_tx_count,
-    stddevPop(transaction_count) as tx_count_std_dev,
-    
-    -- Network density distribution
-    min(network_density) as min_network_density,
-    max(network_density) as max_network_density,
-    avg(network_density) as avg_network_density,
-    
-    -- Fee distribution
-    quantile(0.50)(avg_fee) as median_avg_fee,
-    quantile(0.90)(max_fee) as q90_max_fee
-    
-FROM balance_transfers_volume_series_mv
-GROUP BY date, asset
+    q10_volume,
+    q25_volume,
+    median_volume,
+    q75_volume,
+    q90_volume,
+    q99_volume,
+    q10_tx_count,
+    q25_tx_count,
+    median_tx_count,
+    q75_tx_count,
+    q90_tx_count,
+    q99_tx_count,
+    max_volume - min_volume as volume_range,
+    volume_std_dev,
+    volume_variance,
+    periods_in_day,
+    high_volume_periods,
+    low_volume_periods,
+    daily_total_volume,
+    CASE
+        WHEN daily_total_volume > 0
+        THEN max_volume / daily_total_volume
+        ELSE 0
+    END as max_volume_concentration,
+    avg_period_tx_count,
+    tx_count_std_dev,
+    min_network_density,
+    max_network_density,
+    avg_network_density,
+    median_avg_fee,
+    q90_max_fee
+FROM daily_with_outliers
 ORDER BY date DESC, asset;
 
 -- =============================================================================
@@ -1009,6 +1069,6 @@ ORDER BY date DESC, asset;
 -- - unique_receivers (not max_unique_receivers)
 -- - avg_transaction_amount (not avg_transfer_amount)
 -- - median_transaction_amount (not median_transfer_amount)
--- - Network density calculation standardized via calculateNetworkDensity() function
--- - All histogram calculations use getAmountBin() function
--- - Risk scoring uses calculateRiskScore() function
+-- - Network density calculation standardized with inline logic
+-- - All histogram calculations use consistent inline bin definitions
+-- - Risk scoring uses consistent inline calculation logic
