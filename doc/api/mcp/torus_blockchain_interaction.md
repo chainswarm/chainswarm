@@ -4,13 +4,13 @@ This guide provides detailed instructions on how to interact with the Torus bloc
 
 ## MCP Server Configuration Details
 
-The MCP server configuration connects Claude to the Torus blockchain services through the `mcp-proxy.exe` executable. Here's a breakdown of the configuration:
+The MCP server configuration connects Claude to the Torus blockchain services through the `mcp-proxy` Python package. Here's a breakdown of the configuration:
 
 ```json
 {
   "mcpServers": {
     "torus-chainswarm": {
-      "command": "C:\\Users\\{user_name}\\.local\\bin\\mcp-proxy.exe",
+      "command": "mcp-proxy",
       "args": [
         "https://torus.chainswarm.ai/mcp/sse"
       ]
@@ -20,7 +20,7 @@ The MCP server configuration connects Claude to the Torus blockchain services th
 ```
 
 - `torus-chainswarm`: The identifier for the MCP server
-- `command`: Path to the `mcp-proxy.exe` executable
+- `command`: The command to run the mcp-proxy executable (installed via pip)
 - `args`: Arguments passed to the executable, including the Torus blockchain endpoint URL
 
 ## Getting Started with Claude and Torus

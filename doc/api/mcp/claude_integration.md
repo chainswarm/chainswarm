@@ -8,18 +8,18 @@ The Model Context Protocol (MCP) enables AI assistants like Claude to access ext
 
 ## Installation Steps
 
-### 1. Install mcp-proxy.exe
+### 1. Install mcp-proxy
 
-The `mcp-proxy.exe` executable acts as a bridge between Claude and the Torus blockchain services.
+The `mcp-proxy` Python package acts as a bridge between Claude and the Torus blockchain services.
 
-1. Download the latest version of `mcp-proxy.exe`:
-   - You can download it from the official repository or use a package manager
-   - The executable should be placed in your local bin directory: `C:\Users\{user_name}\.local\bin\`
-   - If the `.local\bin` directory doesn't exist, create it first
+1. Install the package using pip:
+   ```powershell
+   pip install git+https://github.com/sparfenyuk/mcp-proxy.git
+   ```
 
 2. Verify the installation:
    ```powershell
-   & "C:\Users\$env:USERNAME\.local\bin\mcp-proxy.exe" --version
+   mcp-proxy --version
    ```
 
 ### 2. Configure Claude Desktop
@@ -29,13 +29,13 @@ To enable Claude to use the MCP server, you need to add the server configuration
 1. Open Claude desktop application
 2. Navigate to Settings > Advanced Settings
 3. Find the "MCP Servers" section
-4. Add the following configuration (replace `{user_name}` with your Windows username):
+4. Add the following configuration:
 
 ```json
 {
   "mcpServers": {
     "torus-chainswarm": {
-      "command": "C:\\Users\\{user_name}\\.local\\bin\\mcp-proxy.exe",
+      "command": "mcp-proxy",
       "args": [
         "https://torus.chainswarm.ai/mcp/sse"
       ]
@@ -45,6 +45,8 @@ To enable Claude to use the MCP server, you need to add the server configuration
 ```
 
 5. Save the settings and restart Claude desktop
+
+> **Note**: If the `mcp-proxy` command is not found, you may need to use the full path to the executable. You can find the location by running `where mcp-proxy` in PowerShell.
 
 ## Using the MCP Server with Claude
 
