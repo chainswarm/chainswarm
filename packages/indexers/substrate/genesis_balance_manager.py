@@ -1,6 +1,6 @@
 """
 Unified Genesis Balance Manager with network-specific strategies.
-Handles genesis balance import for both money_flow and balance_tracking modules.
+Handles genesis balance import for both money_flow and balance_series modules.
 """
 
 import os
@@ -147,7 +147,7 @@ class GenesisBalanceManager:
         
         Args:
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
-            module_type: Module type ('money_flow' or 'balance_tracking')
+            module_type: Module type ('money_flow' or 'balance_series')
         """
         self.network = network
         self.module_type = module_type
@@ -157,8 +157,8 @@ class GenesisBalanceManager:
             raise ValueError(f"Unsupported network '{network}'. Supported networks: {list(self.NETWORK_STRATEGIES.keys())}")
         
         # Validate module type
-        if module_type not in ['money_flow', 'balance_tracking']:
-            raise ValueError(f"Unsupported module type '{module_type}'. Supported types: ['money_flow', 'balance_tracking']")
+        if module_type not in ['money_flow', 'balance_series']:
+            raise ValueError(f"Unsupported module type '{module_type}'. Supported types: ['money_flow', 'balance_series']")
         
         # Create strategy instance
         strategy_class = self.NETWORK_STRATEGIES[network]
@@ -183,13 +183,13 @@ class GenesisBalanceManager:
         # Convert to int for money flow module, preserve asset
         return [(address, int(amount), asset) for address, amount, asset in balances]
     
-    def load_genesis_balances_for_balance_tracking(self) -> List[Tuple[str, Decimal, str]]:
-        """Load genesis balances formatted for balance tracking module"""
-        if self.module_type != 'balance_tracking':
-            raise RuntimeError(f"Cannot load balance tracking balances for module type '{self.module_type}'")
+    def load_genesis_balances_for_balance_series(self) -> List[Tuple[str, Decimal, str]]:
+        """Load genesis balances formatted for balance series module"""
+        if self.module_type != 'balance_series':
+            raise RuntimeError(f"Cannot load balance series balances for module type '{self.module_type}'")
         
         balances = self.strategy.load_genesis_balances()
-        # Convert to Decimal for balance tracking module, preserve asset
+        # Convert to Decimal for balance series module, preserve asset
         return [(address, Decimal(str(amount)), asset) for address, amount, asset in balances]
     
     def get_supported_networks(self) -> List[str]:
@@ -218,9 +218,9 @@ def create_money_flow_manager(network: str) -> GenesisBalanceManager:
     return GenesisBalanceManager(network, 'money_flow')
 
 
-def create_balance_tracking_manager(network: str) -> GenesisBalanceManager:
-    """Create a genesis balance manager for balance tracking module"""
-    return GenesisBalanceManager(network, 'balance_tracking')
+def create_balance_series_manager(network: str) -> GenesisBalanceManager:
+    """Create a genesis balance manager for balance series module"""
+    return GenesisBalanceManager(network, 'balance_series')
 
 
 def get_networks_with_genesis_balances() -> List[str]:

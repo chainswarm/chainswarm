@@ -57,7 +57,6 @@ class BalanceTransfersTool:
             
             # Analysis views
             "balance_transfers_volume_trends_view",
-            "balance_transfers_volume_quantiles_view",
             
             # Context tables
             "known_addresses",
@@ -215,9 +214,6 @@ class BalanceTransfersTool:
             # Add descriptions for analysis views
             if "balance_transfers_volume_trends_view" in schema:
                 schema["balance_transfers_volume_trends_view"]["description"] = "Volume trends with rolling averages (7-period and 30-period) for trend analysis"
-                
-            if "balance_transfers_volume_quantiles_view" in schema:
-                schema["balance_transfers_volume_quantiles_view"]["description"] = "Volume distribution analysis with quantiles (10th, 25th, 50th, 75th, 90th, 99th percentiles)"
                 
             # Add descriptions for context tables
             if "known_addresses" in schema:

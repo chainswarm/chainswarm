@@ -6,7 +6,7 @@ from loguru import logger
 from pydantic import Field
 from fastmcp import FastMCP, Context
 from packages.api.routers import get_memgraph_driver, get_neo4j_driver
-from packages.api.tools.balance_tracking import BalanceTrackingTool
+from packages.api.tools.balance_series import BalanceSeriesAnalyticsTool
 from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
@@ -218,8 +218,8 @@ async def get_instructions():
     similarity_search_tool = SimilaritySearchTool(memgraph_driver)
     similarity_schema = similarity_search_tool.schema()
 
-    balance_tracking_tool = BalanceTrackingTool(get_clickhouse_connection_string(network))
-    balance_schema = await balance_tracking_tool.schema()
+    balance_series_tool = BalanceSeriesAnalyticsTool(get_clickhouse_connection_string(network))
+    balance_series_schema = await balance_series_tool.schema()
     
     balance_transfers_tool = BalanceTransfersTool(get_clickhouse_connection_string(network))
     balance_transfers_schema = await balance_transfers_tool.schema()
@@ -302,10 +302,10 @@ ORDER BY community ASC
 ### 📊 Balance Series Analytics
 
 **Balance Series Query**
-- Tool: `balance_tracking_query`
+- Tool: `balance_series_query`
 - Purpose: Analyze balance snapshots over time with fixed 4-hour intervals
 - **Database**: ClickHouse
-- **Schema**: {balance_schema}
+- **Schema**: {balance_series_schema}
 
 **Core Table**:
 - `balance_series`: Stores balance snapshots at fixed 4-hour intervals with the following key fields:
@@ -410,7 +410,6 @@ WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
 
 4. **Analysis Views**:
    - `balance_transfers_volume_trends_view`: Calculates rolling averages for trend analysis
-   - `balance_transfers_volume_quantiles_view`: Provides distribution analysis for transaction volumes
 
 **Transaction Size Histogram Bins**:
 Balance transfers uses standardized bins for consistent analysis across different assets:
@@ -715,30 +714,30 @@ async def execute_similarity_search_query(
 
 @session_rate_limit
 @mcp.tool(
-    name="balance_tracking_query",
-    description="Execute a balance tracking related query.",
-    tags={"balance tracking", "balance changes", "balance changes delta", "balances",
+    name="balance_series_query",
+    description="Execute a balance series related query.",
+    tags={"balance series", "balance changes", "balance changes delta", "balances",
           "known addresses", "assets"},
     annotations={
-        "title": "Executes Clickhouse dialect SQL query against blockchain balance tracking database",
+        "title": "Executes Clickhouse dialect SQL query against blockchain balance series database",
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False
     }
 )
-async def execute_balance_tracking_query(query: Annotated[str, Field(
-    description="The Clickhouse dialect SQL query to execute against balance tracking tables/views.")]) -> dict:
+async def execute_balance_series_query(query: Annotated[str, Field(
+    description="The Clickhouse dialect SQL query to execute against balance series tables/views.")]) -> dict:
     """
-    Execute a balance tracking query on the specified blockchain network.
+    Execute a balance series query on the specified blockchain network.
 
     Args:
-        query (str): The SQL query to execute against balance tracking tables/views.
+        query (str): The SQL query to execute against balance series tables/views.
 
     Returns:
-        dict: The result of the balance tracking query.
+        dict: The result of the balance series query.
     """
-    balance_tracking_service = BalanceTrackingTool(get_clickhouse_connection_string(network))
-    result = await balance_tracking_service.balance_tracking_query(query)
+    balance_series_service = BalanceSeriesAnalyticsTool(get_clickhouse_connection_string(network))
+    result = await balance_series_service.balance_series_query(query)
     return result
 
 

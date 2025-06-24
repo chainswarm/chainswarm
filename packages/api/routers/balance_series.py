@@ -210,3 +210,54 @@ async def get_balance_aggregations(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(
+    "/{network}/balance-series/volume-series",
+    summary="Get Balance Volume Series",
+    description=(
+        "Retrieves network-wide balance activity volume metrics over time.\n\n"
+        "This endpoint provides aggregated balance activity data showing the volume of balance changes "
+        "across all addresses for each time period. It includes metrics like active addresses count, "
+        "total balance change volumes, and breakdowns by balance type (free, reserved, staked). "
+        "Results are grouped by time periods and assets, useful for analyzing network-wide balance activity trends."
+    ),
+    response_description="Balance volume series with pagination",
+    responses={
+        200: {"description": "Balance volume series retrieved successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_balance_volume_series(
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        page: int = Query(1, description="Page number for pagination", ge=1),
+        page_size: int = Query(20, description="Number of volume series records per page", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        start_timestamp: Optional[int] = Query(
+            None,
+            description="Start timestamp in milliseconds (Unix timestamp)",
+            example=1640995200000
+        ),
+        end_timestamp: Optional[int] = Query(
+            None,
+            description="End timestamp in milliseconds (Unix timestamp)",
+            example=1641081600000
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    try:
+        balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
+        result = balance_service.get_balance_volume_series(
+            page, page_size, assets, start_timestamp, end_timestamp
+        )
+        balance_service.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

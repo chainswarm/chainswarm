@@ -459,3 +459,90 @@ class BalanceSeriesService:
             "items": aggregations,
             "total_items": len(aggregations)
         }
+
+    def get_balance_volume_series(self, page: int = 1, page_size: int = 20, assets: List[str] = None,
+                                start_timestamp: Optional[int] = None, end_timestamp: Optional[int] = None):
+        """
+        Returns balance volume series showing network-wide balance activity metrics over time
+        
+        Args:
+            page: Page number for pagination
+            page_size: Number of items per page
+            assets: List of assets to filter by
+            start_timestamp: Optional start timestamp in milliseconds
+            end_timestamp: Optional end timestamp in milliseconds
+            
+        Returns:
+            Dictionary with paginated balance volume series data
+        """
+        # Build asset filter
+        asset_filter = ""
+        if assets and assets != ["all"]:
+            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
+            asset_filter = f" AND ({asset_conditions})"
+        
+        # Build timestamp filter
+        timestamp_filter = ""
+        if start_timestamp:
+            timestamp_filter += f" AND period_start_timestamp >= {start_timestamp}"
+        if end_timestamp:
+            timestamp_filter += f" AND period_end_timestamp <= {end_timestamp}"
+
+        # Count query for pagination
+        count_query = f"""
+                      SELECT COUNT(DISTINCT period_start_timestamp, asset) AS total
+                      FROM balance_series FINAL
+                      WHERE 1=1{asset_filter}{timestamp_filter}
+                      """
+        
+        # Main data query - aggregate balance activity by period and asset
+        data_query = f"""
+                     SELECT
+                         period_start_timestamp,
+                         period_end_timestamp,
+                         asset,
+                         COUNT(DISTINCT address) as active_addresses_count,
+                         SUM(ABS(total_balance_change)) as total_balance_changes,
+                         SUM(ABS(free_balance_change)) as total_free_balance_changes,
+                         SUM(ABS(reserved_balance_change)) as total_reserved_balance_changes,
+                         SUM(ABS(staked_balance_change)) as total_staked_balance_changes
+                     FROM (SELECT * FROM balance_series FINAL) AS bs
+                     WHERE 1=1{asset_filter}{timestamp_filter}
+                     GROUP BY period_start_timestamp, period_end_timestamp, asset
+                     ORDER BY period_start_timestamp DESC, asset
+                     LIMIT {{limit:Int}} OFFSET {{offset:Int}}
+                     """
+
+        count_result = self.client.query(count_query).result_rows
+        total_count = count_result[0][0] if count_result else 0
+
+        # Calculate pagination parameters
+        offset = (page - 1) * page_size
+
+        # Query to fetch paginated balance volume series data
+        data_params = {'limit': page_size, 'offset': offset}
+        query_result = self.client.query(data_query, data_params)
+        rows = query_result.result_rows
+
+        # Define the column names in the order they appear in the SELECT clause
+        columns = [
+            "period_start_timestamp",
+            "period_end_timestamp",
+            "asset",
+            "active_addresses_count",
+            "total_balance_changes",
+            "total_free_balance_changes",
+            "total_reserved_balance_changes",
+            "total_staked_balance_changes"
+        ]
+
+        # Map each row into a dictionary
+        volume_series = [dict(zip(columns, row)) for row in rows]
+
+        # Use the standardized format_paginated_response utility function
+        return format_paginated_response(
+            items=volume_series,
+            page=page,
+            page_size=page_size,
+            total_items=total_count
+        )

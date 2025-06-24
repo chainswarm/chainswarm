@@ -56,3 +56,273 @@ async def get_address_transactions(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(
+    "/{network}/balance-transfers/volume-series",
+    summary="Get Balance Transfers Volume Series",
+    description=(
+        "Retrieves balance transfers volume series data providing network-wide transfer activity metrics.\n\n"
+        "This endpoint provides paginated balance transfers volume series data showing network activity "
+        "metrics like transaction counts per period, transfer volumes per period, "
+        "active addresses per period, and other network activity indicators. "
+        "Supports different time aggregations (4-hour, daily, weekly, monthly) and filtering by assets and time range."
+    ),
+    response_description="Balance transfers volume series data with pagination",
+    responses={
+        200: {"description": "Balance transfers volume series retrieved successfully"},
+        400: {"description": "Invalid period type specified"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_balance_transfers_volume_series(
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        page: int = Query(1, description="Page number for pagination", ge=1),
+        page_size: int = Query(20, description="Number of volume series records per page", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        start_timestamp: Optional[int] = Query(
+            None,
+            description="Start timestamp in milliseconds (Unix timestamp)",
+            example=1640995200000
+        ),
+        end_timestamp: Optional[int] = Query(
+            None,
+            description="End timestamp in milliseconds (Unix timestamp)",
+            example=1641081600000
+        ),
+        period_type: str = Query(
+            "4hour",
+            description="Period type for aggregation",
+            regex="^(4hour|daily|weekly|monthly)$",
+            example="4hour"
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    # Validate period_type
+    if period_type not in ["4hour", "daily", "weekly", "monthly"]:
+        raise HTTPException(status_code=400, detail="Period type must be '4hour', 'daily', 'weekly', or 'monthly'")
+
+    try:
+        balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
+        result = balance_service.get_balance_volume_series(
+            page, page_size, assets, start_timestamp, end_timestamp, period_type
+        )
+        balance_service.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(
+    "/{network}/balance-transfers/network-analytics/{period}",
+    summary="Get Network Analytics",
+    description=(
+        "Retrieves network analytics for daily, weekly, or monthly periods.\n\n"
+        "This endpoint provides network-wide transfer analytics including transaction counts, "
+        "volumes, participant metrics, fee statistics, and histogram distributions."
+    ),
+    response_description="Network analytics data with pagination",
+    responses={
+        200: {"description": "Network analytics retrieved successfully"},
+        400: {"description": "Invalid period specified"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_network_analytics(
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        period: str = Path(..., description="Analytics period", regex="^(daily|weekly|monthly)$", example="daily"),
+        page: int = Query(1, description="Page number for pagination", ge=1),
+        page_size: int = Query(20, description="Number of analytics records per page", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        start_date: Optional[str] = Query(
+            None,
+            description="Start date in YYYY-MM-DD format",
+            example="2024-01-01"
+        ),
+        end_date: Optional[str] = Query(
+            None,
+            description="End date in YYYY-MM-DD format",
+            example="2024-01-31"
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    # Validate period
+    if period not in ["daily", "weekly", "monthly"]:
+        raise HTTPException(status_code=400, detail="Period must be 'daily', 'weekly', or 'monthly'")
+
+    try:
+        balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
+        result = balance_service.get_network_analytics(
+            period, page, page_size, assets, start_date, end_date
+        )
+        balance_service.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(
+    "/{network}/balance-transfers/address-analytics",
+    summary="Get Address Analytics",
+    description=(
+        "Retrieves comprehensive address analytics with behavioral classification.\n\n"
+        "This endpoint provides detailed analytics for addresses including transaction patterns, "
+        "volume metrics, behavioral classification, and temporal activity patterns."
+    ),
+    response_description="Address analytics data with pagination",
+    responses={
+        200: {"description": "Address analytics retrieved successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_address_analytics(
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        page: int = Query(1, description="Page number for pagination", ge=1),
+        page_size: int = Query(20, description="Number of address analytics records per page", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        address_type: Optional[str] = Query(
+            None,
+            description="Filter by address type classification",
+            example="Exchange"
+        ),
+        min_volume: Optional[float] = Query(
+            None,
+            description="Minimum total volume filter",
+            example=1000.0
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    try:
+        balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
+        result = balance_service.get_address_analytics(
+            page, page_size, assets, address_type, min_volume
+        )
+        balance_service.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(
+    "/{network}/balance-transfers/volume-aggregations/{period}",
+    summary="Get Volume Aggregations",
+    description=(
+        "Retrieves volume aggregations for daily, weekly, or monthly periods.\n\n"
+        "This endpoint provides aggregated volume data with transaction counts, "
+        "histogram distributions, and statistical measures."
+    ),
+    response_description="Volume aggregations data with pagination",
+    responses={
+        200: {"description": "Volume aggregations retrieved successfully"},
+        400: {"description": "Invalid period specified"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_volume_aggregations(
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        period: str = Path(..., description="Aggregation period", regex="^(daily|weekly|monthly)$", example="daily"),
+        page: int = Query(1, description="Page number for pagination", ge=1),
+        page_size: int = Query(20, description="Number of aggregation records per page", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        start_date: Optional[str] = Query(
+            None,
+            description="Start date in YYYY-MM-DD format",
+            example="2024-01-01"
+        ),
+        end_date: Optional[str] = Query(
+            None,
+            description="End date in YYYY-MM-DD format",
+            example="2024-01-31"
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    # Validate period
+    if period not in ["daily", "weekly", "monthly"]:
+        raise HTTPException(status_code=400, detail="Period must be 'daily', 'weekly', or 'monthly'")
+
+    try:
+        balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
+        result = balance_service.get_volume_aggregations(
+            period, page, page_size, assets, start_date, end_date
+        )
+        balance_service.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(
+    "/{network}/balance-transfers/volume-trends",
+    summary="Get Volume Trends",
+    description=(
+        "Retrieves volume trends with rolling averages for trend analysis.\n\n"
+        "This endpoint provides volume trends data with 7-period and 30-period "
+        "rolling averages for identifying patterns and trends in network activity."
+    ),
+    response_description="Volume trends data with pagination",
+    responses={
+        200: {"description": "Volume trends retrieved successfully"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_volume_trends(
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        page: int = Query(1, description="Page number for pagination", ge=1),
+        page_size: int = Query(20, description="Number of trend records per page", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        start_timestamp: Optional[int] = Query(
+            None,
+            description="Start timestamp in milliseconds (Unix timestamp)",
+            example=1640995200000
+        ),
+        end_timestamp: Optional[int] = Query(
+            None,
+            description="End timestamp in milliseconds (Unix timestamp)",
+            example=1641081600000
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    try:
+        balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
+        result = balance_service.get_volume_trends(
+            page, page_size, assets, start_timestamp, end_timestamp
+        )
+        balance_service.close()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
