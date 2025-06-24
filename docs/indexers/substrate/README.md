@@ -77,18 +77,18 @@ The Substrate Indexers form an integrated ecosystem where data flows from raw bl
 ## Data Flow Between Indexers
 
 ```
-┌─────────────────┐      ┌─────────────────┐
-│  Substrate Node │      │ Known Addresses │
-└────────┬────────┘      │    Service      │
-         │               └────────┬────────┘
-         │ Raw Blockchain Data    │
-         ▼                        │
-┌─────────────────┐               │
-│  Block Stream   │               │
-│    Indexer      │               │
-└────────┬────────┘               │
-         │                        │
-         ├────────────┬───────────┐
+┌─────────────────┐      
+│  Substrate Node │      
+└────────┬────────┘      
+         │               
+         │ Raw Blockchain Data    
+         ▼                        
+┌─────────────────┐               
+│  Block Stream   │               
+│    Indexer      │               
+└────────┬────────┘               
+         │                        
+         ├────────────┬────────────┐
          │            │            │
          │            │            │
          ▼            ▼            ▼
@@ -99,9 +99,9 @@ The Substrate Indexers form an integrated ecosystem where data flows from raw bl
          │                    │                   │
          │                    │                   │
          ▼                    ▼                   ▼
-┌──────────────────────────────────────────────────────────┐
-│                       API Layer                          │
-└─────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐           ┌──────────────────────────┐  
+│                       API Layer                          │   --------   Known Addresses Service
+└─────────────────────────┬────────────────────────────────┘           └──────────────────────────┘
                           │  ▲
                           │  │
                           │  └───────────────────────────┐
