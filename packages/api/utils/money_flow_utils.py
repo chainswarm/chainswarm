@@ -1,6 +1,5 @@
 from typing import List, Dict, Any
-
-from packages.api.services.balance_tracking_service import BalanceTrackingService
+from packages.api.services.balance_series_service import BalanceSeriesService
 
 
 def add_searched_badge_to_nodes(result: List[Dict[str, Any]], searched_addresses: List[str]) -> List[Dict[str, Any]]:
@@ -30,7 +29,7 @@ def add_searched_badge_to_nodes(result: List[Dict[str, Any]], searched_addresses
     return result
 
 
-def enrich_nodes_with_balances(balance_service: BalanceTrackingService, result: List[Dict[str, Any]], network: str, assets: List[str] = None) -> List[Dict[str, Any]]:
+def enrich_nodes_with_balances(balance_service: BalanceSeriesService, result: List[Dict[str, Any]], network: str, assets: List[str] = None) -> List[Dict[str, Any]]:
     """
     Enrich nodes with balance information by querying the latest balances.
     
@@ -66,7 +65,7 @@ def enrich_nodes_with_balances(balance_service: BalanceTrackingService, result: 
 
     # Query balances for each batch and add to nodes
     for batch in address_batches:
-        balances = balance_service.get_latest_balances_for_addresses(batch, assets)
+        balances = balance_service.get_current_balances(batch, assets)
         
         # First ensure all nodes have a balance property initialized to 0
         for address in addresses:

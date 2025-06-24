@@ -1,9 +1,6 @@
-from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, Query, Path, HTTPException, Body
-
-from packages.api.services.balance_tracking_service import BalanceTrackingService
+from typing import Optional, List
+from fastapi import APIRouter, Query, Path, HTTPException
 from packages.api.services.balance_transfers_service import BalanceTransferService
-from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.indexers.base import get_clickhouse_connection_string
 from packages.indexers.substrate import get_network_asset
 
@@ -59,28 +56,3 @@ async def get_address_transactions(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@router.get(
-    "/{network}/balance-transfers/schema",
-    summary="Get Balance Transfers Schema",
-    description=(
-        "Retrieve the schema information for all balance transfers tables. This endpoint "
-        "is particularly useful for LLMs (Large Language Models) to understand the structure "
-        "of the balance tracking database for generating queries."
-    ),
-    response_description="Schema information for balance tracking tables",
-    responses={
-        200: {"description": "Schema retrieved successfully"},
-        500: {"description": "Internal server error"}
-    },
-    tags=["balance-transfers", "mcp"]
-)
-async def get_balance_tracking_schema(
-    network: str = Path(..., description="The blockchain network identifier", example="torus")
-):
-    try:
-        balance_transfers_tool = BalanceTransfersTool(get_clickhouse_connection_string(network))
-        schema = await balance_transfers_tool.schema()
-        return schema
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving schema: {str(e)}")

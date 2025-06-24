@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from packages.api.routers import money_flow, balance_tracking, known_addresses, similarity_search, balance_transfers
+from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers
 from packages.indexers.base import setup_logger
 from packages.api.middleware.rate_limiting import rate_limit_middleware
 
@@ -27,10 +27,10 @@ app.add_middleware(
 app.add_middleware(BaseHTTPMiddleware, dispatch=rate_limit_middleware)
 
 app.include_router(money_flow.router)
-app.include_router(balance_tracking.router)
+app.include_router(similarity_search.router)
+app.include_router(balance_series.router)
 app.include_router(balance_transfers.router)
 app.include_router(known_addresses.router)
-app.include_router(similarity_search.router)
 
 
 @app.get("/health")

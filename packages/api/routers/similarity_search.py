@@ -1,6 +1,5 @@
-from typing import Optional, List, Dict, Union
+from typing import Optional
 from fastapi import APIRouter, Query, Path, HTTPException, Body
-from neo4j import GraphDatabase
 from enum import Enum
 from pydantic import BaseModel, Field
 

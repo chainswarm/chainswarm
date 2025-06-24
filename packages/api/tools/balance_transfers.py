@@ -39,32 +39,28 @@ class BalanceTransfersTool:
             # Core table
             "balance_transfers",
             
-            # Basic views
-            "balance_transfers_statistics_view",
-            "balance_transfers_daily_volume_mv",
-            "available_transfer_assets_view",
+            # Volume series (4-hour intervals)
+            "balance_transfers_volume_series_mv",
             
-            # Behavior analysis views
-            "balance_transfers_address_behavior_profiles_view",
-            "balance_transfers_address_classification_view",
-            "balance_transfers_suspicious_activity_view",
+            # Network analytics views
+            "balance_transfers_network_daily_view",
+            "balance_transfers_network_weekly_view",
+            "balance_transfers_network_monthly_view",
             
-            # Relationship analysis views
-            "balance_transfers_address_relationships_view",
-            "balance_transfers_address_activity_patterns_view",
+            # Address analytics
+            "balance_transfers_address_analytics_view",
             
-            # Network analysis views
-            "balance_transfers_network_flow_view",
-            "balance_transfers_periodic_activity_view",
-            "balance_transfers_seasonality_view",
+            # Volume aggregation views
+            "balance_transfers_volume_daily_view",
+            "balance_transfers_volume_weekly_view",
+            "balance_transfers_volume_monthly_view",
             
-            # Economic analysis views
-            "balance_transfers_velocity_view",
-            "balance_transfers_liquidity_concentration_view",
-            "balance_transfers_holding_time_view",
+            # Analysis views
+            "balance_transfers_volume_trends_view",
+            "balance_transfers_volume_quantiles_view",
             
-            # Anomaly detection views
-            "balance_transfers_basic_anomaly_view",
+            # Context tables
+            "known_addresses",
         }
 
     async def schema(self) -> Dict[str, Any]:
@@ -223,52 +219,28 @@ class BalanceTransfersTool:
             if "balance_transfers_volume_quantiles_view" in schema:
                 schema["balance_transfers_volume_quantiles_view"]["description"] = "Volume distribution analysis with quantiles (10th, 25th, 50th, 75th, 90th, 99th percentiles)"
                 
-            # Add descriptions for behavior analysis views
-            if "balance_transfers_address_behavior_profiles_view" in schema:
-                schema["balance_transfers_address_behavior_profiles_view"]["description"] = "Comprehensive behavioral analysis for each address with temporal and volume patterns"
+            # Add descriptions for context tables
+            if "known_addresses" in schema:
+                schema["known_addresses"]["description"] = "Stores known blockchain addresses with their labels and metadata for address identification"
                 
-            if "balance_transfers_address_classification_view" in schema:
-                schema["balance_transfers_address_classification_view"]["description"] = "Classifies addresses into behavioral categories (Exchange, Whale, High_Volume_Trader, etc.)"
+                # Add column descriptions for known_addresses table
+                if "network" in schema["known_addresses"]["columns"]:
+                    schema["known_addresses"]["columns"]["network"]["description"] = "Blockchain network identifier (e.g., 'bittensor', 'torus', 'polkadot')"
                 
-            if "balance_transfers_suspicious_activity_view" in schema:
-                schema["balance_transfers_suspicious_activity_view"]["description"] = "Identifies potentially suspicious activity patterns based on transaction behavior"
+                if "address" in schema["known_addresses"]["columns"]:
+                    schema["known_addresses"]["columns"]["address"]["description"] = "The blockchain address"
                 
-            # Add descriptions for relationship analysis views
-            if "balance_transfers_address_relationships_view" in schema:
-                schema["balance_transfers_address_relationships_view"]["description"] = "Tracks relationships between addresses with strength metrics and interaction patterns"
+                if "label" in schema["known_addresses"]["columns"]:
+                    schema["known_addresses"]["columns"]["label"]["description"] = "Human-readable label for the address"
                 
-            if "balance_transfers_address_activity_patterns_view" in schema:
-                schema["balance_transfers_address_activity_patterns_view"]["description"] = "Analyzes temporal and behavioral patterns for addresses"
+                if "source" in schema["known_addresses"]["columns"]:
+                    schema["known_addresses"]["columns"]["source"]["description"] = "Source of the address information (e.g., 'github', 'manual')"
                 
-            # Add descriptions for network analysis views
-            if "balance_transfers_network_flow_view" in schema:
-                schema["balance_transfers_network_flow_view"]["description"] = "High-level overview of network activity with flow metrics and connectivity indicators"
+                if "source_type" in schema["known_addresses"]["columns"]:
+                    schema["known_addresses"]["columns"]["source_type"]["description"] = "Type of source (e.g., 'external', 'internal')"
                 
-            if "balance_transfers_periodic_activity_view" in schema:
-                schema["balance_transfers_periodic_activity_view"]["description"] = "Activity patterns over weekly time periods with day-of-week analysis"
-                
-            if "balance_transfers_seasonality_view" in schema:
-                schema["balance_transfers_seasonality_view"]["description"] = "Temporal patterns in transaction activity (hour-of-day, day-of-week, month-of-year)"
-                
-            # Add descriptions for economic analysis views
-            if "balance_transfers_velocity_view" in schema:
-                schema["balance_transfers_velocity_view"]["description"] = "Measures token circulation speed (transaction volume relative to supply)"
-                
-            if "balance_transfers_liquidity_concentration_view" in schema:
-                schema["balance_transfers_liquidity_concentration_view"]["description"] = "Analyzes holding concentration with Gini coefficient and distribution metrics"
-                
-            if "balance_transfers_holding_time_view" in schema:
-                schema["balance_transfers_holding_time_view"]["description"] = "Analyzes token holding duration and turnover rates"
-                
-            # Add descriptions for anomaly detection views
-            if "balance_transfers_basic_anomaly_view" in schema:
-                schema["balance_transfers_basic_anomaly_view"]["description"] = "Detects unusual transaction patterns based on statistical outliers"
-                
-            if "balance_transfers_statistics_view" in schema:
-                schema["balance_transfers_statistics_view"]["description"] = "Basic statistics by address and asset with transaction counts and volumes"
-                
-            if "available_transfer_assets_view" in schema:
-                schema["available_transfer_assets_view"]["description"] = "Simple view listing available assets in the balance transfers data"
+                if "last_updated" in schema["known_addresses"]["columns"]:
+                    schema["known_addresses"]["columns"]["last_updated"]["description"] = "When this entry was last updated"
 
             return {
                 "name": "Balance Transfers Schema",
@@ -277,10 +249,11 @@ class BalanceTransfersTool:
                 "key_features": [
                     "Asset-agnostic design with universal histogram bins for consistent analysis",
                     "Multi-level time aggregation (4-hour, daily, weekly, monthly)",
-                    "Address behavior profiling and classification",
-                    "Network activity metrics and relationship analysis",
-                    "Economic indicators like token velocity and liquidity concentration",
-                    "Anomaly detection for suspicious activity identification"
+                    "Comprehensive address analytics with behavioral classification",
+                    "Network activity metrics and connectivity analysis",
+                    "Volume trend analysis with rolling averages",
+                    "Statistical distribution analysis with quantiles",
+                    "Known addresses integration for address identification"
                 ],
                 "transaction_size_bins": [
                     "< 0.1",
@@ -305,10 +278,11 @@ class BalanceTransfersTool:
                     "Transaction history analysis for specific addresses",
                     "Network activity monitoring and trend identification",
                     "Address behavior profiling and classification",
-                    "Relationship analysis between addresses",
-                    "Economic indicator tracking (velocity, concentration)",
-                    "Suspicious activity detection",
-                    "Temporal pattern analysis (time-of-day, day-of-week)"
+                    "Volume trend analysis with rolling averages",
+                    "Statistical distribution analysis of transaction amounts",
+                    "Multi-timeframe aggregation (4-hour, daily, weekly, monthly)",
+                    "Known address identification and labeling",
+                    "Temporal pattern analysis and network density metrics"
                 ]
             }
 

@@ -1,7 +1,8 @@
 from typing import Annotated, Optional, List
 from fastapi import APIRouter, Query, Path, HTTPException
-from packages.api.routers import get_memgraph_driver, get_neo4j_driver
-from packages.api.services.balance_tracking_service import BalanceTrackingService
+from packages.api.routers import get_memgraph_driver
+from packages.api.services.balance_series_service import BalanceSeriesService
+from packages.api.services.balance_transfers_service import BalanceTransferService
 from packages.api.services.money_flow_service import MoneyFlowService, Direction
 from packages.indexers.base import get_clickhouse_connection_string
 from packages.api.utils.money_flow_utils import add_searched_badge_to_nodes, enrich_nodes_with_balances
@@ -70,8 +71,8 @@ async def get_money_flow_by_path_shortest(
         
     result = add_searched_badge_to_nodes(result, [source_address, target_address])
     clickhouse_params = get_clickhouse_connection_string(network)
-    balance_service = BalanceTrackingService(clickhouse_params)
-    result = enrich_nodes_with_balances(balance_service, result, network, assets)
+    balance_series_service = BalanceSeriesService(clickhouse_params)
+    result = enrich_nodes_with_balances(balance_series_service, result, network, assets)
 
     return result
 
@@ -129,8 +130,8 @@ async def get_money_flow_by_path_explore_address(
     result = add_searched_badge_to_nodes(result, addresses)
 
     clickhouse_params = get_clickhouse_connection_string(network)
-    balance_service = BalanceTrackingService(clickhouse_params)
-    result = enrich_nodes_with_balances(balance_service, result, network, assets)
+    balance_series_service = BalanceSeriesService(clickhouse_params)
+    result = enrich_nodes_with_balances(balance_series_service, result, network, assets)
 
     return result
 
@@ -169,8 +170,8 @@ async def get_money_flow_by_path_explore_transaction_id(
     extrinsic_id = f"{block_height}-{un_padded_idx}"
 
     clickhouse_conn = get_clickhouse_connection_string(network)
-    balance_service = BalanceTrackingService(clickhouse_conn)
-    addresses = balance_service.get_addresses_from_transaction_id(extrinsic_id, assets)
+    balance_transfers_service = BalanceTransferService(clickhouse_conn)
+    addresses = balance_transfers_service.get_addresses_from_transaction_id(extrinsic_id, assets)
 
     memgraph_driver = get_memgraph_driver(network)
     try:
@@ -184,8 +185,8 @@ async def get_money_flow_by_path_explore_transaction_id(
     result = add_searched_badge_to_nodes(result, addresses)
 
     clickhouse_params = get_clickhouse_connection_string(network)
-    balance_service = BalanceTrackingService(clickhouse_params)
-    result = enrich_nodes_with_balances(balance_service, result, network, assets)
+    balance_series_service = BalanceSeriesService(clickhouse_params)
+    result = enrich_nodes_with_balances(balance_series_service, result, network, assets)
 
     return result
 
@@ -219,8 +220,8 @@ async def get_money_flow_by_block(
     if assets is None:
         assets = [get_network_asset(network)]
     
-    balance_service = BalanceTrackingService(get_clickhouse_connection_string(network))
-    addresses = balance_service.get_addresses_from_block_height(block_height, assets)
+    balance_transfer_service = BalanceTransferService(get_clickhouse_connection_string(network))
+    addresses = balance_transfer_service.get_addresses_from_block_height(block_height, assets)
 
     memgraph_driver = get_memgraph_driver(network)
     try:
@@ -234,33 +235,7 @@ async def get_money_flow_by_block(
 
     result = add_searched_badge_to_nodes(result, addresses)
     clickhouse_params = get_clickhouse_connection_string(network)
-    balance_service = BalanceTrackingService(clickhouse_params)
-    result = enrich_nodes_with_balances(balance_service, result, network, assets)
+    balance_series_service = BalanceSeriesService(clickhouse_params)
+    result = enrich_nodes_with_balances(balance_series_service, result, network, assets)
 
     return result
-
-@router.get(
-    "/{network}/money-flow/schema",
-    summary="Get Money Flow Schema",
-    description=(
-        "Retrieve the schema information for the money flow graph database. This endpoint "
-        "is particularly useful for LLMs (Large Language Models) to understand the structure "
-        "of the graph database for generating Cypher queries."
-    ),
-    response_description="Schema information for the money flow graph",
-    responses={
-        200: {"description": "Schema retrieved successfully"},
-        500: {"description": "Internal server error"}
-    },
-    tags=["money-flow", "mcp"]
-)
-async def get_money_flow_schema(
-    network: str = Path(..., description="The blockchain network identifier", example="torus")
-):
-    try:
-        memgraph_driver = get_memgraph_driver(network)
-        money_flow_service = MoneyFlowService(memgraph_driver)
-        schema = money_flow_service.get_money_flow_schema()
-        return schema
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving schema: {str(e)}")
