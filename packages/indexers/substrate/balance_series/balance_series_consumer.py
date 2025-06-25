@@ -151,7 +151,7 @@ class BalanceSeriesConsumer:
             block_hash = end_block['block_hash']
             block_timestamp = end_block['timestamp']
 
-            logger.info(f"Found block {block_height} (hash: {block_hash}) at timestamp {block_timestamp} for period end {period_end}")
+            logger.info(f"Found block {block_height} at timestamp {block_timestamp} for period end {period_end}")
 
             # Get all active addresses during this period
             active_addresses = self.block_stream_manager.get_blocks_by_block_timestamp_range(period_start, period_end, only_with_addresses=True)
@@ -175,7 +175,7 @@ class BalanceSeriesConsumer:
 
             # Record balance series data
             self.balance_series_indexer.record_balance_series(
-                period_start, period_end, block_height, block_hash, address_balances
+                period_start, period_end, block_height, address_balances
             )
 
             logger.success(f"Successfully processed period {period_start}-{period_end} with {len(address_balances)} addresses and block {block_height}")

@@ -14,8 +14,8 @@ def get_balance_series_tables() -> List[str]:
         "balance_series",
         "balance_series_latest_view",
         "balance_series_daily_view",
-        "balance_series_weekly_mv",
-        "balance_series_monthly_mv",
+        "balance_series_weekly_view",
+        "balance_series_monthly_view",
     ]
 
 
@@ -343,10 +343,10 @@ class BalanceSeriesService:
             table = "balance_series_daily_view"
             date_column = "date"
         elif period == "weekly":
-            table = "balance_series_weekly_mv"
+            table = "balance_series_weekly_view"
             date_column = "week_start"
         elif period == "monthly":
-            table = "balance_series_monthly_mv"
+            table = "balance_series_monthly_view"
             date_column = "month_start"
         else:
             raise ValueError("Period must be 'daily', 'weekly', or 'monthly'")

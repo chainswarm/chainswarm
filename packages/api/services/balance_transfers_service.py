@@ -12,7 +12,7 @@ def get_balance_transfers_tables() -> List[str]:
     """
     return [
         "balance_transfers",
-        "balance_transfers_daily_volume_mv",
+        "balance_transfers_daily_volume_view",
         "balance_transfers_statistics_view",
     ]
 
@@ -214,7 +214,7 @@ class BalanceTransferService:
         timestamp_filter = ""
         if period_type == "4hour":
             # Use the materialized view for 4-hour periods
-            table = "balance_transfers_volume_series_mv"
+            table = "balance_transfers_volume_series_view"
             if start_timestamp:
                 timestamp_filter += f" AND period_start >= toDateTime({start_timestamp}/1000)"
             if end_timestamp:

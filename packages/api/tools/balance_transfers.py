@@ -40,7 +40,7 @@ class BalanceTransfersTool:
             "balance_transfers",
             
             # Volume series (4-hour intervals)
-            "balance_transfers_volume_series_mv",
+            "balance_transfers_volume_series_view",
             
             # Network analytics views
             "balance_transfers_network_daily_view",
@@ -137,30 +137,30 @@ class BalanceTransfersTool:
                     schema["balance_transfers"]["columns"]["_version"]["description"] = "Version number for ReplacingMergeTree engine"
                 
             # Add descriptions for volume series materialized view
-            if "balance_transfers_volume_series_mv" in schema:
-                schema["balance_transfers_volume_series_mv"]["description"] = "Base 4-hour interval materialized view for transfer volume analysis - asset agnostic with client-defined categorization"
+            if "balance_transfers_volume_series_view" in schema:
+                schema["balance_transfers_volume_series_view"]["description"] = "Base 4-hour interval materialized view for transfer volume analysis - asset agnostic with client-defined categorization"
                 
                 # Add column descriptions for key metrics
-                if "period_start" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["period_start"]["description"] = "Start of the 4-hour period (UTC-based, aligned to midnight)"
+                if "period_start" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["period_start"]["description"] = "Start of the 4-hour period (UTC-based, aligned to midnight)"
                 
-                if "period_end" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["period_end"]["description"] = "End of the 4-hour period (UTC-based, aligned to midnight)"
+                if "period_end" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["period_end"]["description"] = "End of the 4-hour period (UTC-based, aligned to midnight)"
                 
-                if "transaction_count" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["transaction_count"]["description"] = "Number of transactions in the period"
+                if "transaction_count" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["transaction_count"]["description"] = "Number of transactions in the period"
                 
-                if "unique_senders" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["unique_senders"]["description"] = "Number of unique sender addresses in the period"
+                if "unique_senders" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["unique_senders"]["description"] = "Number of unique sender addresses in the period"
                 
-                if "unique_receivers" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["unique_receivers"]["description"] = "Number of unique recipient addresses in the period"
+                if "unique_receivers" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["unique_receivers"]["description"] = "Number of unique recipient addresses in the period"
                 
-                if "total_volume" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["total_volume"]["description"] = "Total amount transferred in the period"
+                if "total_volume" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["total_volume"]["description"] = "Total amount transferred in the period"
                 
-                if "network_density" in schema["balance_transfers_volume_series_mv"]["columns"]:
-                    schema["balance_transfers_volume_series_mv"]["columns"]["network_density"]["description"] = "Ratio of actual connections to possible connections (network connectivity metric)"
+                if "network_density" in schema["balance_transfers_volume_series_view"]["columns"]:
+                    schema["balance_transfers_volume_series_view"]["columns"]["network_density"]["description"] = "Ratio of actual connections to possible connections (network connectivity metric)"
                 
             # Add descriptions for network analytics views
             if "balance_transfers_network_daily_view" in schema:

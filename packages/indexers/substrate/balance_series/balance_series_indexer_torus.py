@@ -48,7 +48,6 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
                 genesis_balances,
                 self.network,
                 first_block_info['block_height'],
-                first_block_info['block_hash'],
                 first_block_info['timestamp']
                 )
 
@@ -58,7 +57,7 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             logger.error(f"Error initializing genesis balances for Torus network: {e}", error=e, trb=traceback.format_exc())
             raise e
     
-    def insert_genesis_balances(self, genesis_balances, network, block_height, block_hash, block_timestamp):
+    def insert_genesis_balances(self, genesis_balances, network, block_height, block_timestamp):
         """Insert genesis balances into the balance_series table for Torus network
         
         Args:
@@ -73,7 +72,6 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
 
         try:
             period_start_timestamp = block_timestamp
-            actual_block_hash = block_hash
             period_end_timestamp = period_start_timestamp + self.period_ms
             
             # Prepare data for balance_series insertion
@@ -86,11 +84,13 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
                 total_balance = free_balance + reserved_balance + staked_balance
                 
                 # For genesis balances, there are no previous balances, so changes are the same as current balances
+
+                block_version = block_height
+
                 balance_data.append((
                     period_start_timestamp,
                     period_end_timestamp,
                     block_height,
-                    actual_block_hash,
                     address,
                     self.asset,
                     free_balance,
@@ -102,7 +102,7 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
                     staked_balance,  # staked_balance_change = staked_balance for genesis
                     total_balance,  # total_balance_change = total_balance for genesis
                     Decimal(0),  # No percentage change for genesis
-                    self.version
+                    block_version
                 ))
             
             # Insert data in batches to avoid memory issues
@@ -110,7 +110,7 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             for i in range(0, len(balance_data), batch_size):
                 batch = balance_data[i:i + batch_size]
                 self.client.insert('balance_series', batch, column_names=[
-                    'period_start_timestamp', 'period_end_timestamp', 'block_height', 'block_hash',
+                    'period_start_timestamp', 'period_end_timestamp', 'block_height',
                     'address', 'asset', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'

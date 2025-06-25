@@ -46,8 +46,8 @@ class BalanceSeriesAnalyticsTool:
             "balance_series_daily_view",
             
             # Materialized views for aggregated balance series data
-            "balance_series_weekly_mv",
-            "balance_series_monthly_mv",
+            "balance_series_weekly_view",
+            "balance_series_monthly_view",
             
             # Additional context tables
             "known_addresses",
@@ -186,49 +186,49 @@ class BalanceSeriesAnalyticsTool:
                 if "daily_total_balance_change" in schema["balance_series_daily_view"]["columns"]:
                     schema["balance_series_daily_view"]["columns"]["daily_total_balance_change"]["description"] = "Cumulative change in total balance over the day"
                 
-            if "balance_series_weekly_mv" in schema:
-                schema["balance_series_weekly_mv"]["description"] = "Weekly balance statistics materialized view with end-of-week balances and weekly balance changes"
+            if "balance_series_weekly_view" in schema:
+                schema["balance_series_weekly_view"]["description"] = "Weekly balance statistics materialized view with end-of-week balances and weekly balance changes"
                 
-                # Add column descriptions for balance_series_weekly_mv
-                if "week_start" in schema["balance_series_weekly_mv"]["columns"]:
-                    schema["balance_series_weekly_mv"]["columns"]["week_start"]["description"] = "Start date of the week (Monday)"
+                # Add column descriptions for balance_series_weekly_view
+                if "week_start" in schema["balance_series_weekly_view"]["columns"]:
+                    schema["balance_series_weekly_view"]["columns"]["week_start"]["description"] = "Start date of the week (Monday)"
                 
-                if "end_of_week_free_balance" in schema["balance_series_weekly_mv"]["columns"]:
-                    schema["balance_series_weekly_mv"]["columns"]["end_of_week_free_balance"]["description"] = "Free balance at the end of the week"
+                if "end_of_week_free_balance" in schema["balance_series_weekly_view"]["columns"]:
+                    schema["balance_series_weekly_view"]["columns"]["end_of_week_free_balance"]["description"] = "Free balance at the end of the week"
                 
-                if "end_of_week_total_balance" in schema["balance_series_weekly_mv"]["columns"]:
-                    schema["balance_series_weekly_mv"]["columns"]["end_of_week_total_balance"]["description"] = "Total balance at the end of the week"
+                if "end_of_week_total_balance" in schema["balance_series_weekly_view"]["columns"]:
+                    schema["balance_series_weekly_view"]["columns"]["end_of_week_total_balance"]["description"] = "Total balance at the end of the week"
                 
-                if "weekly_free_balance_change" in schema["balance_series_weekly_mv"]["columns"]:
-                    schema["balance_series_weekly_mv"]["columns"]["weekly_free_balance_change"]["description"] = "Cumulative change in free balance over the week"
+                if "weekly_free_balance_change" in schema["balance_series_weekly_view"]["columns"]:
+                    schema["balance_series_weekly_view"]["columns"]["weekly_free_balance_change"]["description"] = "Cumulative change in free balance over the week"
                 
-                if "weekly_total_balance_change" in schema["balance_series_weekly_mv"]["columns"]:
-                    schema["balance_series_weekly_mv"]["columns"]["weekly_total_balance_change"]["description"] = "Cumulative change in total balance over the week"
+                if "weekly_total_balance_change" in schema["balance_series_weekly_view"]["columns"]:
+                    schema["balance_series_weekly_view"]["columns"]["weekly_total_balance_change"]["description"] = "Cumulative change in total balance over the week"
                 
-                if "last_block_of_week" in schema["balance_series_weekly_mv"]["columns"]:
-                    schema["balance_series_weekly_mv"]["columns"]["last_block_of_week"]["description"] = "Last block height processed in the week"
+                if "last_block_of_week" in schema["balance_series_weekly_view"]["columns"]:
+                    schema["balance_series_weekly_view"]["columns"]["last_block_of_week"]["description"] = "Last block height processed in the week"
                 
-            if "balance_series_monthly_mv" in schema:
-                schema["balance_series_monthly_mv"]["description"] = "Monthly balance statistics materialized view with end-of-month balances and monthly balance changes"
+            if "balance_series_monthly_view" in schema:
+                schema["balance_series_monthly_view"]["description"] = "Monthly balance statistics materialized view with end-of-month balances and monthly balance changes"
                 
-                # Add column descriptions for balance_series_monthly_mv
-                if "month_start" in schema["balance_series_monthly_mv"]["columns"]:
-                    schema["balance_series_monthly_mv"]["columns"]["month_start"]["description"] = "Start date of the month"
+                # Add column descriptions for balance_series_monthly_view
+                if "month_start" in schema["balance_series_monthly_view"]["columns"]:
+                    schema["balance_series_monthly_view"]["columns"]["month_start"]["description"] = "Start date of the month"
                 
-                if "end_of_month_free_balance" in schema["balance_series_monthly_mv"]["columns"]:
-                    schema["balance_series_monthly_mv"]["columns"]["end_of_month_free_balance"]["description"] = "Free balance at the end of the month"
+                if "end_of_month_free_balance" in schema["balance_series_monthly_view"]["columns"]:
+                    schema["balance_series_monthly_view"]["columns"]["end_of_month_free_balance"]["description"] = "Free balance at the end of the month"
                 
-                if "end_of_month_total_balance" in schema["balance_series_monthly_mv"]["columns"]:
-                    schema["balance_series_monthly_mv"]["columns"]["end_of_month_total_balance"]["description"] = "Total balance at the end of the month"
+                if "end_of_month_total_balance" in schema["balance_series_monthly_view"]["columns"]:
+                    schema["balance_series_monthly_view"]["columns"]["end_of_month_total_balance"]["description"] = "Total balance at the end of the month"
                 
-                if "monthly_free_balance_change" in schema["balance_series_monthly_mv"]["columns"]:
-                    schema["balance_series_monthly_mv"]["columns"]["monthly_free_balance_change"]["description"] = "Cumulative change in free balance over the month"
+                if "monthly_free_balance_change" in schema["balance_series_monthly_view"]["columns"]:
+                    schema["balance_series_monthly_view"]["columns"]["monthly_free_balance_change"]["description"] = "Cumulative change in free balance over the month"
                 
-                if "monthly_total_balance_change" in schema["balance_series_monthly_mv"]["columns"]:
-                    schema["balance_series_monthly_mv"]["columns"]["monthly_total_balance_change"]["description"] = "Cumulative change in total balance over the month"
+                if "monthly_total_balance_change" in schema["balance_series_monthly_view"]["columns"]:
+                    schema["balance_series_monthly_view"]["columns"]["monthly_total_balance_change"]["description"] = "Cumulative change in total balance over the month"
                 
-                if "last_block_of_month" in schema["balance_series_monthly_mv"]["columns"]:
-                    schema["balance_series_monthly_mv"]["columns"]["last_block_of_month"]["description"] = "Last block height processed in the month"
+                if "last_block_of_month" in schema["balance_series_monthly_view"]["columns"]:
+                    schema["balance_series_monthly_view"]["columns"]["last_block_of_month"]["description"] = "Last block height processed in the month"
                 
             if "known_addresses" in schema:
                 schema["known_addresses"]["description"] = "Reference table with labeled/known addresses for contextual analysis"

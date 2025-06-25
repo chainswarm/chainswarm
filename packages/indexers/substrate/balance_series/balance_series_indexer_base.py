@@ -41,7 +41,6 @@ class BalanceSeriesIndexerBase:
         )
         
         self._init_tables()
-        self.version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
 
     def _init_tables(self):
         """Initialize tables for balance series from schema file"""
@@ -96,14 +95,13 @@ class BalanceSeriesIndexerBase:
             raise
 
     def record_balance_series(self, period_start_timestamp: int, period_end_timestamp: int, 
-                             block_height: int, block_hash: str, address_balances: Dict[str, Dict[str, int]]):
+                             block_height: int, address_balances: Dict[str, Dict[str, int]]):
         """Record balance series data for multiple addresses at a specific time period
         
         Args:
             period_start_timestamp: Start timestamp of the period (milliseconds)
             period_end_timestamp: End timestamp of the period (milliseconds)
             block_height: Block height at the end of the period
-            block_hash: Block hash at the end of the period
             address_balances: Dictionary mapping addresses to their balance information
                              {address: {'free_balance': int, 'reserved_balance': int, 
                                        'staked_balance': int, 'total_balance': int}}
@@ -152,12 +150,13 @@ class BalanceSeriesIndexerBase:
                     prev_total = prev_balances.get('total_balance', Decimal(0))
                     if prev_total > 0:
                         total_balance_percent_change = (total_balance_change / prev_total) * 100
-                
+
+                block_version = block_height
+
                 balance_data.append((
                     period_start_timestamp,
                     period_end_timestamp,
                     block_height,
-                    block_hash,
                     address,
                     self.asset,
                     free_balance,
@@ -169,13 +168,13 @@ class BalanceSeriesIndexerBase:
                     staked_balance_change,
                     total_balance_change,
                     total_balance_percent_change,
-                    self.version
+                    block_version
                 ))
             
             # Insert data
             if balance_data:
                 self.client.insert('balance_series', balance_data, column_names=[
-                    'period_start_timestamp', 'period_end_timestamp', 'block_height', 'block_hash',
+                    'period_start_timestamp', 'period_end_timestamp', 'block_height',
                     'address', 'asset', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
@@ -313,7 +312,6 @@ class BalanceSeriesIndexerBase:
             genesis_balances: List of (address, amount) tuples
             network: Network identifier (e.g., 'torus')
             block_height: Height of the first block (default: 0)
-            block_hash: Hash of the first block (default: None, will use 'genesis')
             block_timestamp: Timestamp of the first block in milliseconds (default: None)
                             If provided, use this as the period_start_timestamp
                             instead of 0 (Unix epoch)

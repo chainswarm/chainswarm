@@ -320,8 +320,8 @@ ORDER BY community ASC
 **Available Views**:
 - `balance_series_latest_view`: Latest balance snapshot for each address and asset
 - `balance_series_daily_view`: Daily balance aggregations with end-of-day balances and daily changes
-- `balance_series_weekly_mv`: Weekly balance statistics with end-of-week balances and weekly changes
-- `balance_series_monthly_mv`: Monthly balance statistics with end-of-month balances and monthly changes
+- `balance_series_weekly_view`: Weekly balance statistics with end-of-week balances and weekly changes
+- `balance_series_monthly_view`: Monthly balance statistics with end-of-month balances and monthly changes
 
 **Example Queries**:
 ```sql
@@ -341,7 +341,7 @@ ORDER BY date DESC;
 SELECT month_start,
        end_of_month_total_balance,
        monthly_total_balance_change
-FROM balance_series_monthly_mv
+FROM balance_series_monthly_view
 WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
   AND asset = 'DOT'
 ORDER BY month_start DESC;

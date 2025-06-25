@@ -35,5 +35,5 @@ class PolkadotBalanceSeriesIndexer(BalanceSeriesIndexerBase):
         except Exception as e:
             logger.error(f"Error initializing Polkadot-specific configurations: {e}", error=e, trb=traceback.format_exc())
     
-    def insert_genesis_balances(self, genesis_balances, network, block_height, block_hash, block_timestamp):
+    def insert_genesis_balances(self, genesis_balances, network, block_height, block_timestamp):
         pass
