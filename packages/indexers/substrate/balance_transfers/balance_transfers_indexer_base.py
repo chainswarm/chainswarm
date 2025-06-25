@@ -36,7 +36,6 @@ class BalanceTransfersIndexerBase:
         )
         self.partitioner = partitioner
         self._init_tables()
-        self.version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
 
     def _init_tables(self):
         """Initialize tables for balance transfers from schema file"""
@@ -196,6 +195,8 @@ class BalanceTransfersIndexerBase:
                     if fee_account == from_account:
                         break
 
+                block_version = str(event.get('block_height'))
+
                 # Record the transfer
                 balance_transfers.append((
                     event['extrinsic_id'],
@@ -206,7 +207,7 @@ class BalanceTransfersIndexerBase:
                     self.asset,
                     amount,
                     fee_amount,
-                    self.version
+                    block_version
                 ))
 
         return balance_transfers
