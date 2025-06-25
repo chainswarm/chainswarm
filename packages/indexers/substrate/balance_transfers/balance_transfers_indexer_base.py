@@ -46,6 +46,8 @@ class BalanceTransfersIndexerBase:
             with open(schema_path, 'r') as f:
                 schema_sql = f.read()
 
+            logger.debug(f"Raw schema length: {len(schema_sql)} characters")
+
             # Replace partition size placeholder if it exists
             schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
 
@@ -54,7 +56,7 @@ class BalanceTransfersIndexerBase:
             current_chunk = []
             lines = schema_sql.split('\n')
 
-            for line in lines:
+            for line_num, line in enumerate(lines, 1):
                 line = line.strip()
 
                 # Skip empty lines and comments
@@ -68,22 +70,47 @@ class BalanceTransfersIndexerBase:
                     chunk_sql = ' '.join(current_chunk)
                     if chunk_sql and not chunk_sql.startswith('--'):
                         chunks.append(chunk_sql)
+                        logger.debug(f"Parsed chunk {len(chunks)}: {chunk_sql[:50]}...")
                     current_chunk = []
 
+            logger.info(f"Parsed {len(chunks)} chunks from schema")
+
+            # Show all chunks for debugging
+            for i, chunk in enumerate(chunks):
+                logger.debug(f"Chunk {i + 1}: {chunk}")
+
             # Execute chunks
+            skipped_count = 0
+            created_count = 0
+            error_count = 0
+
             for i, chunk in enumerate(chunks):
                 try:
-                    logger.debug(f"Executing chunk {i + 1}/{len(chunks)}: {chunk[:100]}...")
-                    self.client.command(chunk)
+                    logger.info(f"Executing chunk {i + 1}/{len(chunks)}")
+                    logger.debug(f"SQL: {chunk}")
+
+                    result = self.client.command(chunk)
+                    created_count += 1
+                    logger.info(f"✓ Chunk {i + 1} executed successfully")
+
                 except Exception as e:
-                    if "already exists" in str(e).lower():
-                        logger.debug(f"Object already exists, skipping chunk {i + 1}")
+                    error_str = str(e).lower()
+                    logger.error(f"Error in chunk {i + 1}: {e}")
+                    logger.error(f"Chunk was: {chunk}")
+
+                    if ("already exists" in error_str or
+                            "table already exists" in error_str or
+                            "view already exists" in error_str or
+                            "index already exists" in error_str):
+                        skipped_count += 1
+                        logger.warning(f"○ Chunk {i + 1} skipped (already exists)")
                     else:
-                        logger.error(f"Error in chunk {i + 1}: {e}")
-                        logger.error(f"Chunk: {chunk}")
+                        error_count += 1
+                        logger.error(f"✗ Real error in chunk {i + 1}")
                         raise
 
-            logger.info(f"Balance transfers tables initialized successfully ({len(chunks)} statements)")
+            logger.info(
+                f"Schema execution complete: {created_count} created, {skipped_count} skipped, {error_count} errors")
 
         except FileNotFoundError:
             logger.error(f"Schema file not found: {schema_path}")
