@@ -169,7 +169,7 @@ GROUP BY
 -- =============================================================================
 
 -- Base volume series view (wraps internal materialized view - SIMPLIFIED)
-CREATE VIEW IF NOT EXISTS balance_transfers_volume_series_mv AS
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_series_view AS
 SELECT
     period_start,
     period_end,

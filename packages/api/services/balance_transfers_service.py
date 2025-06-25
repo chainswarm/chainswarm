@@ -12,8 +12,15 @@ def get_balance_transfers_tables() -> List[str]:
     """
     return [
         "balance_transfers",
-        "balance_transfers_daily_volume_view",
-        "balance_transfers_statistics_view",
+        "balance_transfers_volume_series_view",
+        "balance_transfers_volume_daily_view",
+        "balance_transfers_volume_weekly_view",
+        "balance_transfers_volume_monthly_view",
+        "balance_transfers_network_daily_view",
+        "balance_transfers_network_weekly_view",
+        "balance_transfers_network_monthly_view",
+        "balance_transfers_address_analytics_view",
+        "balance_transfers_volume_trends_view",
     ]
 
 
