@@ -39,66 +39,55 @@ class BalanceTransfersIndexerBase:
         self.version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
 
     def _init_tables(self):
-        """Initialize tables for balance transfers from split schema files"""
-        # Schema files in order of execution
-        schema_files = [
-            'schema.sql',                    # Core tables and indexes
-        ]
-        
+        """Initialize tables for balance transfers from schema file"""
+        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+
         try:
-            # Process each schema file in order
-            for schema_file in schema_files:
-                schema_path = os.path.join(os.path.dirname(__file__), schema_file)
-                
+            with open(schema_path, 'r') as f:
+                schema_sql = f.read()
+
+            # Replace partition size placeholder if it exists
+            schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
+
+            # Define logical chunks based on SQL sections
+            chunks = []
+            current_chunk = []
+            lines = schema_sql.split('\n')
+
+            for line in lines:
+                line = line.strip()
+
+                # Skip empty lines and comments
+                if not line or line.startswith('--'):
+                    continue
+
+                current_chunk.append(line)
+
+                # End chunk on semicolon
+                if line.endswith(';'):
+                    chunk_sql = ' '.join(current_chunk)
+                    if chunk_sql and not chunk_sql.startswith('--'):
+                        chunks.append(chunk_sql)
+                    current_chunk = []
+
+            # Execute chunks
+            for i, chunk in enumerate(chunks):
                 try:
-                    with open(schema_path, 'r') as f:
-                        schema_sql = f.read()
-                    
-                    # Replace partition size placeholder
-                    schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
-                    
-                    # Split by semicolon but preserve semicolons within CREATE TABLE statements
-                    statements = []
-                    current_statement = []
-                    lines = schema_sql.split('\n')
-                    
-                    for line in lines:
-                        line = line.strip()
-                        if line.startswith('--') or not line:
-                            continue
-                            
-                        current_statement.append(line)
-                        
-                        # Check if this line ends with a semicolon and the next non-empty line starts a new statement
-                        if line.endswith(';'):
-                            # Join the current statement and add it to statements
-                            full_statement = ' '.join(current_statement).strip()
-                            if full_statement and not full_statement.startswith('--'):
-                                statements.append(full_statement.rstrip(';'))
-                            current_statement = []
-                    
-                    # Execute each statement
-                    for statement in statements:
-                        if statement:
-                            try:
-                                self.client.command(statement)
-                            except Exception as e:
-                                # Skip errors for views and indexes that might already exist
-                                if "already exists" in str(e).lower():
-                                    logger.debug(f"Object already exists, skipping: {statement[:50]}...")
-                                else:
-                                    logger.error(f"Error executing statement: {e}")
-                                    logger.error(f"Statement: {statement[:100]}...")
-                                    raise
-                    
-                    logger.info(f"Executed schema file: {schema_file}")
-                    
-                except FileNotFoundError:
-                    logger.error(f"Schema file not found: {schema_path}")
-                    raise
-                
-            logger.info("Balance transfers tables initialized from split schema files")
-            
+                    logger.debug(f"Executing chunk {i + 1}/{len(chunks)}: {chunk[:100]}...")
+                    self.client.command(chunk)
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        logger.debug(f"Object already exists, skipping chunk {i + 1}")
+                    else:
+                        logger.error(f"Error in chunk {i + 1}: {e}")
+                        logger.error(f"Chunk: {chunk}")
+                        raise
+
+            logger.info(f"Balance transfers tables initialized successfully ({len(chunks)} statements)")
+
+        except FileNotFoundError:
+            logger.error(f"Schema file not found: {schema_path}")
+            raise
         except Exception as e:
             logger.error(f"Error initializing balance transfers tables: {e}")
             raise
