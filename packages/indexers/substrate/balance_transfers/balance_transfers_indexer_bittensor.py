@@ -2,19 +2,19 @@ from typing import List, Dict, Any
 from loguru import logger
 from decimal import Decimal
 
-from packages.indexers.substrate.balance_tracking.balance_tracking_indexer import BalanceTrackingIndexer
+from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 
 
-class BittensorBalanceTrackingIndexer(BalanceTrackingIndexer):
+class BittensorBalanceTransfersIndexer(BalanceTransfersIndexer):
     """
-    Bittensor-specific implementation of the BalanceTrackingIndexer.
-    Handles Bittensor-specific events like neuron staking and TAO transfers.
+    Bittensor-specific implementation of the BalanceTransfersIndexer.
+    Handles Bittensor-specific transfer events like neuron staking and TAO transfers.
     """
     
     def __init__(self, connection_params: Dict[str, Any], partitioner, network: str):
         """
-        Initialize the BittensorBalanceTrackingIndexer.
+        Initialize the BittensorBalanceTransfersIndexer.
         
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
@@ -25,14 +25,14 @@ class BittensorBalanceTrackingIndexer(BalanceTrackingIndexer):
     
     def _process_network_specific_events(self, events: List[Dict]):
         """
-        Process Bittensor-specific events.
+        Process Bittensor-specific transfer events.
         
         Args:
             events: List of events to process
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_address, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
         """
         # Event tracking
         balance_transfers = []

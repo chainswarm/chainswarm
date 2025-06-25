@@ -2,19 +2,19 @@ from typing import List, Dict, Any
 from loguru import logger
 from decimal import Decimal
 
-from packages.indexers.substrate.balance_tracking.balance_tracking_indexer import BalanceTrackingIndexer
+from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 
 
-class PolkadotBalanceTrackingIndexer(BalanceTrackingIndexer):
+class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
     """
-    Polkadot-specific implementation of the BalanceTrackingIndexer.
-    Handles Polkadot-specific events like staking, crowdloans, and governance events.
+    Polkadot-specific implementation of the BalanceTransfersIndexer.
+    Handles Polkadot-specific transfer events like staking, crowdloans, and governance events.
     """
     
     def __init__(self, connection_params: Dict[str, Any], partitioner, network: str):
         """
-        Initialize the PolkadotBalanceTrackingIndexer.
+        Initialize the PolkadotBalanceTransfersIndexer.
         
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
@@ -25,14 +25,14 @@ class PolkadotBalanceTrackingIndexer(BalanceTrackingIndexer):
     
     def _process_network_specific_events(self, events: List[Dict]):
         """
-        Process Polkadot-specific events.
+        Process Polkadot-specific transfer events.
         
         Args:
             events: List of events to process
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_address, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
         """
         # Event tracking
         balance_transfers = []

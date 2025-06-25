@@ -11,6 +11,7 @@ services:
     command:
       - "--storage-properties-on-edges=true"
       - "--storage-enable-schema-metadata=true"
+      - "--schema-info-enabled=true"
     volumes:
       - infra-torus-memgraph-data:/var/lib/memgraph
       - infra-torus-memgraph-log:/var/log/memgraph

@@ -1,13 +1,13 @@
 from typing import Dict, Any, List
 from loguru import logger
 
-from packages.indexers.substrate.balance_tracking.balance_tracking_indexer_base import BalanceTrackingIndexerBase
+from packages.indexers.substrate.balance_transfers.balance_transfers_indexer_base import BalanceTransfersIndexerBase
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 
 
-class BalanceTrackingIndexer(BalanceTrackingIndexerBase):
+class BalanceTransfersIndexer(BalanceTransfersIndexerBase):
     def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str):
-        """Initialize the Enhanced Balance Tracking Indexer with database connection
+        """Initialize the Balance Transfers Indexer with database connection
 
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
@@ -18,7 +18,7 @@ class BalanceTrackingIndexer(BalanceTrackingIndexerBase):
         super().__init__(connection_params, partitioner, network)
 
     def _init_tables(self):
-        """Initialize tables for balance tracking"""
+        """Initialize tables for balance transfers"""
         # Call the parent method to initialize base tables
         super()._init_tables()
 
@@ -54,7 +54,7 @@ class BalanceTrackingIndexer(BalanceTrackingIndexerBase):
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_account, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
         """
         # Base implementation does nothing
         return []

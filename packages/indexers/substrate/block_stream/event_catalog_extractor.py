@@ -141,7 +141,7 @@ class EventCatalogExtractor:
             end_height: Ending block height (inclusive)
         """
         try:
-            blocks = self.block_stream_manager.get_blocks_by_range(start_height, end_height)
+            blocks = self.block_stream_manager.get_blocks_by_block_height_range(start_height, end_height)
             if not blocks:
                 logger.warning(f"No blocks found in range {start_height} to {end_height}")
                 return
