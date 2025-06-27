@@ -7,6 +7,7 @@ from datetime import datetime
 
 from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \
     terminate_event
+
 from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
 from packages.indexers.substrate import get_substrate_node_url, networks, data, Network
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
@@ -15,6 +16,7 @@ from packages.indexers.substrate.balance_series.balance_series_indexer_bittensor
 from packages.indexers.substrate.balance_series.balance_series_indexer_polkadot import PolkadotBalanceSeriesIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
+
 
 
 def get_balance_series_indexer(network: str, connection_params, period_hours: int = 4, indexer_metrics: IndexerMetrics = None):
@@ -180,9 +182,10 @@ class BalanceSeriesConsumer:
             period_start: Start timestamp of the period (milliseconds)
             period_end: End timestamp of the period (milliseconds)
         """
+
         start_time = time.time()
         labels = {'network': self.network, 'indexer': 'balance_series'}
-        
+
         try:
             # Find the block closest to the period end time
             end_block = self.block_stream_manager.get_block_by_nearest_timestamp(period_end)
@@ -243,6 +246,9 @@ class BalanceSeriesConsumer:
         except Exception as e:
             if self.consumer_errors_total:
                 self.consumer_errors_total.labels(**labels, error_type='processing_error').inc()
+            logger.success(f"Successfully processed period {period_start}-{period_end} with {len(address_balances)} addresses and block {block_height}")
+
+        except Exception as e:
             logger.error(f"Error processing period {period_start}-{period_end}: {e}")
             raise
 
@@ -377,11 +383,12 @@ if __name__ == "__main__":
             args.period_hours,
             args.batch_size
         )
+
         
         # Set metrics after consumer creation
         consumer.set_metrics(metrics_registry, indexer_metrics)
-
         consumer.run()
+        
     except Exception as e:
         logger.error(f"Fatal error", error=e, trb=traceback.format_exc())
     finally:

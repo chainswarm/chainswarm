@@ -7,6 +7,8 @@ from prometheus_client import CONTENT_TYPE_LATEST
 from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers
 from packages.indexers.base import setup_logger, setup_metrics
 from loguru import logger
+from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers
+from packages.indexers.base import setup_logger
 from packages.api.middleware.rate_limiting import rate_limit_middleware
 from packages.api.middleware.prometheus_middleware import PrometheusMiddleware, create_metrics_endpoint
 
@@ -19,9 +21,11 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
+
 # Setup logging and metrics
 setup_logger("chain-swarm-api")
 metrics_registry = setup_metrics("chain-swarm-api", port=8990, start_server=False)  # Metrics on port 8990
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,6 +88,5 @@ app.get("/metrics")(aggregated_metrics_endpoint)
 async def health_check():
     return {
         "status": "ok",
-        "version": version,
-        "metrics_enabled": metrics_registry is not None
+        "version": version
     }

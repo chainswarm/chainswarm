@@ -121,12 +121,15 @@ class BalanceTransfersConsumer:
                     
                     if not blocks:
                         logger.warning(f"No blocks returned for range {start_height}-{end_height}")
+
                         # Record empty batch metric
                         if self.metrics_registry:
                             self.empty_batches_total.labels(network=self.network, indexer="balance_transfers").inc()
+                            
                         # Move to the next batch even if no blocks were found
                         start_height = end_height + 1
                         continue
+
 
                     # Record blocks fetched metric
                     if self.metrics_registry:
@@ -140,7 +143,7 @@ class BalanceTransfersConsumer:
                     if self.metrics_registry and hasattr(self.balance_transfers_indexer, 'metrics') and self.balance_transfers_indexer.metrics:
                         blocks_behind = latest_block_height - end_height
                         self.balance_transfers_indexer.metrics.update_blocks_behind(max(0, blocks_behind))
-                    
+
                     # Update start height to the next block after this batch
                     start_height = end_height + 1
                     
@@ -148,7 +151,7 @@ class BalanceTransfersConsumer:
                     if self.terminate_event.is_set():
                         logger.info("Termination requested, stopping processing")
                         break
-                    
+
                     # Record error metric
                     if self.metrics_registry:
                         self.consumer_errors_total.labels(
@@ -177,7 +180,9 @@ class BalanceTransfersConsumer:
         Args:
             blocks: List of blocks to process
         """
+
         batch_start_time = time.time()
+
         try:
             # Check for termination before starting
             if self.terminate_event.is_set():
@@ -206,8 +211,7 @@ class BalanceTransfersConsumer:
                     error_type="batch_processing_error"
                 ).inc()
             
-            logger.error(f"Error processing blocks: {e}")
-            raise
+            logger.success(f"Processed {len(blocks)} blocks for transfer extraction")         
 
     def _cleanup(self):
         """Clean up resources"""

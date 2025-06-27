@@ -21,6 +21,7 @@ import clickhouse_connect
 
 network = os.getenv("NETWORK", "torus").lower()
 
+
 # MCP Metrics class
 class MCPMetrics:
     """Metrics collection for MCP server operations"""
@@ -142,6 +143,7 @@ class MCPMetrics:
 service_name = "chain-insights-mcp-server"
 metrics_registry = setup_metrics(service_name, start_server=True)
 mcp_metrics = MCPMetrics(metrics_registry, network)
+
 
 async def get_assets_from_clickhouse(network: str) -> List[str]:
     """Query ClickHouse to get available assets for the network"""
@@ -268,6 +270,19 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - "Find all treasury and DAO addresses"
     - "Is [ADDRESS] a known entity?"
     
+    **What it does**: Maintains a database of labeled addresses for contextual analysis.
+    
+    **You can ask about**:
+    - Well-known addresses and their purposes
+    - Addresses by category (exchanges, treasuries, etc.)
+    - Entity identification for unknown addresses
+    
+    **Example questions**:
+    - "What are the well-known addresses on this blockchain?"
+    - "List all exchange addresses"
+    - "Find all treasury and DAO addresses"
+    - "Is [ADDRESS] a known entity?"
+    
     ## 🔍 Similarity & Pattern Detection
     
     **What it does**: Analyzes transaction patterns to find addresses that behave similarly, helping identify related accounts or suspicious activity.
@@ -315,8 +330,7 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     
     Just ask your questions in natural language - the assistant will use the appropriate tools and data sources to provide comprehensive blockchain insights!
     `
-"""
-
+    """
 
 async def get_instructions():
     """
@@ -695,6 +709,7 @@ async def money_flow_shortest_path(
     Returns:
         dict: Path results containing nodes and edges
     """
+
     start_time = time.time()
     tool_name = "money_flow_shortest_path"
     
@@ -723,7 +738,6 @@ async def money_flow_shortest_path(
         mcp_metrics.record_tool_call(tool_name, duration, False, "execution_error")
         logger.error(f"Error in {tool_name}: {e}")
         raise
-
 
 @session_rate_limit
 @mcp.tool(
@@ -875,6 +889,7 @@ async def execute_balance_series_query(query: Annotated[str, Field(
     Returns:
         dict: The result of the balance series query.
     """
+
     start_time = time.time()
     tool_name = "balance_series_query"
     
@@ -921,6 +936,7 @@ async def execute_balance_transfers_query(query: Annotated[str, Field(
     Returns:
         dict: The result of the balance transfers query.
     """
+
     start_time = time.time()
     tool_name = "balance_transfers_query"
     
@@ -945,9 +961,7 @@ async def execute_balance_transfers_query(query: Annotated[str, Field(
  
 if __name__ == "__main__":
     setup_logger("chain-insights-mcp-server")
-    logger.info(f"MCP server metrics initialized for network: {network}")
-    logger.info(f"Metrics server running on port: {metrics_registry.port if metrics_registry else 'N/A'}")
-    
+
     schema_response = asyncio.run(get_instructions())
     json_schema = json.dumps(schema_response, indent=2)
     logger.info(f"Schema loaded: {json_schema}")

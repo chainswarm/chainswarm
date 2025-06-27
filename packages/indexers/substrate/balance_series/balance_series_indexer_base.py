@@ -98,8 +98,8 @@ class BalanceSeriesIndexerBase:
             logger.error(f"Error initializing balance series tables: {e}")
             raise
 
-    def record_balance_series(self, period_start_timestamp: int, period_end_timestamp: int,
-                             block_height: int, address_balances: Dict[str, Dict[str, int]]):
+
+    def record_balance_series(self, period_start_timestamp: int, period_end_timestamp: int, block_height: int, address_balances: Dict[str, Dict[str, int]]):
         """Record balance series data for multiple addresses at a specific time period
         
         Args:
@@ -107,14 +107,14 @@ class BalanceSeriesIndexerBase:
             period_end_timestamp: End timestamp of the period (milliseconds)
             block_height: Block height at the end of the period
             address_balances: Dictionary mapping addresses to their balance information
-                             {address: {'free_balance': int, 'reserved_balance': int,
-                                       'staked_balance': int, 'total_balance': int}}
+                             {address: {'free_balance': int, 'reserved_balance': int, 'staked_balance': int, 'total_balance': int}}
         """
         if not address_balances:
             logger.warning(f"No address balances provided for period {period_start_timestamp}-{period_end_timestamp}")
             return
 
         start_time = time.time()
+
         try:
             # Prepare data for insertion
             balance_data = []
@@ -184,6 +184,7 @@ class BalanceSeriesIndexerBase:
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])
+
                 
                 # Record metrics if available
                 if self.indexer_metrics:
@@ -196,7 +197,6 @@ class BalanceSeriesIndexerBase:
             if self.indexer_metrics:
                 duration = time.time() - start_time
                 self.indexer_metrics.record_database_operation('insert', 'balance_series', duration, False)
-            logger.error(f"Error recording balance series for period {period_start_timestamp}-{period_end_timestamp}: {e}")
             raise
 
     def get_previous_period_balances(self, address: str, current_period_start: int) -> Tuple[Optional[Dict[str, Decimal]], int]:

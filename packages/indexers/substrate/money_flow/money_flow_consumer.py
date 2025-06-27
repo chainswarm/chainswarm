@@ -137,6 +137,7 @@ class MoneyFlowConsumer:
                     
                     # Fetch blocks with address interactions from the block stream
                     logger.info(f"Fetching blocks with address interactions from {current_height} to {end_height}")
+
                     batch_start_time = time.time()
                     blocks_with_addresses = self.block_stream_manager.get_blocks_by_block_height_range(current_height, end_height, only_with_addresses=True)
                     
@@ -240,6 +241,8 @@ class MoneyFlowConsumer:
                     logger.success(f"Updating embeddings took {duration} seconds")
                     if self.embeddings_update_duration:
                         self.embeddings_update_duration.labels(**labels).observe(duration)
+
+                    logger.success(f"Updating embeddings took {end_time - start_time} seconds")
 
         except Exception as e:
             logger.error(f"Error processing block {block_height}: {e}")

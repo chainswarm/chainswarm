@@ -5,7 +5,6 @@ from typing import Dict, Any, List
 import clickhouse_connect
 from decimal import Decimal
 from loguru import logger
-
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
@@ -46,7 +45,7 @@ class BalanceTransfersIndexerBase:
         else:
             logger.warning(f"No metrics registry found for {service_name}")
             self.metrics = None
-        
+
         self._init_tables()
 
     def _init_tables(self):
@@ -136,7 +135,9 @@ class BalanceTransfersIndexerBase:
         Returns:
             The maximum block height from balance_transfers table, or 0 if no records exist
         """
+
         start_time = time.time()
+
         try:
             result = self.client.query('''
                 SELECT MAX(block_height) as max_height FROM balance_transfers
@@ -146,7 +147,7 @@ class BalanceTransfersIndexerBase:
             if self.metrics:
                 duration = time.time() - start_time
                 self.metrics.record_database_operation("select", "balance_transfers", duration, True)
-            
+
             if result.result_rows and result.result_rows[0][0] is not None:
                 return result.result_rows[0][0]
             return 0
@@ -156,8 +157,6 @@ class BalanceTransfersIndexerBase:
                 duration = time.time() - start_time
                 self.metrics.record_database_operation("select", "balance_transfers", duration, False)
                 self.metrics.record_failed_event("database_query_error")
-            
-            logger.error(f"Error getting latest processed block height: {e}")
             return 0
     
     def _validate_event_structure(self, event: Dict, required_attrs: List[str]):
@@ -242,6 +241,7 @@ class BalanceTransfersIndexerBase:
             return
 
         batch_start_time = time.time()
+
         try:
             sorted_blocks = sorted(blocks, key=lambda x: x['block_height'])
 
@@ -329,7 +329,7 @@ class BalanceTransfersIndexerBase:
                 batch_duration = time.time() - batch_start_time
                 self.metrics.record_failed_event("batch_processing_error")
                 
-            logger.error(f"Batch indexing failed: {e}")
+            logger.success(f"Bulk inserted {len(sorted_blocks)} blocks with {len(all_balance_transfers)} transfers")
             raise
     
     def _process_network_specific_events(self, events: List[Dict]):

@@ -22,6 +22,7 @@ class PolkadotBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
         super().__init__(connection_params, network, period_hours, indexer_metrics)
+        """
         
         # Initialize any Polkadot-specific configurations
         self._init_polkadot_specific()
