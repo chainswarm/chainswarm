@@ -10,10 +10,12 @@ import os
 
 from packages.indexers.substrate.block_processor import BlockDataProcessor
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
+from packages.indexers.base import IndexerMetrics, get_metrics_registry
 
 
 class BlockStreamIndexer:
-    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner):
+    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str):
+        self.network = network
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
             port=int(connection_params['port']),
@@ -27,6 +29,18 @@ class BlockStreamIndexer:
             }
         )
         self.partitioner = partitioner
+        
+        # Initialize metrics
+        service_name = f"substrate-{network}-block-stream"
+        logger.info(f"BlockStreamIndexer attempting to get metrics registry for service: {service_name}")
+        metrics_registry = get_metrics_registry(service_name)
+        if metrics_registry:
+            logger.info(f"BlockStreamIndexer successfully obtained metrics registry for {service_name}")
+            self.metrics = IndexerMetrics(metrics_registry, network, "block_stream")
+            logger.info(f"BlockStreamIndexer metrics initialized successfully")
+        else:
+            logger.warning(f"No metrics registry found for {service_name} - indexer metrics will not be recorded")
+            self.metrics = None
 
         self._init_tables()
         self.version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
@@ -50,6 +64,7 @@ class BlockStreamIndexer:
         if not blocks:
             return
 
+        batch_start_time = time.time()
         try:
             min_height = min(int(b['block_height']) for b in blocks)
             max_height = max(int(b['block_height']) for b in blocks)
@@ -58,8 +73,34 @@ class BlockStreamIndexer:
             insert_start_time = time.time()
             self._insert_batch(blocks)
             insert_elapsed = time.time() - insert_start_time
+            
+            # Record metrics for successful batch processing
+            if self.metrics:
+                batch_duration = time.time() - batch_start_time
+                processing_rate = len(blocks) / batch_duration if batch_duration > 0 else 0
+                
+                # Record each block processed
+                for block in blocks:
+                    block_height = int(block['block_height'])
+                    self.metrics.record_block_processed(block_height, batch_duration / len(blocks))
+                
+                # Record database operation
+                self.metrics.record_database_operation("insert", "block_stream", insert_elapsed, True)
+                
+                # Record processing rate
+                self.metrics.update_processing_rate(processing_rate)
+                
+                # Record events processed (total events from all blocks)
+                total_events = sum(len(block.get('events', [])) for block in blocks)
+                if total_events > 0:
+                    self.metrics.record_event_processed("total_events", total_events)
 
         except Exception as e:
+            # Record error metrics
+            if self.metrics:
+                batch_duration = time.time() - batch_start_time
+                self.metrics.record_failed_event("batch_processing_error")
+                
             logger.error(
                 f"Failed indexing batch starting at {min_height if 'min_height' in locals() else 'unknown'}: {e}",
                 error=e, trb=traceback.format_exc())
@@ -226,11 +267,17 @@ class BlockStreamIndexer:
 
     def get_last_block_height(self) -> int:
         """Get the last processed block height directly from the block_stream table"""
+        start_time = time.time()
         try:
             result = self.client.query('''
                                        SELECT MAX(block_height)
                                        FROM block_stream
                                        ''')
+
+            # Record successful database operation
+            if self.metrics:
+                duration = time.time() - start_time
+                self.metrics.record_database_operation("select", "block_stream", duration, True)
 
             if result.result_rows and result.result_rows[0][0] is not None:
                 height = result.result_rows[0][0]
@@ -238,6 +285,12 @@ class BlockStreamIndexer:
 
             return 0
         except Exception as e:
+            # Record database error
+            if self.metrics:
+                duration = time.time() - start_time
+                self.metrics.record_database_operation("select", "block_stream", duration, False)
+                self.metrics.record_failed_event("database_query_error")
+                
             logger.error(f"Failed to get last block height: {e}")
             return 0
 
@@ -251,6 +304,7 @@ class BlockStreamIndexer:
         Returns:
             The last processed block height for the partition, or start_height if no blocks are found
         """
+        start_time = time.time()
         try:
             # Get the partition range
             start_height, end_height = self.partitioner.get_partition_range(partition_id)
@@ -262,12 +316,23 @@ class BlockStreamIndexer:
                 WHERE block_height >= {start_height} AND block_height <= {end_height}
             ''')
 
+            # Record successful database operation
+            if self.metrics:
+                duration = time.time() - start_time
+                self.metrics.record_database_operation("select", "block_stream", duration, True)
+
             if result.result_rows and result.result_rows[0][0] is not None:
                 height = result.result_rows[0][0]
                 return height
 
             return start_height
         except Exception as e:
+            # Record database error
+            if self.metrics:
+                duration = time.time() - start_time
+                self.metrics.record_database_operation("select", "block_stream", duration, False)
+                self.metrics.record_failed_event("database_query_error")
+                
             logger.error(f"Failed to get last block height for partition {partition_id}: {e}")
             start_height, _ = self.partitioner.get_partition_range(partition_id)
             return start_height

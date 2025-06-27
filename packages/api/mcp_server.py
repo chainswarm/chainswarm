@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from typing import List, Optional, Dict, Any
 from typing import Annotated
 from loguru import logger
@@ -10,7 +11,7 @@ from packages.api.tools.balance_series import BalanceSeriesAnalyticsTool
 from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
-from packages.indexers.base import get_clickhouse_connection_string, setup_logger
+from packages.indexers.base import get_clickhouse_connection_string, setup_logger, setup_metrics, get_metrics_registry
 from packages.indexers.substrate import get_network_asset
 from packages.api.middleware.mcp_session_rate_limiting import (
     session_rate_limit,
@@ -19,6 +20,130 @@ import os
 import clickhouse_connect
 
 network = os.getenv("NETWORK", "torus").lower()
+
+
+# MCP Metrics class
+class MCPMetrics:
+    """Metrics collection for MCP server operations"""
+    
+    def __init__(self, metrics_registry, network: str):
+        self.registry = metrics_registry
+        self.network = network
+        
+        if metrics_registry:
+            self._init_metrics()
+        else:
+            logger.warning("No metrics registry available for MCP server")
+    
+    def _init_metrics(self):
+        """Initialize MCP-specific metrics"""
+        # Tool usage metrics
+        self.mcp_tool_calls_total = self.registry.create_counter(
+            'mcp_tool_calls_total',
+            'Total MCP tool calls',
+            ['tool', 'network']
+        )
+        
+        self.mcp_tool_duration = self.registry.create_histogram(
+            'mcp_tool_duration_seconds',
+            'MCP tool execution duration',
+            ['tool', 'network'],
+            buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, float('inf'))
+        )
+        
+        self.mcp_tool_errors_total = self.registry.create_counter(
+            'mcp_tool_errors_total',
+            'Total MCP tool errors',
+            ['tool', 'network', 'error_type']
+        )
+        
+        self.mcp_tool_success_rate = self.registry.create_gauge(
+            'mcp_tool_success_rate',
+            'MCP tool success rate',
+            ['tool', 'network']
+        )
+        
+        # Database operation metrics
+        self.mcp_database_operations_total = self.registry.create_counter(
+            'mcp_database_operations_total',
+            'Total MCP database operations',
+            ['network', 'database', 'operation']
+        )
+        
+        self.mcp_database_query_duration = self.registry.create_histogram(
+            'mcp_database_query_duration_seconds',
+            'MCP database query duration',
+            ['network', 'database'],
+            buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float('inf'))
+        )
+        
+        # Session metrics
+        self.mcp_active_sessions = self.registry.create_gauge(
+            'mcp_active_sessions',
+            'Number of active MCP sessions',
+            ['network']
+        )
+        
+        self.mcp_sessions_created_total = self.registry.create_counter(
+            'mcp_sessions_created_total',
+            'Total MCP sessions created',
+            ['network']
+        )
+        
+        self.mcp_session_rate_limit_hits_total = self.registry.create_counter(
+            'mcp_session_rate_limit_hits_total',
+            'Total MCP session rate limit hits',
+            ['network']
+        )
+    
+    def record_tool_call(self, tool_name: str, duration: float, success: bool = True, error_type: str = None):
+        """Record a tool call"""
+        if not self.registry:
+            return
+            
+        self.mcp_tool_calls_total.labels(tool=tool_name, network=self.network).inc()
+        self.mcp_tool_duration.labels(tool=tool_name, network=self.network).observe(duration)
+        
+        if not success and error_type:
+            self.mcp_tool_errors_total.labels(
+                tool=tool_name, network=self.network, error_type=error_type
+            ).inc()
+    
+    def record_database_operation(self, database: str, operation: str, duration: float):
+        """Record a database operation"""
+        if not self.registry:
+            return
+            
+        self.mcp_database_operations_total.labels(
+            network=self.network, database=database, operation=operation
+        ).inc()
+        self.mcp_database_query_duration.labels(
+            network=self.network, database=database
+        ).observe(duration)
+    
+    def record_session_created(self):
+        """Record a new session"""
+        if not self.registry:
+            return
+        self.mcp_sessions_created_total.labels(network=self.network).inc()
+    
+    def record_rate_limit_hit(self):
+        """Record a rate limit hit"""
+        if not self.registry:
+            return
+        self.mcp_session_rate_limit_hits_total.labels(network=self.network).inc()
+    
+    def update_active_sessions(self, count: int):
+        """Update active sessions count"""
+        if not self.registry:
+            return
+        self.mcp_active_sessions.labels(network=self.network).set(count)
+
+# Initialize metrics
+service_name = "chain-insights-mcp-server"
+metrics_registry = setup_metrics(service_name, start_server=True)
+mcp_metrics = MCPMetrics(metrics_registry, network)
+
 
 async def get_assets_from_clickhouse(network: str) -> List[str]:
     """Query ClickHouse to get available assets for the network"""
@@ -145,6 +270,19 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - "Find all treasury and DAO addresses"
     - "Is [ADDRESS] a known entity?"
     
+    **What it does**: Maintains a database of labeled addresses for contextual analysis.
+    
+    **You can ask about**:
+    - Well-known addresses and their purposes
+    - Addresses by category (exchanges, treasuries, etc.)
+    - Entity identification for unknown addresses
+    
+    **Example questions**:
+    - "What are the well-known addresses on this blockchain?"
+    - "List all exchange addresses"
+    - "Find all treasury and DAO addresses"
+    - "Is [ADDRESS] a known entity?"
+    
     ## 🔍 Similarity & Pattern Detection
     
     **What it does**: Analyzes transaction patterns to find addresses that behave similarly, helping identify related accounts or suspicious activity.
@@ -192,8 +330,7 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     
     Just ask your questions in natural language - the assistant will use the appropriate tools and data sources to provide comprehensive blockchain insights!
     `
-"""
-
+    """
 
 async def get_instructions():
     """
@@ -573,18 +710,34 @@ async def money_flow_shortest_path(
         dict: Path results containing nodes and edges
     """
 
-    assets = assets if assets else ["all"]
-
-    memgraph_driver = get_memgraph_driver(network)
-    neo4j_driver = get_neo4j_driver(network)
+    start_time = time.time()
+    tool_name = "money_flow_shortest_path"
+    
     try:
-        money_flow_tool = MoneyFlowTool(memgraph_driver, neo4j_driver)
-        result = money_flow_tool.shortest_path(source_address, target_address, assets)
-        return {"data": result}
-    finally:
-        memgraph_driver.close()
-        neo4j_driver.close()
+        assets = assets if assets else ["all"]
 
+        memgraph_driver = get_memgraph_driver(network)
+        neo4j_driver = get_neo4j_driver(network)
+        try:
+            money_flow_tool = MoneyFlowTool(memgraph_driver, neo4j_driver)
+            result = money_flow_tool.shortest_path(source_address, target_address, assets)
+            
+            # Record successful tool call
+            duration = time.time() - start_time
+            mcp_metrics.record_tool_call(tool_name, duration, True)
+            mcp_metrics.record_database_operation("memgraph", "shortest_path", duration)
+            
+            return {"data": result}
+        finally:
+            memgraph_driver.close()
+            neo4j_driver.close()
+            
+    except Exception as e:
+        # Record failed tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, False, "execution_error")
+        logger.error(f"Error in {tool_name}: {e}")
+        raise
 
 @session_rate_limit
 @mcp.tool(
@@ -736,9 +889,27 @@ async def execute_balance_series_query(query: Annotated[str, Field(
     Returns:
         dict: The result of the balance series query.
     """
-    balance_series_service = BalanceSeriesAnalyticsTool(get_clickhouse_connection_string(network))
-    result = await balance_series_service.balance_series_query(query)
-    return result
+
+    start_time = time.time()
+    tool_name = "balance_series_query"
+    
+    try:
+        balance_series_service = BalanceSeriesAnalyticsTool(get_clickhouse_connection_string(network))
+        result = await balance_series_service.balance_series_query(query)
+        
+        # Record successful tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, True)
+        mcp_metrics.record_database_operation("clickhouse", "balance_series_query", duration)
+        
+        return result
+        
+    except Exception as e:
+        # Record failed tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, False, "query_error")
+        logger.error(f"Error in {tool_name}: {e}")
+        raise
 
 
 @session_rate_limit
@@ -765,13 +936,32 @@ async def execute_balance_transfers_query(query: Annotated[str, Field(
     Returns:
         dict: The result of the balance transfers query.
     """
-    balance_transfers_service = BalanceTransfersTool(get_clickhouse_connection_string(network))
-    result = await balance_transfers_service.balance_transfers_query(query)
-    return result
+
+    start_time = time.time()
+    tool_name = "balance_transfers_query"
+    
+    try:
+        balance_transfers_service = BalanceTransfersTool(get_clickhouse_connection_string(network))
+        result = await balance_transfers_service.balance_transfers_query(query)
+        
+        # Record successful tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, True)
+        mcp_metrics.record_database_operation("clickhouse", "balance_transfers_query", duration)
+        
+        return result
+        
+    except Exception as e:
+        # Record failed tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, False, "query_error")
+        logger.error(f"Error in {tool_name}: {e}")
+        raise
 
  
 if __name__ == "__main__":
     setup_logger("chain-insights-mcp-server")
+
     schema_response = asyncio.run(get_instructions())
     json_schema = json.dumps(schema_response, indent=2)
     logger.info(f"Schema loaded: {json_schema}")

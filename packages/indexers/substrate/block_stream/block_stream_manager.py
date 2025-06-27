@@ -44,7 +44,7 @@ class BlockStreamManager:
         self.terminate_event = terminate_event
         self.partitioner = get_partitioner(network)
         self.substrate_node = SubstrateNode(network, get_substrate_node_url(network), terminate_event)
-        self.block_stream_indexer = BlockStreamIndexer(connection_params, self.partitioner)
+        self.block_stream_indexer = BlockStreamIndexer(connection_params, self.partitioner, self.network)
 
     def _result_row_to_blocks(self, result):
         """

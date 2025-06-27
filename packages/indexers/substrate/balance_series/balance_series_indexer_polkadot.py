@@ -11,7 +11,7 @@ class PolkadotBalanceSeriesIndexer(BalanceSeriesIndexerBase):
     Handles Polkadot-specific balance series functionality.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4):
+    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4, indexer_metrics=None):
         """
         Initialize the PolkadotBalanceSeriesIndexer.
         
@@ -19,8 +19,10 @@ class PolkadotBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             connection_params: Dictionary with ClickHouse connection parameters
             network: Network identifier (e.g., 'polkadot')
             period_hours: Number of hours in each period (default: 4)
+            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
-        super().__init__(connection_params, network, period_hours)
+        super().__init__(connection_params, network, period_hours, indexer_metrics)
+        """
         
         # Initialize any Polkadot-specific configurations
         self._init_polkadot_specific()
