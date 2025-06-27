@@ -7,6 +7,7 @@ from datetime import datetime
 
 from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \
     terminate_event
+from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
 from packages.indexers.substrate import get_substrate_node_url, networks, data, Network
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
 from packages.indexers.substrate.balance_series.balance_series_indexer_torus import TorusBalanceSeriesIndexer
@@ -16,7 +17,7 @@ from packages.indexers.substrate.block_stream.block_stream_manager import BlockS
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
 
-def get_balance_series_indexer(network: str, connection_params, period_hours: int = 4):
+def get_balance_series_indexer(network: str, connection_params, period_hours: int = 4, indexer_metrics: IndexerMetrics = None):
     """
     Factory function to get the appropriate indexer based on network.
 
@@ -24,6 +25,7 @@ def get_balance_series_indexer(network: str, connection_params, period_hours: in
         network: Network identifier (torus, bittensor, polkadot)
         connection_params: ClickHouse connection parameters
         period_hours: Number of hours in each period (default: 4)
+        indexer_metrics: Optional IndexerMetrics instance for recording metrics
 
     Returns:
         BalanceSeriesIndexer: Appropriate indexer instance for the network
@@ -32,11 +34,11 @@ def get_balance_series_indexer(network: str, connection_params, period_hours: in
         ValueError: If network is invalid
     """
     if network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
-        return TorusBalanceSeriesIndexer(connection_params, network, period_hours)
+        return TorusBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics)
     elif network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
-        return BittensorBalanceSeriesIndexer(connection_params, network, period_hours)
+        return BittensorBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics)
     elif network == Network.POLKADOT.value:
-        return PolkadotBalanceSeriesIndexer(connection_params, network, period_hours)
+        return PolkadotBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics)
     else:
         raise ValueError(f"Unsupported network: {network}")
 
@@ -71,6 +73,46 @@ class BalanceSeriesConsumer:
         self.period_hours = period_hours
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.batch_size = batch_size
+        
+        # Metrics will be passed from main function
+        self.metrics_registry = None
+        self.indexer_metrics = None
+        
+        # Consumer-specific metrics (will be initialized when metrics are set)
+        self.period_processing_duration = None
+        self.addresses_processed_total = None
+        self.periods_processed_total = None
+        self.consumer_errors_total = None
+    
+    def set_metrics(self, metrics_registry, indexer_metrics):
+        """Set metrics after initialization"""
+        self.metrics_registry = metrics_registry
+        self.indexer_metrics = indexer_metrics
+        
+        # Initialize consumer-specific metrics
+        self.period_processing_duration = self.metrics_registry.create_histogram(
+            'consumer_period_processing_duration_seconds',
+            'Time spent processing periods',
+            ['network', 'indexer']
+        )
+        
+        self.addresses_processed_total = self.metrics_registry.create_counter(
+            'consumer_addresses_processed_total',
+            'Total addresses processed',
+            ['network', 'indexer']
+        )
+        
+        self.periods_processed_total = self.metrics_registry.create_counter(
+            'consumer_periods_processed_total',
+            'Total periods processed',
+            ['network', 'indexer']
+        )
+        
+        self.consumer_errors_total = self.metrics_registry.create_counter(
+            'consumer_errors_total',
+            'Total consumer processing errors',
+            ['network', 'indexer', 'error_type']
+        )
 
     def run(self):
         """Main processing loop for balance series data"""
@@ -138,6 +180,9 @@ class BalanceSeriesConsumer:
             period_start: Start timestamp of the period (milliseconds)
             period_end: End timestamp of the period (milliseconds)
         """
+        start_time = time.time()
+        labels = {'network': self.network, 'indexer': 'balance_series'}
+        
         try:
             # Find the block closest to the period end time
             end_block = self.block_stream_manager.get_block_by_nearest_timestamp(period_end)
@@ -145,6 +190,8 @@ class BalanceSeriesConsumer:
             if not end_block:
                 error_msg = f"No block found for period end timestamp {period_end}"
                 logger.error(error_msg)
+                if self.consumer_errors_total:
+                    self.consumer_errors_total.labels(**labels, error_type='no_block_found').inc()
                 raise ValueError(error_msg)  # Fail fast instead of returning
 
             block_height = end_block['block_height']
@@ -168,6 +215,8 @@ class BalanceSeriesConsumer:
             if not all_addresses:
                 error_msg = f"No addresses found for period {period_start}-{period_end}"
                 logger.error(error_msg)
+                if self.consumer_errors_total:
+                    self.consumer_errors_total.labels(**labels, error_type='no_addresses_found').inc()
                 raise ValueError(error_msg)  # Fail fast instead of continuing
 
             # Query balances for all addresses at the end block
@@ -178,9 +227,22 @@ class BalanceSeriesConsumer:
                 period_start, period_end, block_height, address_balances
             )
 
+            # Record metrics
+            processing_time = time.time() - start_time
+            if self.period_processing_duration:
+                self.period_processing_duration.labels(**labels).observe(processing_time)
+            if self.addresses_processed_total:
+                self.addresses_processed_total.labels(**labels).inc(len(address_balances))
+            if self.periods_processed_total:
+                self.periods_processed_total.labels(**labels).inc()
+            if self.indexer_metrics:
+                self.indexer_metrics.record_block_processed(block_height, processing_time)
+
             logger.success(f"Successfully processed period {period_start}-{period_end} with {len(address_balances)} addresses and block {block_height}")
 
         except Exception as e:
+            if self.consumer_errors_total:
+                self.consumer_errors_total.labels(**labels, error_type='processing_error').inc()
             logger.error(f"Error processing period {period_start}-{period_end}: {e}")
             raise
 
@@ -295,7 +357,12 @@ if __name__ == "__main__":
         clickhouse_params = get_clickhouse_connection_string(args.network)
         create_clickhouse_database(clickhouse_params)
 
-        balance_series_indexer = get_balance_series_indexer(args.network, clickhouse_params, args.period_hours)
+        # Setup metrics first
+        service_name = f'substrate-{args.network}-balance-series'
+        metrics_registry = setup_metrics(service_name)
+        indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'balance_series')
+        
+        balance_series_indexer = get_balance_series_indexer(args.network, clickhouse_params, args.period_hours, indexer_metrics)
         block_stream_manager = BlockStreamManager(clickhouse_params, args.network, terminate_event)
 
         node_url = get_substrate_node_url(args.network)
@@ -310,6 +377,9 @@ if __name__ == "__main__":
             args.period_hours,
             args.batch_size
         )
+        
+        # Set metrics after consumer creation
+        consumer.set_metrics(metrics_registry, indexer_metrics)
 
         consumer.run()
     except Exception as e:

@@ -12,7 +12,7 @@ from packages.indexers.substrate.balance_series.balance_series_indexer_base impo
 
 class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
 
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4):
+    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4, indexer_metrics=None):
         """
         Initialize the TorusBalanceSeriesIndexer.
         
@@ -20,8 +20,9 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             connection_params: Dictionary with ClickHouse connection parameters
             network: Network identifier (e.g., 'torus', 'torus_testnet')
             period_hours: Number of hours in each period (default: 4)
+            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
-        super().__init__(connection_params, network, period_hours)
+        super().__init__(connection_params, network, period_hours, indexer_metrics)
 
     def init_genesis_balances(self, first_block_info):
         """Initialize genesis balances for Torus networks if they don't exist yet"""

@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 
 from packages.indexers.base import terminate_event, get_clickhouse_connection_string, get_memgraph_connection_string, \
     setup_logger
+from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
 from packages.indexers.substrate import networks, data, Network
 from packages.indexers.substrate.block_range_partitioner import get_partitioner
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
@@ -57,6 +58,60 @@ class MoneyFlowConsumer:
         self.network = network
         self.batch_size = batch_size
         self.partitioner = get_partitioner(network)
+        
+        # Metrics will be set from main function
+        self.metrics_registry = None
+        self.indexer_metrics = None
+        
+        # Consumer-specific metrics (will be initialized when metrics are set)
+        self.batch_processing_duration = None
+        self.blocks_processed_total = None
+        self.consumer_errors_total = None
+        self.community_detection_duration = None
+        self.page_rank_duration = None
+        self.embeddings_update_duration = None
+    
+    def set_metrics(self, metrics_registry, indexer_metrics):
+        """Set metrics after initialization"""
+        self.metrics_registry = metrics_registry
+        self.indexer_metrics = indexer_metrics
+        
+        # Initialize consumer-specific metrics
+        self.batch_processing_duration = self.metrics_registry.create_histogram(
+            'consumer_batch_processing_duration_seconds',
+            'Time spent processing batches',
+            ['network', 'indexer']
+        )
+        
+        self.blocks_processed_total = self.metrics_registry.create_counter(
+            'consumer_blocks_processed_total',
+            'Total blocks processed',
+            ['network', 'indexer']
+        )
+        
+        self.consumer_errors_total = self.metrics_registry.create_counter(
+            'consumer_errors_total',
+            'Total consumer processing errors',
+            ['network', 'indexer', 'error_type']
+        )
+        
+        self.community_detection_duration = self.metrics_registry.create_histogram(
+            'consumer_community_detection_duration_seconds',
+            'Time spent on community detection',
+            ['network', 'indexer']
+        )
+        
+        self.page_rank_duration = self.metrics_registry.create_histogram(
+            'consumer_page_rank_duration_seconds',
+            'Time spent on page rank calculation',
+            ['network', 'indexer']
+        )
+        
+        self.embeddings_update_duration = self.metrics_registry.create_histogram(
+            'consumer_embeddings_update_duration_seconds',
+            'Time spent updating embeddings',
+            ['network', 'indexer']
+        )
 
     def run(self):
         """Main processing loop with improved termination handling"""
@@ -82,6 +137,7 @@ class MoneyFlowConsumer:
                     
                     # Fetch blocks with address interactions from the block stream
                     logger.info(f"Fetching blocks with address interactions from {current_height} to {end_height}")
+                    batch_start_time = time.time()
                     blocks_with_addresses = self.block_stream_manager.get_blocks_by_block_height_range(current_height, end_height, only_with_addresses=True)
                     
                     # Only proceed if we weren't terminated during block fetching
@@ -96,6 +152,13 @@ class MoneyFlowConsumer:
                                 break
                             self.process_block(block)
                         
+                        # Record batch processing metrics
+                        if self.batch_processing_duration and self.blocks_processed_total:
+                            batch_duration = time.time() - batch_start_time
+                            labels = {'network': self.network, 'indexer': 'money_flow'}
+                            self.batch_processing_duration.labels(**labels).observe(batch_duration)
+                            self.blocks_processed_total.labels(**labels).inc(len(blocks_with_addresses))
+                        
                         # Update current height if we weren't terminated
                         if not self.terminate_event.is_set():
                             current_height = end_height + 1
@@ -108,6 +171,11 @@ class MoneyFlowConsumer:
                     if self.terminate_event.is_set():
                         logger.info("Termination requested, stopping processing")
                         break
+                    
+                    # Record error metric
+                    if self.consumer_errors_total:
+                        labels = {'network': self.network, 'indexer': 'money_flow', 'error_type': 'processing_error'}
+                        self.consumer_errors_total.labels(**labels).inc()
                         
                     logger.error(f"Error processing blocks: {e}", error=e, trb=traceback.format_exc())
                     time.sleep(5)  # Brief pause before continuing
@@ -139,12 +207,17 @@ class MoneyFlowConsumer:
             # Run periodic tasks
             once_per_block = 16 * 60 * 60 / self.partitioner.block_time_seconds
             if block_height % once_per_block == 0 and not self.terminate_event.is_set():
+                labels = {'network': self.network, 'indexer': 'money_flow'}
+                
                 # Run community detection with termination check
                 start_time = time.time()
                 logger.info(f"Running community detection")
                 self.money_flow_indexer.community_detection()
                 end_time = time.time()
-                logger.success(f"Community detection took {end_time - start_time} seconds")
+                duration = end_time - start_time
+                logger.success(f"Community detection took {duration} seconds")
+                if self.community_detection_duration:
+                    self.community_detection_duration.labels(**labels).observe(duration)
 
                 # Run page rank with termination check
                 if not self.terminate_event.is_set():
@@ -152,7 +225,10 @@ class MoneyFlowConsumer:
                     logger.info(f"Running page rank with communities")
                     self.money_flow_indexer.page_rank_with_community()
                     end_time = time.time()
-                    logger.success(f"Page rank with communities took {end_time - start_time} seconds")
+                    duration = end_time - start_time
+                    logger.success(f"Page rank with communities took {duration} seconds")
+                    if self.page_rank_duration:
+                        self.page_rank_duration.labels(**labels).observe(duration)
 
                 # Update embeddings with termination check
                 if not self.terminate_event.is_set():
@@ -160,7 +236,10 @@ class MoneyFlowConsumer:
                     logger.info(f"Updating embeddings")
                     self.money_flow_indexer.update_embeddings()
                     end_time = time.time()
-                    logger.success(f"Updating embeddings took {end_time - start_time} seconds")
+                    duration = end_time - start_time
+                    logger.success(f"Updating embeddings took {duration} seconds")
+                    if self.embeddings_update_duration:
+                        self.embeddings_update_duration.labels(**labels).observe(duration)
 
         except Exception as e:
             logger.error(f"Error processing block {block_height}: {e}")
@@ -213,6 +292,10 @@ if __name__ == "__main__":
     service_name = f'substrate-{args.network}-money-flow'
     setup_logger(service_name)
 
+    # Setup metrics
+    metrics_registry = setup_metrics(service_name)
+    indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'money_flow')
+
     # Get connection parameters
     clickhouse_params = get_clickhouse_connection_string(args.network)
     graph_db_url, graph_db_user, graph_db_password = get_memgraph_connection_string(args.network)
@@ -239,6 +322,9 @@ if __name__ == "__main__":
         args.network,
         args.batch_size
     )
+    
+    # Set metrics after consumer creation
+    consumer.set_metrics(metrics_registry, indexer_metrics)
     
     try:
         consumer.run()

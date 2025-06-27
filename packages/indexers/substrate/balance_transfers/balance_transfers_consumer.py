@@ -3,7 +3,7 @@ import traceback
 import time
 from loguru import logger
 from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \
-    terminate_event
+    terminate_event, setup_metrics, get_metrics_registry
 from packages.indexers.substrate import get_substrate_node_url, networks, Network
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer_torus import TorusBalanceTransfersIndexer
@@ -61,6 +61,32 @@ class BalanceTransfersConsumer:
         self.terminate_event = terminate_event
         self.network = network
         self.batch_size = batch_size
+        
+        # Get metrics registry for additional consumer-level metrics
+        service_name = f"substrate-{network}-balance-transfers"
+        self.metrics_registry = get_metrics_registry(service_name)
+        if self.metrics_registry:
+            # Consumer-specific metrics
+            self.batch_processing_duration = self.metrics_registry.create_histogram(
+                'consumer_batch_processing_duration_seconds',
+                'Time spent processing batches',
+                ['network', 'indexer']
+            )
+            self.blocks_fetched_total = self.metrics_registry.create_counter(
+                'consumer_blocks_fetched_total',
+                'Total blocks fetched from block stream',
+                ['network', 'indexer']
+            )
+            self.empty_batches_total = self.metrics_registry.create_counter(
+                'consumer_empty_batches_total',
+                'Total empty batches encountered',
+                ['network', 'indexer']
+            )
+            self.consumer_errors_total = self.metrics_registry.create_counter(
+                'consumer_errors_total',
+                'Total consumer processing errors',
+                ['network', 'indexer', 'error_type']
+            )
 
     def run(self):
         """Main processing loop with improved termination handling and batch processing"""
@@ -95,13 +121,25 @@ class BalanceTransfersConsumer:
                     
                     if not blocks:
                         logger.warning(f"No blocks returned for range {start_height}-{end_height}")
+                        # Record empty batch metric
+                        if self.metrics_registry:
+                            self.empty_batches_total.labels(network=self.network, indexer="balance_transfers").inc()
                         # Move to the next batch even if no blocks were found
                         start_height = end_height + 1
                         continue
 
+                    # Record blocks fetched metric
+                    if self.metrics_registry:
+                        self.blocks_fetched_total.labels(network=self.network, indexer="balance_transfers").inc(len(blocks))
+
                     # Process blocks for transfers
                     logger.info(f"Processing {len(blocks)} blocks for transfer extraction")
                     self._process_blocks(blocks)
+                    
+                    # Update blocks behind metric
+                    if self.metrics_registry and hasattr(self.balance_transfers_indexer, 'metrics') and self.balance_transfers_indexer.metrics:
+                        blocks_behind = latest_block_height - end_height
+                        self.balance_transfers_indexer.metrics.update_blocks_behind(max(0, blocks_behind))
                     
                     # Update start height to the next block after this batch
                     start_height = end_height + 1
@@ -110,6 +148,14 @@ class BalanceTransfersConsumer:
                     if self.terminate_event.is_set():
                         logger.info("Termination requested, stopping processing")
                         break
+                    
+                    # Record error metric
+                    if self.metrics_registry:
+                        self.consumer_errors_total.labels(
+                            network=self.network,
+                            indexer="balance_transfers",
+                            error_type="processing_error"
+                        ).inc()
                         
                     logger.error(f"Error processing blocks starting from {start_height}: {e}", error=e, trb=traceback.format_exc())
                     time.sleep(5)  # Brief pause before continuing
@@ -131,6 +177,7 @@ class BalanceTransfersConsumer:
         Args:
             blocks: List of blocks to process
         """
+        batch_start_time = time.time()
         try:
             # Check for termination before starting
             if self.terminate_event.is_set():
@@ -140,9 +187,25 @@ class BalanceTransfersConsumer:
             # Index transfers from the blocks
             self.balance_transfers_indexer.index_blocks(blocks)
             
+            # Record batch processing metrics
+            if self.metrics_registry:
+                batch_duration = time.time() - batch_start_time
+                self.batch_processing_duration.labels(
+                    network=self.network,
+                    indexer="balance_transfers"
+                ).observe(batch_duration)
+            
             logger.success(f"Processed {len(blocks)} blocks for transfer extraction")
             
         except Exception as e:
+            # Record batch processing error
+            if self.metrics_registry:
+                self.consumer_errors_total.labels(
+                    network=self.network,
+                    indexer="balance_transfers",
+                    error_type="batch_processing_error"
+                ).inc()
+            
             logger.error(f"Error processing blocks: {e}")
             raise
 
@@ -182,6 +245,10 @@ if __name__ == "__main__":
 
     service_name = f'substrate-{args.network}-balance-transfers'
     setup_logger(service_name)
+    
+    # Setup metrics
+    metrics_registry = setup_metrics(service_name, start_server=True)
+    logger.info(f"Metrics server started for {service_name}")
 
     # Initialize components
     balance_transfers_indexer = None

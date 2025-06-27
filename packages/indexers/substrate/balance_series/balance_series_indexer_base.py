@@ -1,5 +1,6 @@
 import uuid
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple, Optional, List
 import clickhouse_connect
@@ -9,22 +10,25 @@ from loguru import logger
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
+from packages.indexers.base.metrics import IndexerMetrics
 
 
 class BalanceSeriesIndexerBase:
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4):
+    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4, indexer_metrics: IndexerMetrics = None):
         """Initialize the Balance Series Indexer with a database connection
         
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
             period_hours: Number of hours in each period (default: 4)
+            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
         self.network = network
         self.asset = get_network_asset(network)
         self.period_hours = period_hours
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.first_block_timestamp = None  # Will be set by the consumer if available
+        self.indexer_metrics = indexer_metrics
         
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
@@ -94,7 +98,7 @@ class BalanceSeriesIndexerBase:
             logger.error(f"Error initializing balance series tables: {e}")
             raise
 
-    def record_balance_series(self, period_start_timestamp: int, period_end_timestamp: int, 
+    def record_balance_series(self, period_start_timestamp: int, period_end_timestamp: int,
                              block_height: int, address_balances: Dict[str, Dict[str, int]]):
         """Record balance series data for multiple addresses at a specific time period
         
@@ -103,13 +107,14 @@ class BalanceSeriesIndexerBase:
             period_end_timestamp: End timestamp of the period (milliseconds)
             block_height: Block height at the end of the period
             address_balances: Dictionary mapping addresses to their balance information
-                             {address: {'free_balance': int, 'reserved_balance': int, 
+                             {address: {'free_balance': int, 'reserved_balance': int,
                                        'staked_balance': int, 'total_balance': int}}
         """
         if not address_balances:
             logger.warning(f"No address balances provided for period {period_start_timestamp}-{period_end_timestamp}")
             return
 
+        start_time = time.time()
         try:
             # Prepare data for insertion
             balance_data = []
@@ -179,8 +184,18 @@ class BalanceSeriesIndexerBase:
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])
+                
+                # Record metrics if available
+                if self.indexer_metrics:
+                    duration = time.time() - start_time
+                    self.indexer_metrics.record_database_operation('insert', 'balance_series', duration, True)
+                    logger.info(f"Recorded balance series for {len(balance_data)} addresses in {duration:.3f}s")
 
         except Exception as e:
+            # Record database error metric if available
+            if self.indexer_metrics:
+                duration = time.time() - start_time
+                self.indexer_metrics.record_database_operation('insert', 'balance_series', duration, False)
             logger.error(f"Error recording balance series for period {period_start_timestamp}-{period_end_timestamp}: {e}")
             raise
 

@@ -3,6 +3,7 @@ import sys
 import signal
 import threading
 from loguru import logger
+from .metrics import setup_metrics, get_metrics_registry, shutdown_metrics_servers, IndexerMetrics
 
 
 def get_memgraph_connection_string(network: str):

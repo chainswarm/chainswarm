@@ -1,0 +1,51 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # ChainSwarm Indexers Only
+  - job_name: 'chainswarm-balance-transfers'
+    static_configs:
+      - targets: ['host.docker.internal:9101']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'chainswarm-balance-series'
+    static_configs:
+      - targets: ['host.docker.internal:9102']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'chainswarm-money-flow'
+    static_configs:
+      - targets: ['host.docker.internal:9103']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'chainswarm-block-stream'
+    static_configs:
+      - targets: ['host.docker.internal:9104']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  # ChainSwarm APIs
+  - job_name: 'chain-swarm-api'
+    static_configs:
+      - targets: ['host.docker.internal:9200']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'blockchain-insights-block-stream-api'
+    static_configs:
+      - targets: ['host.docker.internal:9201']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
