@@ -34,7 +34,7 @@ class BlockStreamService:
             }
         )
     
-    def get_blocks_by_range(self, start_height: int, end_height: int, only_with_addresses: bool = False) -> List[Dict[str, Any]]:
+    def get_blocks_by_block_height_range(self, start_height: int, end_height: int, only_with_addresses: bool = False) -> List[Dict[str, Any]]:
         """
         Get blocks within a specified height range.
         
@@ -196,7 +196,7 @@ class BlockStreamService:
             # Then get the full blocks
             blocks = []
             for height in block_heights:
-                blocks.extend(self.get_blocks_by_range(height, height))
+                blocks.extend(self.get_blocks_by_block_height_range(height, height))
             
             return blocks
             
@@ -253,7 +253,7 @@ class BlockStreamService:
         Returns:
             List of block dictionaries that have addresses
         """
-        return self.get_blocks_by_range(start_height, end_height, only_with_addresses=True)
+        return self.get_blocks_by_block_height_range(start_height, end_height, only_with_addresses=True)
 
     def get_indexing_status(self) -> Dict[str, Any]:
         """

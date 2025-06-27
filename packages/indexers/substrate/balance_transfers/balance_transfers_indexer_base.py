@@ -1,13 +1,14 @@
 import os
+import time
 from datetime import datetime
 from typing import Dict, Any, List
 import clickhouse_connect
 from decimal import Decimal
 from loguru import logger
-
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
+from packages.indexers.base import IndexerMetrics, get_metrics_registry
 
 
 class BalanceTransfersIndexerBase:
@@ -35,58 +36,92 @@ class BalanceTransfersIndexerBase:
             }
         )
         self.partitioner = partitioner
+        
+        # Initialize metrics
+        service_name = f"substrate-{network}-balance-transfers"
+        metrics_registry = get_metrics_registry(service_name)
+        if metrics_registry:
+            self.metrics = IndexerMetrics(metrics_registry, network, "balance_transfers")
+        else:
+            logger.warning(f"No metrics registry found for {service_name}")
+            self.metrics = None
+
         self._init_tables()
-        self.version = int(datetime.now().strftime('%Y%m%d%H%M%S'))
 
     def _init_tables(self):
         """Initialize tables for balance transfers from schema file"""
-        # Read schema file
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-        
+
         try:
             with open(schema_path, 'r') as f:
                 schema_sql = f.read()
-            
-            # Replace partition size placeholder
+
+            logger.debug(f"Raw schema length: {len(schema_sql)} characters")
+
+            # Replace partition size placeholder if it exists
             schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
-            
-            # Split by semicolon but preserve semicolons within CREATE TABLE statements
-            # by not splitting on semicolons that are followed by whitespace and then CREATE or ALTER
-            statements = []
-            current_statement = []
+
+            # Define logical chunks based on SQL sections
+            chunks = []
+            current_chunk = []
             lines = schema_sql.split('\n')
-            
-            for line in lines:
+
+            for line_num, line in enumerate(lines, 1):
                 line = line.strip()
-                if line.startswith('--') or not line:
+
+                # Skip empty lines and comments
+                if not line or line.startswith('--'):
                     continue
-                    
-                current_statement.append(line)
-                
-                # Check if this line ends with a semicolon and the next non-empty line starts a new statement
+
+                current_chunk.append(line)
+
+                # End chunk on semicolon
                 if line.endswith(';'):
-                    # Join the current statement and add it to statements
-                    full_statement = ' '.join(current_statement).strip()
-                    if full_statement and not full_statement.startswith('--'):
-                        statements.append(full_statement.rstrip(';'))
-                    current_statement = []
-            
-            # Execute each statement
-            for statement in statements:
-                if statement:
-                    try:
-                        self.client.command(statement)
-                    except Exception as e:
-                        # Skip errors for views and indexes that might already exist
-                        if "already exists" in str(e).lower():
-                            logger.debug(f"Object already exists, skipping: {statement[:50]}...")
-                        else:
-                            logger.error(f"Error executing statement: {e}")
-                            logger.error(f"Statement: {statement[:100]}...")
-                            raise
-            
-            logger.info("Balance transfers tables initialized from schema.sql")
-            
+                    chunk_sql = ' '.join(current_chunk)
+                    if chunk_sql and not chunk_sql.startswith('--'):
+                        chunks.append(chunk_sql)
+                        logger.debug(f"Parsed chunk {len(chunks)}: {chunk_sql[:50]}...")
+                    current_chunk = []
+
+            logger.info(f"Parsed {len(chunks)} chunks from schema")
+
+            # Show all chunks for debugging
+            for i, chunk in enumerate(chunks):
+                logger.debug(f"Chunk {i + 1}: {chunk}")
+
+            # Execute chunks
+            skipped_count = 0
+            created_count = 0
+            error_count = 0
+
+            for i, chunk in enumerate(chunks):
+                try:
+                    logger.info(f"Executing chunk {i + 1}/{len(chunks)}")
+                    logger.debug(f"SQL: {chunk}")
+
+                    result = self.client.command(chunk)
+                    created_count += 1
+                    logger.info(f"✓ Chunk {i + 1} executed successfully")
+
+                except Exception as e:
+                    error_str = str(e).lower()
+                    logger.error(f"Error in chunk {i + 1}: {e}")
+                    logger.error(f"Chunk was: {chunk}")
+
+                    if ("already exists" in error_str or
+                            "table already exists" in error_str or
+                            "view already exists" in error_str or
+                            "index already exists" in error_str):
+                        skipped_count += 1
+                        logger.warning(f"○ Chunk {i + 1} skipped (already exists)")
+                    else:
+                        error_count += 1
+                        logger.error(f"✗ Real error in chunk {i + 1}")
+                        raise
+
+            logger.info(
+                f"Schema execution complete: {created_count} created, {skipped_count} skipped, {error_count} errors")
+
         except FileNotFoundError:
             logger.error(f"Schema file not found: {schema_path}")
             raise
@@ -100,16 +135,28 @@ class BalanceTransfersIndexerBase:
         Returns:
             The maximum block height from balance_transfers table, or 0 if no records exist
         """
+
+        start_time = time.time()
+
         try:
             result = self.client.query('''
                 SELECT MAX(block_height) as max_height FROM balance_transfers
             ''')
             
+            # Record successful database operation
+            if self.metrics:
+                duration = time.time() - start_time
+                self.metrics.record_database_operation("select", "balance_transfers", duration, True)
+
             if result.result_rows and result.result_rows[0][0] is not None:
                 return result.result_rows[0][0]
             return 0
         except Exception as e:
-            logger.error(f"Error getting latest processed block height: {e}")
+            # Record database error
+            if self.metrics:
+                duration = time.time() - start_time
+                self.metrics.record_database_operation("select", "balance_transfers", duration, False)
+                self.metrics.record_failed_event("database_query_error")
             return 0
     
     def _validate_event_structure(self, event: Dict, required_attrs: List[str]):
@@ -171,6 +218,8 @@ class BalanceTransfersIndexerBase:
                     if fee_account == from_account:
                         break
 
+                block_version = str(event.get('block_height'))
+
                 # Record the transfer
                 balance_transfers.append((
                     event['extrinsic_id'],
@@ -181,7 +230,7 @@ class BalanceTransfersIndexerBase:
                     self.asset,
                     amount,
                     fee_amount,
-                    self.version
+                    block_version
                 ))
 
         return balance_transfers
@@ -191,13 +240,18 @@ class BalanceTransfersIndexerBase:
         if not blocks:
             return
 
+        batch_start_time = time.time()
+
         try:
             sorted_blocks = sorted(blocks, key=lambda x: x['block_height'])
 
             # Aggregation containers
             all_balance_transfers = []
+            total_events_processed = 0
+            total_transfers_extracted = 0
 
             for block in sorted_blocks:
+                block_start_time = time.time()
                 block_height = block['block_height']
                 block_timestamp = block['timestamp']
 
@@ -206,6 +260,8 @@ class BalanceTransfersIndexerBase:
 
                 # Process events and get transfers
                 events = block.get('events', [])
+                total_events_processed += len(events)
+                
                 balance_transfers = self._process_events(events)
 
                 # Process network-specific events
@@ -234,8 +290,15 @@ class BalanceTransfersIndexerBase:
 
                 # Aggregate transfers
                 all_balance_transfers.extend(updated_balance_transfers)
+                total_transfers_extracted += len(updated_balance_transfers)
+
+                # Record block processing metrics
+                if self.metrics:
+                    block_processing_time = time.time() - block_start_time
+                    self.metrics.record_block_processed(block_height, block_processing_time)
 
             # Bulk insert transfers
+            insert_start_time = time.time()
             if all_balance_transfers:
                 self.client.insert('balance_transfers',
                                   all_balance_transfers,
@@ -243,10 +306,30 @@ class BalanceTransfersIndexerBase:
                                                'from_address', 'to_address', 'asset', 'amount', 'fee', '_version'],
                                   settings={'async_insert': 0})
 
+                # Record database insert metrics
+                if self.metrics:
+                    insert_duration = time.time() - insert_start_time
+                    self.metrics.record_database_operation("insert", "balance_transfers", insert_duration, True)
+
+            # Record batch metrics
+            if self.metrics:
+                batch_duration = time.time() - batch_start_time
+                processing_rate = len(sorted_blocks) / batch_duration if batch_duration > 0 else 0
+                self.metrics.update_processing_rate(processing_rate)
+                
+                # Record event processing metrics
+                self.metrics.record_event_processed("total_events", total_events_processed)
+                self.metrics.record_event_processed("balance_transfers", total_transfers_extracted)
+
             logger.success(f"Bulk inserted {len(sorted_blocks)} blocks with {len(all_balance_transfers)} transfers")
 
         except Exception as e:
-            logger.error(f"Batch indexing failed: {e}")
+            # Record error metrics
+            if self.metrics:
+                batch_duration = time.time() - batch_start_time
+                self.metrics.record_failed_event("batch_processing_error")
+                
+            logger.success(f"Bulk inserted {len(sorted_blocks)} blocks with {len(all_balance_transfers)} transfers")
             raise
     
     def _process_network_specific_events(self, events: List[Dict]):

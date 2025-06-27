@@ -1,429 +1,465 @@
--- Balance Transfers Schema
--- Tables and views for tracking individual transfer transactions on Substrate networks
+-- Balance Transfers Schema (Optimized for ClickHouse 25.5+)
+-- Chunked for proper execution
 
--- Drop potentially invalid objects first to ensure clean recreation
-DROP VIEW IF EXISTS balance_transfers_address_relationships_mv;
-DROP VIEW IF EXISTS balance_transfers_pairs_analysis_view;
-DROP VIEW IF EXISTS balance_transfers_address_clusters_view;
-DROP VIEW IF EXISTS balance_transfers_suspicious_activity_view;
-DROP VIEW IF EXISTS balance_transfers_address_activity_patterns_view;
-DROP VIEW IF EXISTS balance_transfers_address_classification_view;
-DROP VIEW IF EXISTS balance_transfers_address_behavior_profiles_view;
-
--- Balance Transfers Table
--- Stores individual transfer transactions between addresses
+-- CHUNK 1: Core Tables
 CREATE TABLE IF NOT EXISTS balance_transfers (
-    -- Transaction identification
     extrinsic_id String,
     event_idx String,
-    
-    -- Block information
     block_height UInt32,
     block_timestamp UInt64,
-    
-    -- Transfer details
     from_address String,
     to_address String,
     asset String,
     amount Decimal128(18),
     fee Decimal128(18),
-    
-    -- Versioning for updates
     _version UInt64
-    
 ) ENGINE = ReplacingMergeTree(_version)
-PARTITION BY intDiv(block_height, {PARTITION_SIZE})
+PARTITION BY intDiv(block_height, 100000)
 ORDER BY (extrinsic_id, event_idx, asset)
+SETTINGS index_granularity = 8192;
+
+CREATE TABLE IF NOT EXISTS known_addresses (
+    id UUID,
+    network String,
+    address String,
+    label String,
+    source String,
+    source_type String,
+    last_updated DateTime,
+    _version UInt64
+) ENGINE = ReplacingMergeTree(_version)
+ORDER BY (network, address)
+SETTINGS index_granularity = 8192;
+
+-- CHUNK 2: Primary Indexes
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_address from_address TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_to_address to_address TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_block_timestamp block_timestamp TYPE minmax GRANULARITY 4;
+
+-- CHUNK 3: Secondary Indexes
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_date toDate(toDateTime(intDiv(block_timestamp, 1000))) TYPE minmax GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_amount_range amount TYPE minmax GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_from_address (asset, from_address) TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_to_address (asset, to_address) TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_to_asset (from_address, to_address, asset) TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_version _version TYPE minmax GRANULARITY 4;
+
+-- CHUNK 4: Materialized View
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_volume_series_mv_internal
+ENGINE = SummingMergeTree((
+    transaction_count,
+    unique_senders,
+    unique_receivers,
+    total_volume,
+    total_fees,
+    unique_address_pairs,
+    active_addresses,
+    hour_0_tx_count,
+    hour_1_tx_count,
+    hour_2_tx_count,
+    hour_3_tx_count,
+    blocks_in_period,
+    tx_count_lt_01,
+    tx_count_01_to_1,
+    tx_count_1_to_10,
+    tx_count_10_to_100,
+    tx_count_100_to_1k,
+    tx_count_1k_to_10k,
+    tx_count_gte_10k,
+    volume_lt_01,
+    volume_01_to_1,
+    volume_1_to_10,
+    volume_10_to_100,
+    volume_100_to_1k,
+    volume_1k_to_10k,
+    volume_gte_10k
+))
+PARTITION BY toYYYYMM(period_start)
+ORDER BY (period_start, asset)
 SETTINGS index_granularity = 8192
-COMMENT 'Stores individual balance transfer transactions with associated fees';
-
--- Views for easier querying
-
--- View for transfer statistics by address and asset
-CREATE VIEW IF NOT EXISTS balance_transfers_statistics_view AS
-SELECT
-    address,
-    asset,
-    countIf(address = from_address) as outgoing_transfer_count,
-    countIf(address = to_address) as incoming_transfer_count,
-    sumIf(amount, address = from_address) as total_sent,
-    sumIf(amount, address = to_address) as total_received,
-    sumIf(fee, address = from_address) as total_fees_paid,
-    min(block_height) as first_activity_block,
-    max(block_height) as last_activity_block
-FROM (
-    SELECT from_address as address, from_address, to_address, asset, amount, fee, block_height FROM balance_transfers
-    UNION ALL
-    SELECT to_address as address, from_address, to_address, asset, amount, 0 as fee, block_height FROM balance_transfers
-)
-GROUP BY address, asset;
-
--- Materialized view for daily transfer volume
-CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_daily_volume_mv
-ENGINE = AggregatingMergeTree()
-ORDER BY (date, asset)
 AS
 SELECT
-    toDate(toDateTime(intDiv(block_timestamp, 1000))) as date,
+    toDateTime(intDiv(intDiv(block_timestamp, 1000), 14400) * 14400) as period_start,
+    toDateTime((intDiv(intDiv(block_timestamp, 1000), 14400) + 1) * 14400) as period_end,
     asset,
-    count() as transfer_count,
+    count() as transaction_count,
     uniqExact(from_address) as unique_senders,
     uniqExact(to_address) as unique_receivers,
     sum(amount) as total_volume,
     sum(fee) as total_fees,
-    avg(amount) as avg_transfer_amount,
-    max(amount) as max_transfer_amount
+    uniq(from_address, to_address) as unique_address_pairs,
+    uniqExact(from_address) + uniqExact(to_address) as active_addresses,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(toDateTime(intDiv(intDiv(block_timestamp, 1000), 14400) * 14400))) as hour_0_tx_count,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(toDateTime(intDiv(intDiv(block_timestamp, 1000), 14400) * 14400)) + 1) as hour_1_tx_count,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(toDateTime(intDiv(intDiv(block_timestamp, 1000), 14400) * 14400)) + 2) as hour_2_tx_count,
+    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) = toHour(toDateTime(intDiv(intDiv(block_timestamp, 1000), 14400) * 14400)) + 3) as hour_3_tx_count,
+    max(block_height) - min(block_height) + 1 as blocks_in_period,
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
+    sumIf(amount, amount < 0.1) as volume_lt_01,
+    sumIf(amount, amount >= 0.1 AND amount < 1) as volume_01_to_1,
+    sumIf(amount, amount >= 1 AND amount < 10) as volume_1_to_10,
+    sumIf(amount, amount >= 10 AND amount < 100) as volume_10_to_100,
+    sumIf(amount, amount >= 100 AND amount < 1000) as volume_100_to_1k,
+    sumIf(amount, amount >= 1000 AND amount < 10000) as volume_1k_to_10k,
+    sumIf(amount, amount >= 10000) as volume_gte_10k,
+    argMax(block_height, block_timestamp) as latest_block_height,
+    argMin(block_height, block_timestamp) as earliest_block_height,
+    argMax(amount, block_timestamp) as max_transfer_amount,
+    argMin(amount, block_timestamp) as min_transfer_amount
 FROM balance_transfers
-GROUP BY date, asset;
+GROUP BY period_start, period_end, asset;
 
--- Indexes for efficient queries
-
--- Index for efficient address lookups
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_address from_address TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_to_address to_address TYPE bloom_filter(0.01) GRANULARITY 4;
-
--- Index for efficient asset lookups
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
-
--- Index for block height range queries
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
-
--- Composite indexes for efficient asset-address queries
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_from_address (asset, from_address) TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_to_address (asset, to_address) TYPE bloom_filter(0.01) GRANULARITY 4;
-
--- Simple view for available assets list
-CREATE VIEW IF NOT EXISTS available_transfer_assets_view AS
-SELECT DISTINCT asset
-FROM balance_transfers
-WHERE asset != ''
-ORDER BY asset;
-
--- Enhanced Address Analytics Views and Materialized Views
-
--- Address Behavior Profiles View
--- Comprehensive behavioral analysis for each address
-CREATE VIEW IF NOT EXISTS balance_transfers_address_behavior_profiles_view AS
+-- CHUNK 5: Simple Views
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_series_view AS
 SELECT
-    address,
+    period_start,
+    period_end,
     asset,
-    
-    -- Basic Activity Metrics
-    count() as total_transactions,
-    countIf(address = from_address) as outgoing_count,
-    countIf(address = to_address) as incoming_count,
-    
-    -- Volume Metrics
-    sumIf(amount, address = from_address) as total_sent,
-    sumIf(amount, address = to_address) as total_received,
-    sum(amount) as total_volume,
-    
-    -- Statistical Metrics
-    avgIf(amount, address = from_address) as avg_sent_amount,
-    avgIf(amount, address = to_address) as avg_received_amount,
-    quantileIf(0.5)(amount, address = from_address) as median_sent_amount,
-    quantileIf(0.5)(amount, address = to_address) as median_received_amount,
-    quantileIf(0.9)(amount, address = from_address) as p90_sent_amount,
-    quantileIf(0.9)(amount, address = to_address) as p90_received_amount,
-    
-    -- Temporal Patterns
-    min(block_timestamp) as first_activity,
-    max(block_timestamp) as last_activity,
-    max(block_timestamp) - min(block_timestamp) as activity_span_seconds,
-    count() / ((max(block_timestamp) - min(block_timestamp)) / 86400 + 1) as avg_transactions_per_day,
-    
-    -- Unique Counterparties
-    uniqIf(to_address, address = from_address) as unique_recipients,
-    uniqIf(from_address, address = to_address) as unique_senders,
-    uniq(multiIf(address = from_address, to_address, from_address)) as total_unique_counterparties,
-    
-    -- Fee Analysis
-    sumIf(fee, address = from_address) as total_fees_paid,
-    avgIf(fee, address = from_address) as avg_fee_paid,
-    maxIf(fee, address = from_address) as max_fee_paid,
-    
-    -- Activity Distribution by Time of Day
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 0 AND 5) as night_transactions,
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 6 AND 11) as morning_transactions,
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 12 AND 17) as afternoon_transactions,
-    countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 18 AND 23) as evening_transactions,
-    
-    -- Transaction Size Distribution
-    countIf(amount < 100) as micro_transactions,
-    countIf(amount >= 100 AND amount < 1000) as small_transactions,
-    countIf(amount >= 1000 AND amount < 10000) as medium_transactions,
-    countIf(amount >= 10000 AND amount < 100000) as large_transactions,
-    countIf(amount >= 100000) as whale_transactions,
-    
-    -- Behavioral Indicators
-    stddevPopIf(amount, address = from_address) as sent_amount_variance,
-    stddevPopIf(amount, address = to_address) as received_amount_variance,
-    uniq(toDate(toDateTime(intDiv(block_timestamp, 1000)))) as active_days,
-    
-    -- Network Effect Metrics (simplified to avoid subquery issues)
-    0 as circular_transactions
-    
-FROM (
-    SELECT from_address as address, from_address, to_address, asset, amount, fee, block_height, block_timestamp FROM balance_transfers
-    UNION ALL
-    SELECT to_address as address, from_address, to_address, asset, amount, 0 as fee, block_height, block_timestamp FROM balance_transfers
-)
-GROUP BY address, asset
-HAVING total_transactions >= 1;
-
--- Address Classification View
--- Classify addresses into behavioral categories with risk assessment
-CREATE VIEW IF NOT EXISTS balance_transfers_address_classification_view AS
-SELECT
-    address,
-    asset,
-    total_volume,
-    total_transactions,
-    unique_recipients,
+    transaction_count,
     unique_senders,
-    total_unique_counterparties,
-    avg_transactions_per_day,
-    activity_span_seconds,
-    
-    -- Primary Classification Logic
-    CASE
-        WHEN total_volume >= 1000000 AND unique_recipients >= 100 THEN 'Exchange'
-        WHEN total_volume >= 1000000 AND unique_recipients < 10 THEN 'Whale'
-        WHEN total_volume >= 100000 AND total_transactions >= 1000 THEN 'High_Volume_Trader'
-        WHEN unique_recipients >= 50 AND unique_senders >= 50 THEN 'Hub_Address'
-        WHEN total_transactions >= 100 AND total_volume < 10000 THEN 'Retail_Active'
-        WHEN total_transactions < 10 AND total_volume >= 50000 THEN 'Whale_Inactive'
-        WHEN total_transactions < 10 AND total_volume < 1000 THEN 'Retail_Inactive'
-        WHEN circular_transactions >= total_transactions * 0.3 THEN 'Circular_Trader'
-        ELSE 'Regular_User'
-    END as address_type,
-    
-    -- Risk Assessment
-    CASE
-        WHEN unique_recipients = 1 AND total_transactions > 100 THEN 'Potential_Mixer'
-        WHEN abs(avg_sent_amount - avg_received_amount) < avg_sent_amount * 0.05 AND total_transactions > 50 THEN 'Potential_Tumbler'
-        WHEN night_transactions / total_transactions > 0.8 THEN 'Unusual_Hours'
-        WHEN whale_transactions > 0 AND total_transactions < 20 THEN 'Large_Infrequent'
-        WHEN sent_amount_variance < avg_sent_amount * 0.1 AND total_transactions > 20 THEN 'Fixed_Amount_Pattern'
-        WHEN circular_transactions >= 10 THEN 'High_Circular_Activity'
-        ELSE 'Normal'
-    END as risk_flag,
-    
-    -- Activity Level Classification
-    CASE
-        WHEN activity_span_seconds < 86400 THEN 'Single_Day'
-        WHEN activity_span_seconds < 604800 THEN 'Weekly'
-        WHEN activity_span_seconds < 2592000 THEN 'Monthly'
-        WHEN activity_span_seconds < 31536000 THEN 'Yearly'
-        ELSE 'Long_Term'
-    END as activity_duration,
-    
-    -- Volume Classification
-    CASE
-        WHEN total_volume >= 1000000 THEN 'Ultra_High'
-        WHEN total_volume >= 100000 THEN 'High'
-        WHEN total_volume >= 10000 THEN 'Medium'
-        WHEN total_volume >= 1000 THEN 'Low'
-        ELSE 'Micro'
-    END as volume_tier,
-    
-    -- Activity Pattern
-    CASE
-        WHEN avg_transactions_per_day >= 10 THEN 'Very_Active'
-        WHEN avg_transactions_per_day >= 1 THEN 'Active'
-        WHEN avg_transactions_per_day >= 0.1 THEN 'Moderate'
-        ELSE 'Inactive'
-    END as activity_level,
-    
-    -- Diversification Score (0-1, higher = more diversified)
-    least(total_unique_counterparties / 100.0, 1.0) as diversification_score,
-    
-    -- Behavioral Consistency Score (0-1, higher = more consistent)
-    1.0 - least(greatest(sent_amount_variance / nullif(avg_sent_amount, 0), 0), 1.0) as consistency_score
-    
-FROM balance_transfers_address_behavior_profiles_view;
+    unique_receivers,
+    total_volume,
+    total_fees,
+    CASE WHEN transaction_count > 0 THEN total_volume / transaction_count ELSE 0 END as avg_transfer_amount,
+    max_transfer_amount,
+    min_transfer_amount,
+    CASE WHEN transaction_count > 0 THEN total_fees / transaction_count ELSE 0 END as avg_fee,
+    unique_address_pairs,
+    active_addresses,
+    CASE WHEN active_addresses > 1 THEN toFloat64(unique_address_pairs) / (toFloat64(active_addresses) * toFloat64(active_addresses - 1) / 2.0) ELSE 0.0 END as network_density,
+    toHour(period_start) as period_hour,
+    hour_0_tx_count,
+    hour_1_tx_count,
+    hour_2_tx_count,
+    hour_3_tx_count,
+    earliest_block_height as period_start_block,
+    latest_block_height as period_end_block,
+    blocks_in_period,
+    tx_count_lt_01,
+    tx_count_01_to_1,
+    tx_count_1_to_10,
+    tx_count_10_to_100,
+    tx_count_100_to_1k,
+    tx_count_1k_to_10k,
+    tx_count_gte_10k,
+    volume_lt_01,
+    volume_01_to_1,
+    volume_1_to_10,
+    volume_10_to_100,
+    volume_100_to_1k,
+    volume_1k_to_10k,
+    volume_gte_10k
+FROM balance_transfers_volume_series_mv_internal
+ORDER BY period_start DESC, asset;
 
--- Address Relationships View (simplified for debugging)
--- Track and analyze relationships between addresses based on transfer patterns
-CREATE VIEW IF NOT EXISTS balance_transfers_address_relationships_view AS
+-- CHUNK 6: Network Analytics Views
+CREATE VIEW IF NOT EXISTS balance_transfers_network_daily_view AS
 SELECT
-    from_address,
-    to_address,
+    'daily' as period_type,
+    toDate(toDateTime(intDiv(block_timestamp, 1000))) as period,
     asset,
-    count() as transfer_count,
-    sum(amount) as total_amount,
-    avg(amount) as avg_amount
+    count() as transaction_count,
+    sum(amount) as total_volume,
+    uniqExact(from_address) as max_unique_senders,
+    uniqExact(to_address) as max_unique_receivers,
+    uniqExact(from_address) + uniqExact(to_address) as unique_addresses,
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
+    CASE WHEN (uniqExact(from_address) + uniqExact(to_address)) > 1 THEN toFloat64(uniq(from_address, to_address)) / (toFloat64(uniqExact(from_address) + uniqExact(to_address)) * toFloat64(uniqExact(from_address) + uniqExact(to_address) - 1) / 2.0) ELSE 0.0 END as avg_network_density,
+    sum(fee) as total_fees,
+    CASE WHEN count() > 0 THEN sum(amount) / count() ELSE 0 END as avg_transaction_size,
+    max(amount) as max_transaction_size,
+    min(amount) as min_transaction_size,
+    CASE WHEN count() > 0 THEN sum(fee) / count() ELSE 0 END as avg_fee,
+    max(fee) as max_fee,
+    min(fee) as min_fee,
+    median(amount) as median_transaction_size,
+    stddevPop(amount) as avg_amount_std_dev
 FROM balance_transfers
-WHERE from_address != to_address
-GROUP BY from_address, to_address, asset
-HAVING count() >= 2;
+GROUP BY period, asset
+ORDER BY period DESC, asset;
 
--- Transfer Pairs Analysis View (simplified to match available columns)
--- Identify significant address pairs and classify their interaction patterns
-CREATE VIEW IF NOT EXISTS balance_transfers_pairs_analysis_view AS
+CREATE VIEW IF NOT EXISTS balance_transfers_network_weekly_view AS
 SELECT
-    from_address,
-    to_address,
+    'weekly' as period_type,
+    toStartOfWeek(toDateTime(intDiv(block_timestamp, 1000))) as period,
     asset,
-    transfer_count,
-    total_amount,
-    avg_amount,
-    
-    -- Simplified Relationship Strength Score (0-10 scale)
-    least(
-        (transfer_count * 0.4 + log10(total_amount + 1) * 0.6) * 2,
-        10.0
-    ) as relationship_strength,
-    
-    -- Simplified Relationship Type Classification
-    CASE
-        WHEN total_amount >= 100000 AND transfer_count >= 10 THEN 'High_Value'
-        WHEN transfer_count >= 100 THEN 'High_Frequency'
-        WHEN transfer_count >= 5 THEN 'Regular'
-        ELSE 'Casual'
-    END as relationship_type
-    
-FROM balance_transfers_address_relationships_view ar
-WHERE transfer_count >= 2  -- Filter for significant relationships
-ORDER BY relationship_strength DESC;
+    count() as transaction_count,
+    sum(amount) as total_volume,
+    uniqExact(from_address) as max_unique_senders,
+    uniqExact(to_address) as max_unique_receivers,
+    uniqExact(from_address) + uniqExact(to_address) as unique_addresses,
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
+    CASE WHEN (uniqExact(from_address) + uniqExact(to_address)) > 1 THEN toFloat64(uniq(from_address, to_address)) / (toFloat64(uniqExact(from_address) + uniqExact(to_address)) * toFloat64(uniqExact(from_address) + uniqExact(to_address) - 1) / 2.0) ELSE 0.0 END as avg_network_density,
+    sum(fee) as total_fees,
+    CASE WHEN count() > 0 THEN sum(amount) / count() ELSE 0 END as avg_transaction_size,
+    max(amount) as max_transaction_size,
+    min(amount) as min_transaction_size,
+    CASE WHEN count() > 0 THEN sum(fee) / count() ELSE 0 END as avg_fee,
+    max(fee) as max_fee,
+    min(fee) as min_fee,
+    median(amount) as median_transaction_size,
+    stddevPop(amount) as avg_amount_std_dev
+FROM balance_transfers
+GROUP BY period, asset
+ORDER BY period DESC, asset;
 
--- Address Activity Patterns View
--- Analyze temporal and behavioral patterns in address activity
-CREATE VIEW IF NOT EXISTS balance_transfers_address_activity_patterns_view AS
+CREATE VIEW IF NOT EXISTS balance_transfers_network_monthly_view AS
 SELECT
-    address,
+    'monthly' as period_type,
+    toStartOfMonth(toDateTime(intDiv(block_timestamp, 1000))) as period,
     asset,
-    toDate(toDateTime(intDiv(block_timestamp, 1000))) as activity_date,
-    
-    -- Daily Activity Metrics
-    count() as daily_transactions,
-    sum(amount) as daily_volume,
-    countIf(address = from_address) as daily_outgoing,
-    countIf(address = to_address) as daily_incoming,
-    
-    -- Hourly Distribution Analysis
-    groupArray(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as hourly_activity,
-    uniq(toHour(toDateTime(intDiv(block_timestamp, 1000)))) as active_hours,
-    toUInt8(avg(toHour(toDateTime(intDiv(block_timestamp, 1000))))) as peak_hour,
-    
-    -- Transaction Size Distribution
-    countIf(amount < 100) as micro_transactions,
-    countIf(amount >= 100 AND amount < 1000) as small_transactions,
-    countIf(amount >= 1000 AND amount < 10000) as medium_transactions,
-    countIf(amount >= 10000 AND amount < 100000) as large_transactions,
-    countIf(amount >= 100000) as whale_transactions,
-    
-    -- Statistical Measures
-    avg(amount) as daily_avg_amount,
-    median(amount) as daily_median_amount,
-    stddevPop(amount) as daily_amount_variance,
-    
-    -- Counterparty Analysis
-    uniqIf(to_address, address = from_address) as daily_unique_recipients,
-    uniqIf(from_address, address = to_address) as daily_unique_senders,
-    uniq(multiIf(address = from_address, to_address, from_address)) as daily_unique_counterparties,
-    
-    -- Fee Patterns
-    sumIf(fee, address = from_address) as daily_fees_paid,
-    avgIf(fee, address = from_address) as avg_daily_fee,
-    
-    -- Behavioral Indicators (simplified to avoid subquery issues)
-    0 as daily_circular_transactions
-    
-FROM (
-    SELECT from_address as address, from_address, to_address, asset, amount, fee, block_height, block_timestamp FROM balance_transfers
-    UNION ALL
-    SELECT to_address as address, from_address, to_address, asset, amount, 0 as fee, block_height, block_timestamp FROM balance_transfers
+    count() as transaction_count,
+    sum(amount) as total_volume,
+    uniqExact(from_address) as max_unique_senders,
+    uniqExact(to_address) as max_unique_receivers,
+    uniqExact(from_address) + uniqExact(to_address) as unique_addresses,
+    countIf(amount < 0.1) as tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+    countIf(amount >= 10000) as tx_count_gte_10k,
+    CASE WHEN (uniqExact(from_address) + uniqExact(to_address)) > 1 THEN toFloat64(uniq(from_address, to_address)) / (toFloat64(uniqExact(from_address) + uniqExact(to_address)) * toFloat64(uniqExact(from_address) + uniqExact(to_address) - 1) / 2.0) ELSE 0.0 END as avg_network_density,
+    sum(fee) as total_fees,
+    CASE WHEN count() > 0 THEN sum(amount) / count() ELSE 0 END as avg_transaction_size,
+    max(amount) as max_transaction_size,
+    min(amount) as min_transaction_size,
+    CASE WHEN count() > 0 THEN sum(fee) / count() ELSE 0 END as avg_fee,
+    max(fee) as max_fee,
+    min(fee) as min_fee,
+    median(amount) as median_transaction_size,
+    stddevPop(amount) as avg_amount_std_dev,
+    min(block_height) as period_start_block,
+    max(block_height) as period_end_block,
+    max(block_height) - min(block_height) + 1 as blocks_in_period
+FROM balance_transfers
+GROUP BY period, asset
+ORDER BY period DESC, asset;
+
+-- CHUNK 7: Volume Views
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_daily_view AS
+SELECT
+    toDate(toDateTime(intDiv(block_timestamp, 1000))) as date,
+    asset,
+    count() as daily_transaction_count,
+    uniqExact(from_address) as max_unique_senders,
+    uniqExact(to_address) as max_unique_receivers,
+    sum(amount) as daily_total_volume,
+    sum(fee) as daily_total_fees,
+    CASE WHEN count() > 0 THEN sum(amount) / count() ELSE 0 END as daily_avg_transfer_amount,
+    max(amount) as daily_max_transfer_amount,
+    min(amount) as daily_min_transfer_amount,
+    uniqExact(from_address) + uniqExact(to_address) as max_daily_active_addresses,
+    CASE WHEN (uniqExact(from_address) + uniqExact(to_address)) > 1 THEN toFloat64(uniq(from_address, to_address)) / (toFloat64(uniqExact(from_address) + uniqExact(to_address)) * toFloat64(uniqExact(from_address) + uniqExact(to_address) - 1) / 2.0) ELSE 0.0 END as avg_daily_network_density,
+    stddevPop(amount) as avg_daily_amount_std_dev,
+    median(amount) as avg_daily_median_amount,
+    countIf(amount < 0.1) as daily_tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as daily_tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as daily_tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as daily_tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as daily_tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as daily_tx_count_1k_to_10k,
+    countIf(amount >= 10000) as daily_tx_count_gte_10k,
+    sumIf(amount, amount < 0.1) as daily_volume_lt_01,
+    sumIf(amount, amount >= 0.1 AND amount < 1) as daily_volume_01_to_1,
+    sumIf(amount, amount >= 1 AND amount < 10) as daily_volume_1_to_10,
+    sumIf(amount, amount >= 10 AND amount < 100) as daily_volume_10_to_100,
+    sumIf(amount, amount >= 100 AND amount < 1000) as daily_volume_100_to_1k,
+    sumIf(amount, amount >= 1000 AND amount < 10000) as daily_volume_1k_to_10k,
+    sumIf(amount, amount >= 10000) as daily_volume_gte_10k,
+    min(block_height) as daily_start_block,
+    max(block_height) as daily_end_block
+FROM balance_transfers
+GROUP BY date, asset
+ORDER BY date DESC, asset;
+
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_weekly_view AS
+SELECT
+    toStartOfWeek(toDateTime(intDiv(block_timestamp, 1000))) as week_start,
+    asset,
+    count() as weekly_transaction_count,
+    uniqExact(from_address) as max_unique_senders,
+    uniqExact(to_address) as max_unique_receivers,
+    sum(amount) as weekly_total_volume,
+    sum(fee) as weekly_total_fees,
+    CASE WHEN count() > 0 THEN sum(amount) / count() ELSE 0 END as weekly_avg_transfer_amount,
+    max(amount) as weekly_max_transfer_amount,
+    uniqExact(from_address) + uniqExact(to_address) as max_weekly_active_addresses,
+    countIf(amount < 0.1) as weekly_tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as weekly_tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as weekly_tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as weekly_tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as weekly_tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as weekly_tx_count_1k_to_10k,
+    countIf(amount >= 10000) as weekly_tx_count_gte_10k,
+    sumIf(amount, amount < 0.1) as weekly_volume_lt_01,
+    sumIf(amount, amount >= 0.1 AND amount < 1) as weekly_volume_01_to_1,
+    sumIf(amount, amount >= 1 AND amount < 10) as weekly_volume_1_to_10,
+    sumIf(amount, amount >= 10 AND amount < 100) as weekly_volume_10_to_100,
+    sumIf(amount, amount >= 100 AND amount < 1000) as weekly_volume_100_to_1k,
+    sumIf(amount, amount >= 1000 AND amount < 10000) as weekly_volume_1k_to_10k,
+    sumIf(amount, amount >= 10000) as weekly_volume_gte_10k,
+    min(block_height) as weekly_start_block,
+    max(block_height) as weekly_end_block
+FROM balance_transfers
+GROUP BY week_start, asset
+ORDER BY week_start DESC, asset;
+
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_monthly_view AS
+SELECT
+    toStartOfMonth(toDateTime(intDiv(block_timestamp, 1000))) as month_start,
+    asset,
+    count() as monthly_transaction_count,
+    uniqExact(from_address) as max_unique_senders,
+    uniqExact(to_address) as max_unique_receivers,
+    sum(amount) as monthly_total_volume,
+    sum(fee) as monthly_total_fees,
+    CASE WHEN count() > 0 THEN sum(amount) / count() ELSE 0 END as monthly_avg_transfer_amount,
+    max(amount) as monthly_max_transfer_amount,
+    uniqExact(from_address) + uniqExact(to_address) as max_monthly_active_addresses,
+    countIf(amount < 0.1) as monthly_tx_count_lt_01,
+    countIf(amount >= 0.1 AND amount < 1) as monthly_tx_count_01_to_1,
+    countIf(amount >= 1 AND amount < 10) as monthly_tx_count_1_to_10,
+    countIf(amount >= 10 AND amount < 100) as monthly_tx_count_10_to_100,
+    countIf(amount >= 100 AND amount < 1000) as monthly_tx_count_100_to_1k,
+    countIf(amount >= 1000 AND amount < 10000) as monthly_tx_count_1k_to_10k,
+    countIf(amount >= 10000) as monthly_tx_count_gte_10k,
+    sumIf(amount, amount < 0.1) as monthly_volume_lt_01,
+    sumIf(amount, amount >= 0.1 AND amount < 1) as monthly_volume_01_to_1,
+    sumIf(amount, amount >= 1 AND amount < 10) as monthly_volume_1_to_10,
+    sumIf(amount, amount >= 10 AND amount < 100) as monthly_volume_10_to_100,
+    sumIf(amount, amount >= 100 AND amount < 1000) as monthly_volume_100_to_1k,
+    sumIf(amount, amount >= 1000 AND amount < 10000) as monthly_volume_1k_to_10k,
+    sumIf(amount, amount >= 10000) as monthly_volume_gte_10k,
+    min(block_height) as monthly_start_block,
+    max(block_height) as monthly_end_block
+FROM balance_transfers
+GROUP BY month_start, asset
+ORDER BY month_start DESC, asset;
+
+-- CHUNK 8: Address Analytics View
+CREATE VIEW IF NOT EXISTS balance_transfers_address_analytics_view AS
+WITH outgoing_metrics AS (
+    SELECT
+        from_address as address,
+        asset,
+        count() as outgoing_count,
+        sum(amount) as total_sent,
+        sum(fee) as total_fees_paid,
+        uniq(to_address) as unique_recipients,
+        min(block_timestamp) as first_activity,
+        max(block_timestamp) as last_activity,
+        uniq(toDate(toDateTime(intDiv(block_timestamp, 1000)))) as active_days,
+        countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 0 AND 5) as night_transactions,
+        countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 6 AND 11) as morning_transactions,
+        countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 12 AND 17) as afternoon_transactions,
+        countIf(toHour(toDateTime(intDiv(block_timestamp, 1000))) BETWEEN 18 AND 23) as evening_transactions,
+        countIf(amount < 0.1) as tx_count_lt_01,
+        countIf(amount >= 0.1 AND amount < 1) as tx_count_01_to_1,
+        countIf(amount >= 1 AND amount < 10) as tx_count_1_to_10,
+        countIf(amount >= 10 AND amount < 100) as tx_count_10_to_100,
+        countIf(amount >= 100 AND amount < 1000) as tx_count_100_to_1k,
+        countIf(amount >= 1000 AND amount < 10000) as tx_count_1k_to_10k,
+        countIf(amount >= 10000) as tx_count_gte_10k,
+        varPop(amount) as sent_amount_variance
+    FROM balance_transfers
+    GROUP BY from_address, asset
+),
+incoming_metrics AS (
+    SELECT
+        to_address as address,
+        asset,
+        count() as incoming_count,
+        sum(amount) as total_received,
+        uniq(from_address) as unique_senders,
+        varPop(amount) as received_amount_variance
+    FROM balance_transfers
+    GROUP BY to_address, asset
 )
-GROUP BY address, asset, activity_date;
-
-
--- Suspicious Activity Detection View
--- Identify potentially suspicious or anomalous activity patterns
-CREATE VIEW IF NOT EXISTS balance_transfers_suspicious_activity_view AS
 SELECT
-    ac.address,
-    ac.asset,
-    ac.address_type,
-    ac.risk_flag,
-    abp.total_transactions,
-    abp.total_volume,
-    abp.avg_transactions_per_day,
-    
-    -- Suspicious Pattern Indicators
+    COALESCE(out.address, inc.address) as address,
+    COALESCE(out.asset, inc.asset) as asset,
+    COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) as total_transactions,
+    COALESCE(out.outgoing_count, 0) as outgoing_count,
+    COALESCE(inc.incoming_count, 0) as incoming_count,
+    COALESCE(out.total_sent, 0) as total_sent,
+    COALESCE(inc.total_received, 0) as total_received,
+    COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) as total_volume,
+    COALESCE(out.unique_recipients, 0) as unique_recipients,
+    COALESCE(inc.unique_senders, 0) as unique_senders,
+    COALESCE(out.first_activity, 0) as first_activity,
+    COALESCE(out.last_activity, 0) as last_activity,
+    COALESCE(out.last_activity, 0) - COALESCE(out.first_activity, 0) as activity_span_seconds,
+    COALESCE(out.total_fees_paid, 0) as total_fees_paid,
+    CASE WHEN out.outgoing_count > 0 THEN out.total_fees_paid / out.outgoing_count ELSE 0 END as avg_fee_paid,
+    COALESCE(out.night_transactions, 0) as night_transactions,
+    COALESCE(out.morning_transactions, 0) as morning_transactions,
+    COALESCE(out.afternoon_transactions, 0) as afternoon_transactions,
+    COALESCE(out.evening_transactions, 0) as evening_transactions,
+    COALESCE(out.tx_count_lt_01, 0) as tx_count_lt_01,
+    COALESCE(out.tx_count_01_to_1, 0) as tx_count_01_to_1,
+    COALESCE(out.tx_count_1_to_10, 0) as tx_count_1_to_10,
+    COALESCE(out.tx_count_10_to_100, 0) as tx_count_10_to_100,
+    COALESCE(out.tx_count_100_to_1k, 0) as tx_count_100_to_1k,
+    COALESCE(out.tx_count_1k_to_10k, 0) as tx_count_1k_to_10k,
+    COALESCE(out.tx_count_gte_10k, 0) as tx_count_gte_10k,
+    COALESCE(out.sent_amount_variance, 0) as sent_amount_variance,
+    COALESCE(inc.received_amount_variance, 0) as received_amount_variance,
+    COALESCE(out.active_days, 0) as active_days,
     CASE
-        WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0
-    END as has_risk_flag,
-    
-    CASE
-        WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0
-    END as high_circular_activity,
-    
-    CASE
-        WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0
-    END as unusual_time_pattern,
-    
-    CASE
-        WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0
-    END as fixed_amount_pattern,
-    
-    CASE
-        WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0
-    END as single_recipient_pattern,
-    
-    CASE
-        WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0
-    END as large_infrequent_pattern,
-    
-    -- Composite Suspicion Score (0-6)
-    (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-     CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
-     CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
-     CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
-     CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-     CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) as suspicion_score,
-    
-    -- Risk Level
-    CASE
-        WHEN (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-              CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
-              CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
-              CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
-              CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-              CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 4 THEN 'High'
-        WHEN (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-              CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
-              CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
-              CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
-              CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-              CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 2 THEN 'Medium'
-        WHEN (CASE WHEN ac.risk_flag != 'Normal' THEN 1 ELSE 0 END +
-              CASE WHEN abp.circular_transactions >= toFloat64(abp.total_transactions) * 0.5 THEN 1 ELSE 0 END +
-              CASE WHEN toFloat64(abp.night_transactions) >= toFloat64(abp.total_transactions) * 0.8 THEN 1 ELSE 0 END +
-              CASE WHEN abp.sent_amount_variance < abp.avg_sent_amount * 0.05 AND abp.total_transactions >= 20 THEN 1 ELSE 0 END +
-              CASE WHEN abp.unique_recipients = 1 AND abp.total_transactions >= 50 THEN 1 ELSE 0 END +
-              CASE WHEN abp.whale_transactions > 0 AND abp.total_transactions <= 5 THEN 1 ELSE 0 END) >= 1 THEN 'Low'
-        ELSE 'Normal'
-    END as risk_level
-    
-FROM balance_transfers_address_classification_view ac
-JOIN balance_transfers_address_behavior_profiles_view abp ON ac.address = abp.address AND ac.asset = abp.asset
-WHERE abp.total_transactions >= 5  -- Minimum transactions for analysis
-ORDER BY suspicion_score DESC, abp.total_volume DESC;
+        WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 100000 AND COALESCE(out.unique_recipients, 0) >= 100 THEN 'Exchange'
+        WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 100000 AND COALESCE(out.unique_recipients, 0) < 10 THEN 'Whale'
+        WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 10000 AND COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) >= 1000 THEN 'High_Volume_Trader'
+        WHEN COALESCE(out.unique_recipients, 0) >= 50 AND COALESCE(inc.unique_senders, 0) >= 50 THEN 'Hub_Address'
+        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) >= 100 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) < 1000 THEN 'Retail_Active'
+        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) < 10 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 10000 THEN 'Whale_Inactive'
+        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) < 10 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) < 100 THEN 'Retail_Inactive'
+        ELSE 'Regular_User'
+    END as address_type
+FROM outgoing_metrics out
+FULL OUTER JOIN incoming_metrics inc ON out.address = inc.address AND out.asset = inc.asset
+WHERE COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) > 0;
 
--- Enhanced Indexes for Address Analytics
-
--- Indexes for address behavior profiles
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_address_timestamp (from_address, block_timestamp) TYPE minmax GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_to_address_timestamp (to_address, block_timestamp) TYPE minmax GRANULARITY 4;
-
--- Indexes for amount-based queries
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_amount_range amount TYPE minmax GRANULARITY 4;
-
--- Indexes for time-based analysis
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_hour_of_day toHour(toDateTime(intDiv(block_timestamp, 1000))) TYPE set(24) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_date toDate(toDateTime(intDiv(block_timestamp, 1000))) TYPE minmax GRANULARITY 4;
-
--- Composite indexes for relationship analysis
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_to_asset (from_address, to_address, asset) TYPE bloom_filter(0.01) GRANULARITY 4;
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_amount_timestamp (asset, amount, block_timestamp) TYPE minmax GRANULARITY 4;
+-- CHUNK 9: Volume Trends View
+CREATE VIEW IF NOT EXISTS balance_transfers_volume_trends_view AS
+SELECT
+    period_start,
+    asset,
+    sum(total_volume) as total_volume,
+    sum(transaction_count) as transaction_count,
+    avg(total_volume) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_volume,
+    avg(transaction_count) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_tx_count,
+    avg(total_volume) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as rolling_30_period_avg_volume
+FROM balance_transfers_volume_series_mv_internal
+GROUP BY period_start, asset
+ORDER BY period_start DESC, asset;

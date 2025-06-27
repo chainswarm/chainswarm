@@ -4,7 +4,7 @@ import time
 import signal
 from loguru import logger
 from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \
-    terminate_event
+    terminate_event, setup_metrics, get_metrics_registry
 from packages.indexers.substrate import networks, get_substrate_node_url
 from packages.indexers.substrate.block_range_partitioner import get_partitioner
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
@@ -37,6 +37,41 @@ class BlockStreamConsumer:
         self.end_height = end_height
         self.sleep_time = sleep_time
         self.partitioner = block_stream_indexer.partitioner if hasattr(block_stream_indexer, 'partitioner') else None
+        
+        # Get metrics registry for additional consumer-level metrics
+        service_name = f"substrate-{network}-block-stream"
+        self.metrics_registry = get_metrics_registry(service_name)
+        logger.info(f"Attempting to get metrics registry for service: {service_name}")
+        if self.metrics_registry:
+            logger.info(f"Successfully obtained metrics registry for {service_name}")
+            # Consumer-specific metrics
+            self.batch_processing_duration = self.metrics_registry.create_histogram(
+                'consumer_batch_processing_duration_seconds',
+                'Time spent processing batches',
+                ['network', 'indexer']
+            )
+            self.blocks_fetched_total = self.metrics_registry.create_counter(
+                'consumer_blocks_fetched_total',
+                'Total blocks fetched from blockchain',
+                ['network', 'indexer']
+            )
+            self.empty_batches_total = self.metrics_registry.create_counter(
+                'consumer_empty_batches_total',
+                'Total empty batches encountered',
+                ['network', 'indexer']
+            )
+            self.consumer_errors_total = self.metrics_registry.create_counter(
+                'consumer_errors_total',
+                'Total consumer processing errors',
+                ['network', 'indexer', 'error_type']
+            )
+            self.blocks_behind_latest = self.metrics_registry.create_gauge(
+                'consumer_blocks_behind_latest',
+                'Number of blocks behind the latest block',
+                ['network', 'indexer']
+            )
+        else:
+            logger.warning(f"No metrics registry found for {service_name} - metrics will not be recorded")
 
     def run(self):
         """Main processing loop with improved error handling and termination awareness"""
@@ -90,7 +125,12 @@ class BlockStreamConsumer:
                         logger.info(f"Termination detected before fetching blocks, exiting")
                         return
                         
+                    batch_start_time = time.time()
                     blocks = self.substrate_node.get_blocks_by_height_range(current_height, end_height)
+
+                    # Record blocks fetched metric
+                    if self.metrics_registry and blocks:
+                        self.blocks_fetched_total.labels(network=self.network, indexer="block_stream").inc(len(blocks))
 
                     if not self.terminate_event.is_set() and blocks:
                         if self.terminate_event.is_set():
@@ -100,6 +140,21 @@ class BlockStreamConsumer:
                         # Index blocks
                         try:
                             self.block_stream_indexer.index_blocks(blocks)
+                            
+                            # Record batch processing metrics
+                            if self.metrics_registry:
+                                batch_duration = time.time() - batch_start_time
+                                self.batch_processing_duration.labels(
+                                    network=self.network,
+                                    indexer="block_stream"
+                                ).observe(batch_duration)
+                                
+                                # Update blocks behind metric
+                                blocks_behind = max(0, chain_height - end_height)
+                                self.blocks_behind_latest.labels(
+                                    network=self.network,
+                                    indexer="block_stream"
+                                ).set(blocks_behind)
                             
                             if self.partitioner:
                                 partition_id = self.partitioner(current_height)
@@ -118,9 +173,21 @@ class BlockStreamConsumer:
                                 
                             current_height = end_height + 1
                         except Exception as e:
+                            # Record indexing error metric
+                            if self.metrics_registry:
+                                self.consumer_errors_total.labels(
+                                    network=self.network,
+                                    indexer="block_stream",
+                                    error_type="indexing_error"
+                                ).inc()
+                            
                             logger.error(f"Error indexing blocks: {e}", error=e, trb=traceback.format_exc())
                             time.sleep(5)
                     elif not self.terminate_event.is_set():
+                        # Record empty batch metric
+                        if self.metrics_registry:
+                            self.empty_batches_total.labels(network=self.network, indexer="block_stream").inc()
+                        
                         logger.warning(f"No blocks returned for range {current_height} to {end_height}")
                         for _ in range(5):
                             if self.terminate_event.is_set():
@@ -132,6 +199,14 @@ class BlockStreamConsumer:
                     if self.terminate_event.is_set():
                         logger.info("Termination requested during exception handling, stopping processing")
                         return
+                    
+                    # Record processing error metric
+                    if self.metrics_registry:
+                        self.consumer_errors_total.labels(
+                            network=self.network,
+                            indexer="block_stream",
+                            error_type="processing_error"
+                        ).inc()
                         
                     logger.error(f"Error processing blocks: {e}", error=e, trb=traceback.format_exc())
                     for _ in range(5):
@@ -167,6 +242,10 @@ if __name__ == "__main__":
         service_name = f"{service_name}-partition-{args.partition}"
         
     setup_logger(service_name)
+    
+    # Setup metrics server for Prometheus to scrape
+    metrics_registry = setup_metrics(service_name, start_server=True)
+    logger.info(f"Metrics server started for {service_name} on port {metrics_registry.port}")
 
     def signal_handler(sig, frame):
         logger.info(f"Received signal {sig}, setting terminate event and waiting for graceful shutdown")
@@ -180,7 +259,7 @@ if __name__ == "__main__":
     
     partitioner = get_partitioner(args.network)
     substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
-    block_stream_indexer = BlockStreamIndexer(connection_params, partitioner)
+    block_stream_indexer = BlockStreamIndexer(connection_params, partitioner, args.network)
     
     if args.partition is not None and args.start_height is None:
         chain_height = substrate_node.get_current_block_height()

@@ -114,7 +114,6 @@ class BaseMoneyFlowIndexer:
                 ("Address", "last_activity_block_height"), # Last activity block height
 
                 ("Address", "community_id"), # Community ID
-                ("Address", "community_ids"), # Community IDs (for multi-community membership)
                 ("Address", "community_page_rank"), # Community PageRank score
             ]
 
@@ -211,9 +210,7 @@ class BaseMoneyFlowIndexer:
                 """)
                 last_block_height = result.single()
 
-                if last_block_height is None and block_height > 1:
-                    raise ValueError(f"Cannot index block {block_height} without indexing block 0 first")
-                elif last_block_height is not None:
+                if last_block_height is not None:
                     last_block_height = last_block_height['last_block_height']
                     if last_block_height > block_height:
                         logger.warning(f"Skipping block {block_height} as it is already indexed (last indexed: {last_block_height})")
@@ -341,9 +338,9 @@ class BaseMoneyFlowIndexer:
             query = """
                    MATCH (source:Address)-[r:TO]->(target:Address)
                    WITH collect(DISTINCT source) + collect(DISTINCT target) AS nodes, collect(DISTINCT r) AS relationships
-                   CALL leiden_community_detection.get_subgraph(nodes, relationships)
-                   YIELD node, community_id, communities
-                   SET node.community_id = community_id, node.community_ids = communities
+                   CALL community_detection.get_subgraph(nodes, relationships)
+                   YIELD node, community_id
+                   SET node.community_id = community_id
                    WITH DISTINCT community_id
                    WHERE community_id IS NOT NULL
                    MERGE (c:Community { community_id: community_id });
@@ -381,10 +378,6 @@ class BaseMoneyFlowIndexer:
                             f"Termination requested during PageRank, stopping after {processed_count}/{len(communities)} communities")
                         break
 
-                    # Log at DEBUG level instead of INFO
-                    logger.debug(f"Running PageRank for community {community} (asset: {self.asset})")
-                    community_start_time = time.time()
-
                     subgraph_query = f"""
                         MATCH p=(a1:Address {{community_id: {community!r}}})-[r:TO*1..3]->(a2:Address)
                         WITH project(p) AS community_graph
@@ -395,9 +388,6 @@ class BaseMoneyFlowIndexer:
                         transaction.run(subgraph_query)
 
                     processed_count += 1
-                    community_end_time = time.time()
-                    logger.debug(
-                        f"PageRank for community {community} took {community_end_time - community_start_time:.2f} seconds")
 
                 # Log summary after completion
                 end_time_total = time.time()
@@ -518,27 +508,3 @@ class BaseMoneyFlowIndexer:
             events_by_type: Dictionary of events grouped by type
         """
         pass  # Base implementation does nothing
-
-
-"""
-Example queries:
-
--- Query by calculated properties directly
-MATCH (a:Address)
-WHERE a.outgoing_tx_frequency > 0.5
-AND a.volume_differential < 0
-RETURN a.address, a.outgoing_tx_frequency, a.volume_differential
-LIMIT 10;
-
--- Financial pattern matching (using simple embeddings)
-CALL vector_search.search("FinancialEmbeddings", 5, [0.8, 0.2, 0.1, 1.2, 0.5, 0.3])
-
--- Temporal pattern matching (using simple embeddings)
-CALL vector_search.search("TemporalEmbeddings", 5, [0.01, 0.005, 0.8, 0.6])
-
--- Network structure analysis (using simple embeddings)
-CALL vector_search.search("NetworkEmbeddings", 5, [0.5, 42, 10, 15])
-
--- Combined analysis (using simple embeddings)
-CALL vector_search.search("JointEmbeddings", 5, [0.8,0.2,0.1,1.2,0.5,0.3,0.01,0.005,0.8,0.6,0.5,42,10,15])
-"""

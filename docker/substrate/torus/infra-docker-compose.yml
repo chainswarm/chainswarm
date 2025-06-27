@@ -103,6 +103,24 @@ services:
     networks:
       - torus-network
 
+  infra-prometheus:
+    container_name: infra-prometheus
+    image: prom/prometheus:latest
+    ports:
+      - "8990:8990"  # Metrics endpoint
+      - "9090:9090"  # Prometheus web UI
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - infra-prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
 networks:
     torus-network:
         external: true
@@ -127,4 +145,8 @@ volumes:
 
   infra-docker-manager-data:
     name: infra-docker-manager-data
+  infra-prometheus-data:
+    name: infra-prometheus-data
+
+
 
