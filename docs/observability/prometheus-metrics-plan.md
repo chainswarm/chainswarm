@@ -280,10 +280,10 @@ mcp_sessions_terminated_total{network="torus", reason="timeout"}
 ## Naming Conventions
 
 ### Service Names
-Following existing logging pattern:
+All services use dynamic network-based naming:
 - Indexers: `substrate-{network}-{indexer-type}` (e.g., `substrate-torus-balance-transfers`)
-- APIs: `chain-swarm-api`, `blockchain-insights-block-stream-api`
-- MCP: `chain-insights-mcp-server`
+- APIs: `{network}-api`, `{network}-block-stream-api` (e.g., `torus-api`, `torus-block-stream-api`)
+- MCP: `{network}-mcp-server` (e.g., `torus-mcp-server`)
 
 ### Metric Names
 - **Prefix**: Component-specific (`indexer_`, `http_`, `mcp_`)
@@ -299,18 +299,22 @@ Following existing logging pattern:
 
 ### Environment Variables
 ```bash
-# Metrics configuration
-METRICS_PORT=9090
-METRICS_PATH=/metrics
+# Indexer metrics ports
+BALANCE_TRANSFERS_METRICS_PORT=9101
+BALANCE_SERIES_METRICS_PORT=9102
+MONEY_FLOW_METRICS_PORT=9103
+BLOCK_STREAM_METRICS_PORT=9104
 
-# Network-specific metrics ports
-TORUS_BALANCE_TRANSFERS_METRICS_PORT=9101
-TORUS_BALANCE_SERIES_METRICS_PORT=9102
-TORUS_MONEY_FLOW_METRICS_PORT=9103
+# API metrics ports
+API_METRICS_PORT=9200
+BLOCK_STREAM_API_METRICS_PORT=9201
+MCP_SERVER_METRICS_PORT=9202
 
-# Metrics collection intervals
-METRICS_COLLECTION_INTERVAL=15
-METRICS_RETENTION_DAYS=30
+# Default metrics port (fallback)
+METRICS_PORT=9104
+
+# Network configuration (determines service naming)
+NETWORK=torus
 ```
 
 ### Feature Flags
@@ -322,18 +326,51 @@ METRICS_RETENTION_DAYS=30
 
 ### Prometheus Configuration
 ```yaml
-# Example scrape configuration
+# Example scrape configuration for Torus network
 scrape_configs:
-  - job_name: 'chainswarm-apis'
+  # Torus Indexers
+  - job_name: 'torus-balance-transfers'
     static_configs:
-      - targets: ['localhost:8000', 'localhost:8001']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
-
-  - job_name: 'chainswarm-indexers'
-    static_configs:
-      - targets: ['localhost:9101', 'localhost:9102', 'localhost:9103']
+      - targets: ['host.docker.internal:9101']
     scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-balance-series'
+    static_configs:
+      - targets: ['host.docker.internal:9102']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-money-flow'
+    static_configs:
+      - targets: ['host.docker.internal:9103']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-block-stream'
+    static_configs:
+      - targets: ['host.docker.internal:9104']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Torus APIs
+  - job_name: 'torus-api'
+    static_configs:
+      - targets: ['host.docker.internal:9200']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-block-stream-api'
+    static_configs:
+      - targets: ['host.docker.internal:9201']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-mcp-server'
+    static_configs:
+      - targets: ['host.docker.internal:9202']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
 ```
 
 ### Grafana Dashboard Categories

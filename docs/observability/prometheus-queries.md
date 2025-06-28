@@ -16,13 +16,14 @@ This document provides a comprehensive reference for all available Prometheus qu
 
 ## Overview
 
-ChainSwarm exposes metrics for the following services:
-- **balance_transfers** (Port 9101)
-- **balance_series** (Port 9102)
-- **money_flow** (Port 9103)
-- **block_stream** (Port 9104)
-- **chain_swarm_api** (Port 9200)
-- **blockchain_insights_api** (Port 9201)
+ChainSwarm exposes metrics for the following services (Torus network example):
+- **torus-balance-transfers** (Port 9101)
+- **torus-balance-series** (Port 9102)
+- **torus-money-flow** (Port 9103)
+- **torus-block-stream** (Port 9104)
+- **torus-api** (Port 9200)
+- **torus-block-stream-api** (Port 9201)
+- **torus-mcp-server** (Port 9202)
 
 ## Service Health Monitoring
 
@@ -429,10 +430,11 @@ indexer_blocks_behind_latest > 0 and service_health_status == 1
 
 ### Access URLs
 - **Prometheus UI**: http://localhost:9090
-- **Metrics Endpoints**:
-  - Balance Transfers: http://localhost:9101/metrics
-  - Balance Series: http://localhost:9102/metrics
-  - Money Flow: http://localhost:9103/metrics
-  - Block Stream: http://localhost:9104/metrics
-  - Chain Swarm API: http://localhost:9200/metrics
-  - Blockchain Insights API: http://localhost:9201/metrics
+- **Metrics Endpoints** (Torus network example):
+  - Torus Balance Transfers: http://localhost:9101/metrics
+  - Torus Balance Series: http://localhost:9102/metrics
+  - Torus Money Flow: http://localhost:9103/metrics
+  - Torus Block Stream: http://localhost:9104/metrics
+  - Torus API: http://localhost:9200/metrics
+  - Torus Block Stream API: http://localhost:9201/metrics
+  - Torus MCP Server: http://localhost:9202/metrics

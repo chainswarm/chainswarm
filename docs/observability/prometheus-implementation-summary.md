@@ -65,10 +65,10 @@ All metrics follow consistent naming patterns:
 
 ### Service Names
 
-Following existing logging patterns:
-- Indexers: `substrate-{network}-{indexer-type}`
-- APIs: `chain-swarm-api`, `blockchain-insights-block-stream-api`
-- MCP: `chain-insights-mcp-server`
+All services use dynamic network-based naming:
+- Indexers: `substrate-{network}-{indexer-type}` (e.g., `substrate-torus-balance-transfers`)
+- APIs: `{network}-api`, `{network}-block-stream-api` (e.g., `torus-api`, `torus-block-stream-api`)
+- MCP: `{network}-mcp-server` (e.g., `torus-mcp-server`)
 
 ### Port Allocation
 
@@ -80,8 +80,7 @@ Following existing logging patterns:
 - **API Metrics**: 9200+ range
   - Main API: 9200
   - Block Stream API: 9201
-- **MCP Metrics**: 9300+ range
-  - MCP Server: 9300
+  - MCP Server: 9202
 
 ## Key Metrics by Component
 
@@ -166,7 +165,7 @@ uvicorn packages.api.main:app --host 0.0.0.0 --port 8000
 # MCP server with metrics
 python packages/api/mcp_server.py
 
-# Metrics available at: http://localhost:9300/metrics
+# Metrics available at: http://localhost:9202/metrics
 ```
 
 ### Accessing Metrics
@@ -177,10 +176,10 @@ python packages/api/mcp_server.py
 curl http://localhost:9101/metrics
 
 # Get API metrics
-curl http://localhost:8000/metrics
+curl http://localhost:9200/metrics
 
 # Get MCP metrics
-curl http://localhost:9300/metrics
+curl http://localhost:9202/metrics
 ```
 
 #### Programmatic Access
@@ -202,22 +201,48 @@ print(metrics_text)
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: 'chainswarm-indexers'
+  # Torus Indexers
+  - job_name: 'torus-balance-transfers'
     static_configs:
-      - targets: ['localhost:9101', 'localhost:9102', 'localhost:9103']
+      - targets: ['host.docker.internal:9101']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-balance-series'
+    static_configs:
+      - targets: ['host.docker.internal:9102']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-money-flow'
+    static_configs:
+      - targets: ['host.docker.internal:9103']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-block-stream'
+    static_configs:
+      - targets: ['host.docker.internal:9104']
     scrape_interval: 30s
     metrics_path: '/metrics'
 
-  - job_name: 'chainswarm-apis'
+  # Torus APIs
+  - job_name: 'torus-api'
     static_configs:
-      - targets: ['localhost:8000', 'localhost:8001']
-    scrape_interval: 15s
+      - targets: ['host.docker.internal:9200']
+    scrape_interval: 30s
     metrics_path: '/metrics'
-
-  - job_name: 'chainswarm-mcp'
+    
+  - job_name: 'torus-block-stream-api'
     static_configs:
-      - targets: ['localhost:9300']
-    scrape_interval: 15s
+      - targets: ['host.docker.internal:9201']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-mcp-server'
+    static_configs:
+      - targets: ['host.docker.internal:9202']
+    scrape_interval: 30s
     metrics_path: '/metrics'
 ```
 
