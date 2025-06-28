@@ -19,13 +19,14 @@ from packages.indexers.substrate.money_flow.money_flow_indexer_bittensor import 
 from packages.indexers.substrate.money_flow.money_flow_indexer_polkadot import PolkadotMoneyFlowIndexer
 
 
-def get_money_flow_indexer(network: str, graph_database):
+def get_money_flow_indexer(network: str, graph_database, indexer_metrics: IndexerMetrics = None):
     """
     Factory function to get the appropriate indexer based on network.
     
     Args:
         network: Network identifier (torus, bittensor, polkadot)
         graph_database: Neo4j driver instance
+        indexer_metrics: Optional IndexerMetrics instance for recording metrics
         
     Returns:
         BaseMoneyFlowIndexer: Appropriate indexer instance for the network
@@ -34,11 +35,11 @@ def get_money_flow_indexer(network: str, graph_database):
         ValueError: If network is invalid
     """
     if network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
-        return TorusMoneyFlowIndexer(graph_database, network)
+        return TorusMoneyFlowIndexer(graph_database, network, indexer_metrics)
     elif network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
-        return BittensorMoneyFlowIndexer(graph_database, network)
+        return BittensorMoneyFlowIndexer(graph_database, network, indexer_metrics)
     elif network == Network.POLKADOT.value:
-        return PolkadotMoneyFlowIndexer(graph_database, network)
+        return PolkadotMoneyFlowIndexer(graph_database, network, indexer_metrics)
     else:
         raise ValueError(f"Unsupported network: {network}")
 
@@ -312,7 +313,7 @@ if __name__ == "__main__":
     )
     
     # Create the appropriate indexer for the network
-    money_flow_indexer = get_money_flow_indexer(args.network, graph_database)
+    money_flow_indexer = get_money_flow_indexer(args.network, graph_database, indexer_metrics)
     money_flow_indexer.create_indexes()
     
     block_stream_manager = BlockStreamManager(clickhouse_params, args.network, terminate_event)

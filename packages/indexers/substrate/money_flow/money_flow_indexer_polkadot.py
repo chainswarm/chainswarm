@@ -10,15 +10,16 @@ class PolkadotMoneyFlowIndexer(BaseMoneyFlowIndexer):
     This is currently a placeholder that will be implemented in a future step.
     """
     
-    def __init__(self, graph_database: Driver, network: str):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics=None):
         """
         Initialize the PolkadotMoneyFlowIndexer.
         
         Args:
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'polkadot')
+            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
-        super().__init__(graph_database, network)
+        super().__init__(graph_database, network, indexer_metrics)
     
     def _process_network_specific_events(self, transaction, timestamp, events_by_type):
         """

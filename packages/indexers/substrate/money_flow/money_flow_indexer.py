@@ -8,6 +8,7 @@ from neo4j import Driver
 from packages.indexers.base import terminate_event
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
+from packages.indexers.base.metrics import IndexerMetrics
 
 
 def infinite_retry_with_backoff(method):
@@ -64,18 +65,20 @@ class BaseMoneyFlowIndexer:
     _process_network_specific_events method.
     """
 
-    def __init__(self, graph_database: Driver, network: str):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics = None):
         """
         Initialize the BaseMoneyFlowIndexer.
 
         Args:
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
+            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
         self.graph_database = graph_database
         self.terminate_event = terminate_event  # Store reference to global termination event
         self.network = network
         self.asset = get_network_asset(network)  # Get the asset symbol for this network
+        self.indexer_metrics = indexer_metrics
 
     def index_blocks(self, blocks):
         with self.graph_database.session() as session:
@@ -198,6 +201,7 @@ class BaseMoneyFlowIndexer:
         Raises:
             Exception: If there's an error during indexing
         """
+        start_time = time.time()
         try:
             events_by_type = self._group_events(block.get('events', []))
             block_height = block.get('block_height')
@@ -231,6 +235,16 @@ class BaseMoneyFlowIndexer:
 
                 # Process network-specific events
                 self._process_network_specific_events(transaction, timestamp, events_by_type)
+
+                # Record metrics if available
+                if self.indexer_metrics:
+                    processing_time = time.time() - start_time
+                    self.indexer_metrics.record_block_processed(block_height, processing_time)
+                    
+                    # Count events processed
+                    total_events = sum(len(events) for events in events_by_type.values())
+                    if total_events > 0:
+                        self.indexer_metrics.record_event_processed('total_events', total_events)
 
         except Exception as e:
             logger.error(f"Error indexing transaction", error=e, trb=traceback.format_exc())

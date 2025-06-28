@@ -9,14 +9,13 @@ from packages.indexers.base import setup_logger, get_clickhouse_connection_strin
     terminate_event
 
 from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
-from packages.indexers.substrate import get_substrate_node_url, networks, data, Network
+from packages.indexers.substrate import get_substrate_node_url, networks,  Network
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
 from packages.indexers.substrate.balance_series.balance_series_indexer_torus import TorusBalanceSeriesIndexer
 from packages.indexers.substrate.balance_series.balance_series_indexer_bittensor import BittensorBalanceSeriesIndexer
 from packages.indexers.substrate.balance_series.balance_series_indexer_polkadot import PolkadotBalanceSeriesIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
-
 
 
 def get_balance_series_indexer(network: str, connection_params, period_hours: int = 4, indexer_metrics: IndexerMetrics = None):

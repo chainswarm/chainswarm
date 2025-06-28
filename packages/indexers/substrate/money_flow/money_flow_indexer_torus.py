@@ -14,15 +14,16 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
     Handles Torus-specific events like AgentRegistered.
     """
     
-    def __init__(self, graph_database: Driver, network: str):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics=None):
         """
         Initialize the TorusMoneyFlowIndexer.
         
         Args:
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'torus', 'torus_testnet')
+            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
-        super().__init__(graph_database, network)
+        super().__init__(graph_database, network, indexer_metrics)
         
         # Initialize genesis balances for Torus networks
         self._init_genesis_balances()
