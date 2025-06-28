@@ -152,12 +152,6 @@ class MetricsRegistry:
             service_env_mapping[f'{network}-api'] = 'API_METRICS_PORT'
             service_env_mapping[f'{network}-block-stream-api'] = 'BLOCK_STREAM_API_METRICS_PORT'
             service_env_mapping[f'{network}-mcp-server'] = 'MCP_SERVER_METRICS_PORT'
-            
-        # Legacy support for services without network prefix
-        service_env_mapping['balance-transfers'] = 'BALANCE_TRANSFERS_METRICS_PORT'
-        service_env_mapping['balance-series'] = 'BALANCE_SERIES_METRICS_PORT'
-        service_env_mapping['money-flow'] = 'MONEY_FLOW_METRICS_PORT'
-        service_env_mapping['block-stream'] = 'BLOCK_STREAM_METRICS_PORT'
         
         # Try service-specific environment variable
         for key, env_var in service_env_mapping.items():
@@ -193,12 +187,6 @@ class MetricsRegistry:
             port_mapping[f'{network}-api'] = 9200
             port_mapping[f'{network}-block-stream-api'] = 9201
             port_mapping[f'{network}-mcp-server'] = 9202
-            
-        # Legacy support for services without network prefix
-        port_mapping['balance-transfers'] = 9101
-        port_mapping['balance-series'] = 9102
-        port_mapping['money-flow'] = 9103
-        port_mapping['block-stream'] = 9104
         
         # Try to match service name to port
         for key, port in port_mapping.items():

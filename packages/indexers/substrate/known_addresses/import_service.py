@@ -212,7 +212,13 @@ async def main():
     load_dotenv()
     
     # Setup logger
-    setup_logger("known-addresses-import-service")
+    import argparse
+    parser = argparse.ArgumentParser(description='Import known addresses')
+    parser.add_argument('--network', type=str, required=True, help='Network name (e.g., torus, bittensor)')
+    args = parser.parse_args()
+    
+    service_name = f'substrate-{args.network}-known-addresses'
+    setup_logger(service_name)
     
     # Parse command line arguments
     import argparse
