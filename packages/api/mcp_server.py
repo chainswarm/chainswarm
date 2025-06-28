@@ -140,7 +140,7 @@ class MCPMetrics:
         self.mcp_active_sessions.labels(network=self.network).set(count)
 
 # Initialize metrics
-service_name = "chain-insights-mcp-server"
+service_name = f"{network}-mcp-server"
 metrics_registry = setup_metrics(service_name, start_server=True)
 mcp_metrics = MCPMetrics(metrics_registry, network)
 
@@ -960,7 +960,7 @@ async def execute_balance_transfers_query(query: Annotated[str, Field(
 
  
 if __name__ == "__main__":
-    setup_logger("chain-insights-mcp-server")
+    setup_logger(f"{network}-mcp-server")
 
     schema_response = asyncio.run(get_instructions())
     json_schema = json.dumps(schema_response, indent=2)

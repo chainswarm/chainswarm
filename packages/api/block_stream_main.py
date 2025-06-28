@@ -14,11 +14,14 @@ app = FastAPI(
 )
 
 # Setup logging and metrics
-setup_logger("blockchain-insights-block-stream-api")
-metrics_registry = setup_metrics("blockchain-insights-block-stream-api", start_server=False)
+import os
+network = os.getenv("NETWORK", "torus").lower()
+service_name = f"{network}-block-stream-api"
+setup_logger(service_name)
+metrics_registry = setup_metrics(service_name, start_server=False)
 
 # Add Prometheus metrics middleware
-app.add_middleware(PrometheusMiddleware, metrics_registry=metrics_registry, service_name="blockchain-insights-block-stream-api")
+app.add_middleware(PrometheusMiddleware, metrics_registry=metrics_registry, service_name=service_name)
 
 app.add_middleware(
     CORSMiddleware,

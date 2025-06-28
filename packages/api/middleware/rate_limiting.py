@@ -23,7 +23,9 @@ class InMemoryRateLimiter:
     def _init_metrics(self):
         """Initialize rate limiting metrics"""
         # Try to get metrics from both API services
-        for service_name in ["chain-swarm-api", "blockchain-insights-block-stream-api"]:
+        import os
+        network = os.getenv("NETWORK", "torus").lower()
+        for service_name in [f"{network}-api", f"{network}-block-stream-api"]:
             registry = get_metrics_registry(service_name)
             if registry:
                 self.rate_limit_hits_total = registry.create_counter(

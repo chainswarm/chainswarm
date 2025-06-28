@@ -7,41 +7,47 @@ rule_files:
   # - "second_rules.yml"
 
 scrape_configs:
-  # ChainSwarm Indexers Only
-  - job_name: 'chainswarm-balance-transfers'
+  # Torus Indexers
+  - job_name: 'torus-balance-transfers'
     static_configs:
       - targets: ['host.docker.internal:9101']
     scrape_interval: 30s
     metrics_path: '/metrics'
     
-  - job_name: 'chainswarm-balance-series'
+  - job_name: 'torus-balance-series'
     static_configs:
       - targets: ['host.docker.internal:9102']
     scrape_interval: 30s
     metrics_path: '/metrics'
     
-  - job_name: 'chainswarm-money-flow'
+  - job_name: 'torus-money-flow'
     static_configs:
       - targets: ['host.docker.internal:9103']
     scrape_interval: 30s
     metrics_path: '/metrics'
     
-  - job_name: 'chainswarm-block-stream'
+  - job_name: 'torus-block-stream'
     static_configs:
       - targets: ['host.docker.internal:9104']
     scrape_interval: 30s
     metrics_path: '/metrics'
     
-  # ChainSwarm APIs
-  - job_name: 'chain-swarm-api'
+  # Torus APIs
+  - job_name: 'torus-api'
     static_configs:
       - targets: ['host.docker.internal:9200']
     scrape_interval: 30s
     metrics_path: '/metrics'
     
-  - job_name: 'blockchain-insights-block-stream-api'
+  - job_name: 'torus-block-stream-api'
     static_configs:
       - targets: ['host.docker.internal:9201']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    
+  - job_name: 'torus-mcp-server'
+    static_configs:
+      - targets: ['host.docker.internal:9202']
     scrape_interval: 30s
     metrics_path: '/metrics'
     

@@ -300,7 +300,6 @@ Following existing logging pattern:
 ### Environment Variables
 ```bash
 # Metrics configuration
-METRICS_ENABLED=true
 METRICS_PORT=9090
 METRICS_PATH=/metrics
 

@@ -23,8 +23,11 @@ app = FastAPI(
 
 
 # Setup logging and metrics
-setup_logger("chain-swarm-api")
-metrics_registry = setup_metrics("chain-swarm-api", port=8990, start_server=False)  # Metrics on port 8990
+import os
+network = os.getenv("NETWORK", "torus").lower()
+service_name = f"{network}-api"
+setup_logger(service_name)
+metrics_registry = setup_metrics(service_name, start_server=False)  # Use environment variable for port
 
 
 app.add_middleware(
@@ -36,7 +39,7 @@ app.add_middleware(
 )
 
 # Add Prometheus metrics middleware
-app.add_middleware(PrometheusMiddleware, metrics_registry=metrics_registry, service_name="chain-swarm-api")
+app.add_middleware(PrometheusMiddleware, metrics_registry=metrics_registry, service_name=service_name)
 
 # Add rate limiting middleware
 app.add_middleware(BaseHTTPMiddleware, dispatch=rate_limit_middleware)
@@ -63,8 +66,9 @@ def create_aggregated_metrics_endpoint():
                 all_metrics.append(api_metrics)
             
             # Add metrics from all indexer services
-            for service_name, service_registry in _service_registries.items():
-                if service_name != "chain-swarm-api":  # Avoid duplicating API metrics
+            api_service_name = f"{network}-api"
+            for svc_name, service_registry in _service_registries.items():
+                if svc_name != api_service_name:  # Avoid duplicating API metrics
                     service_metrics = service_registry.get_metrics_text()
                     all_metrics.append(service_metrics)
             
