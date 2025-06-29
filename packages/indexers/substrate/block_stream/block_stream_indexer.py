@@ -14,8 +14,10 @@ from packages.indexers.substrate.block_range_partitioner import BlockRangePartit
 
 
 class BlockStreamIndexer:
-    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, metrics: IndexerMetrics, network: str):
-        self.network = network
+    def __init__(self, partitioner: BlockRangePartitioner, metrics: IndexerMetrics, connection_params: Dict[str, Any], network: str):
+
+        self.partitioner = partitioner
+        self.metrics = metrics
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
             port=int(connection_params['port']),
@@ -28,9 +30,9 @@ class BlockStreamIndexer:
                 'wait_for_async_insert': 1
             }
         )
-        self.partitioner = partitioner
+        self.network = network
         self._init_tables()
-        self.metrics = metrics
+
 
     def _init_tables(self):
         """Initialize tables with nested structures for transactions, addresses, and events"""

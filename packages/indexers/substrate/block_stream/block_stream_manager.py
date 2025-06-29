@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 from loguru import logger
 import clickhouse_connect
 from packages.indexers.substrate import get_substrate_node_url
-from packages.indexers.substrate.block_range_partitioner import get_partitioner
+from packages.indexers.substrate.block_range_partitioner import get_partitioner, BlockRangePartitioner
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
@@ -16,7 +16,7 @@ class BlockStreamManager:
     compatible with the Kafka implementation.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], network: str, terminate_event):
+    def __init__(self, block_stream_indexer: BlockStreamIndexer, substrate_node: SubstrateNode, block_partitioner: BlockRangePartitioner,  connection_params: Dict[str, Any], network: str, terminate_event):
         """
         Initialize the BlockStreamManager with ClickHouse connection parameters.
         
@@ -26,9 +26,10 @@ class BlockStreamManager:
             terminate_event: Event to signal termination
         """
 
-        logger.info(f"Initializing BlockStreamManager")
-        
-        self.total_partition_determination_time = 0
+        self.substrate_node = substrate_node
+        self.block_stream_indexer = block_stream_indexer
+        self.block_partitioner = block_partitioner
+
         self.connection_params = connection_params
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
@@ -40,11 +41,9 @@ class BlockStreamManager:
                 'max_execution_time': connection_params.get('max_execution_time', 3600)
             }
         )
+        self.total_partition_determination_time = 0
         self.network = network
         self.terminate_event = terminate_event
-        self.partitioner = get_partitioner(network)
-        self.substrate_node = SubstrateNode(network, get_substrate_node_url(network), terminate_event)
-        self.block_stream_indexer = BlockStreamIndexer(connection_params, self.partitioner, self.network)
 
     def _result_row_to_blocks(self, result):
         """

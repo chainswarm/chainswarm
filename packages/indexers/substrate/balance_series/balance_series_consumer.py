@@ -1,35 +1,35 @@
 import argparse
 import traceback
 import time
+import signal
 from loguru import logger
 from typing import Dict, Set
 from datetime import datetime
 
 from packages.indexers.base import (
     get_clickhouse_connection_string, create_clickhouse_database, terminate_event,
-    setup_logger, log_service_start, log_service_stop, classify_error,
-    log_business_decision, log_error_with_context
+    setup_metrics, get_metrics_registry, setup_logger, IndexerMetrics,
 )
-
-from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
 from packages.indexers.substrate import get_substrate_node_url, networks,  Network
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
 from packages.indexers.substrate.balance_series.balance_series_indexer_torus import TorusBalanceSeriesIndexer
 from packages.indexers.substrate.balance_series.balance_series_indexer_bittensor import BittensorBalanceSeriesIndexer
 from packages.indexers.substrate.balance_series.balance_series_indexer_polkadot import PolkadotBalanceSeriesIndexer
+from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner, get_partitioner
+from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
 
-def get_balance_series_indexer(connection_params, indexer_metrics: IndexerMetrics, network: str, period_hours: int = 4):
+def get_balance_series_indexer(connection_params, network: str, period_hours: int, indexer_metrics: IndexerMetrics):
     """
     Factory function to get the appropriate indexer based on network.
 
     Args:
         connection_params: ClickHouse connection parameters
-        indexer_metrics: Optional IndexerMetrics instance for recording metrics
         network: Network identifier (torus, bittensor, polkadot)
-        period_hours: Number of hours in each period (default: 4)
+        period_hours: Number of hours in each period
+        indexer_metrics: IndexerMetrics instance for recording metrics (required)
 
     Returns:
         BalanceSeriesIndexer: Appropriate indexer instance for the network
@@ -78,9 +78,6 @@ class BalanceSeriesConsumer:
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.batch_size = batch_size
         
-        # Setup simple logging with auto-detection
-        setup_logger()
-        
         # Metrics will be passed from main function
         self.metrics_registry = None
         self.indexer_metrics = None
@@ -90,13 +87,6 @@ class BalanceSeriesConsumer:
         self.addresses_processed_total = None
         self.periods_processed_total = None
         self.consumer_errors_total = None
-        
-        # Log service startup
-        log_service_start(
-            network=network,
-            period_hours=period_hours,
-            batch_size=batch_size
-        )
     
     def set_metrics(self, metrics_registry, indexer_metrics):
         """Set metrics after initialization"""
@@ -142,13 +132,16 @@ class BalanceSeriesConsumer:
             next_period_start, next_period_end = self.balance_series_indexer.get_next_period_to_process()
 
             # Business decision logging
-            log_business_decision(
-                "resume_from_last_processed_period",
-                "found_existing_processed_data",
-                last_processed_timestamp=last_processed_timestamp,
-                last_processed_block_height=last_processed_block_height,
-                next_period_start=next_period_start,
-                next_period_end=next_period_end
+            logger.info(
+                "Resuming from last processed period",
+                business_decision="resume_from_last_processed_period",
+                reason="found_existing_processed_data",
+                extra={
+                    "last_processed_timestamp": last_processed_timestamp,
+                    "last_processed_block_height": last_processed_block_height,
+                    "next_period_start": next_period_start,
+                    "next_period_end": next_period_end
+                }
             )
 
             while not self.terminate_event.is_set():
@@ -157,16 +150,11 @@ class BalanceSeriesConsumer:
 
                     if next_period_end <= current_time:
                         self._process_period(next_period_start, next_period_end)
-
-                        # Update to the next period
                         next_period_start = next_period_end
                         next_period_end = next_period_start + self.period_ms
                     else:
-                        # Wait until the next period ends
                         wait_time = (next_period_end - current_time) / 1000  # Convert to seconds
-                        
-                        # Only log if waiting more than 5 minutes (strategic logging)
-                        if wait_time > 300:
+                        if wait_time > 30:
                             logger.info(
                                 "Waiting for period to complete",
                                 extra={
@@ -177,7 +165,6 @@ class BalanceSeriesConsumer:
                                 }
                             )
 
-                        # Sleep in small increments to check for termination
                         sleep_increment = 10  # seconds
                         for _ in range(int(wait_time / sleep_increment) + 1):
                             if self.terminate_event.is_set():
@@ -189,29 +176,29 @@ class BalanceSeriesConsumer:
                     if self.terminate_event.is_set():
                         break
 
-                    # Simple error logging
-                    log_error_with_context(
+                    logger.error(
                         "Period processing failed",
-                        e,
-                        operation="period_processing_loop",
-                        period_start=next_period_start,
-                        period_end=next_period_end,
-                        current_time=current_time,
-                        error_category=classify_error(e)
+                        error=e,
+                        traceback=traceback.format_exc(),
+                        extra={
+                            "operation": "period_processing_loop",
+                            "period_start": next_period_start,
+                            "period_end": next_period_end,
+                            "current_time": current_time
+                        }
                     )
                     time.sleep(5)  # Brief pause before continuing
 
-            # Log service shutdown
-            log_service_stop(reason="terminate_event_received")
+            logger.info("Balance Series Consumer stopped", extra={"reason": "terminate_event_received"})
 
         except KeyboardInterrupt:
-            log_service_stop(reason="keyboard_interrupt")
+            logger.info("Balance Series Consumer stopped", extra={"reason": "keyboard_interrupt"})
         except Exception as e:
-            log_error_with_context(
+            logger.error(
                 "Fatal consumer error",
-                e,
-                operation="consumer_main_loop",
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"operation": "consumer_main_loop"}
             )
         finally:
             self._cleanup()
@@ -234,14 +221,16 @@ class BalanceSeriesConsumer:
                 if self.consumer_errors_total:
                     self.consumer_errors_total.labels(**labels, error_type='no_block_found').inc()
                 
-                # Simple error logging
-                log_error_with_context(
+                # Error logging with context
+                logger.error(
                     "No block found for period end timestamp",
-                    ValueError("Block not found"),
-                    operation="find_period_end_block",
-                    period_start=period_start,
-                    period_end=period_end,
-                    error_category="data_availability_error"
+                    error=ValueError("Block not found"),
+                    traceback=traceback.format_exc(),
+                    extra={
+                        "operation": "find_period_end_block",
+                        "period_start": period_start,
+                        "period_end": period_end
+                    }
                 )
                 raise ValueError(f"No block found for period end timestamp {period_end}")
 
@@ -253,12 +242,15 @@ class BalanceSeriesConsumer:
             active_addresses = self.block_stream_manager.get_blocks_by_block_timestamp_range(period_start, period_end, only_with_addresses=True)
             if not active_addresses:
                 # Business decision logging for empty periods
-                log_business_decision(
-                    "skip_empty_period",
-                    "no_active_addresses_found",
-                    period_start=period_start,
-                    period_end=period_end,
-                    block_height=block_height
+                logger.info(
+                    "Skipping empty period",
+                    business_decision="skip_empty_period",
+                    reason="no_active_addresses_found",
+                    extra={
+                        "period_start": period_start,
+                        "period_end": period_end,
+                        "block_height": block_height
+                    }
                 )
                 return
 
@@ -270,15 +262,17 @@ class BalanceSeriesConsumer:
                 if self.consumer_errors_total:
                     self.consumer_errors_total.labels(**labels, error_type='no_addresses_found').inc()
                 
-                # Simple error logging
-                log_error_with_context(
+                # Error logging with context
+                logger.error(
                     "No addresses found despite active blocks",
-                    ValueError("Address extraction failed"),
-                    operation="extract_active_addresses",
-                    period_start=period_start,
-                    period_end=period_end,
-                    active_blocks_count=len(active_addresses),
-                    error_category="data_processing_error"
+                    error=ValueError("Address extraction failed"),
+                    traceback=traceback.format_exc(),
+                    extra={
+                        "operation": "extract_active_addresses",
+                        "period_start": period_start,
+                        "period_end": period_end,
+                        "active_blocks_count": len(active_addresses)
+                    }
                 )
                 raise ValueError(f"No addresses found for period {period_start}-{period_end}")
 
@@ -322,17 +316,19 @@ class BalanceSeriesConsumer:
             if self.consumer_errors_total:
                 self.consumer_errors_total.labels(**labels, error_type='processing_error').inc()
             
-            # Simple error logging
-            log_error_with_context(
+            # Error logging with context
+            logger.error(
                 "Period processing failed",
-                e,
-                operation="process_period",
-                period_start=period_start,
-                period_end=period_end,
-                block_height=block_height if 'block_height' in locals() else None,
-                addresses_count=len(all_addresses) if 'all_addresses' in locals() else None,
-                processing_time=time.time() - start_time,
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "operation": "process_period",
+                    "period_start": period_start,
+                    "period_end": period_end,
+                    "block_height": block_height if 'block_height' in locals() else None,
+                    "addresses_count": len(all_addresses) if 'all_addresses' in locals() else None,
+                    "processing_time": time.time() - start_time
+                }
             )
             raise
 
@@ -382,15 +378,17 @@ class BalanceSeriesConsumer:
                     if self.terminate_event.is_set():
                         break
                     else:
-                        # Simple error logging
-                        log_error_with_context(
+                        # Error logging with context
+                        logger.error(
                             "Unexpected balance query error",
-                            e,
-                            operation="query_blockchain_balances",
-                            address=address,
-                            block_hash=block_hash,
-                            batch_index=i//self.batch_size + 1,
-                            error_category=classify_error(e)
+                            error=e,
+                            traceback=traceback.format_exc(),
+                            extra={
+                                "operation": "query_blockchain_balances",
+                                "address": address,
+                                "block_hash": block_hash,
+                                "batch_index": i//self.batch_size + 1
+                            }
                         )
                         raise  # Fail fast instead of continuing
 
@@ -406,24 +404,28 @@ class BalanceSeriesConsumer:
             if hasattr(self, 'balance_series_indexer'):
                 self.balance_series_indexer.close()
         except Exception as e:
-            log_error_with_context(
+            logger.error(
                 "Error closing balance series indexer",
-                e,
-                operation="cleanup",
-                component="balance_series_indexer",
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "operation": "cleanup",
+                    "component": "balance_series_indexer"
+                }
             )
 
         try:
             if hasattr(self, 'block_stream_manager'):
                 self.block_stream_manager.close()
         except Exception as e:
-            log_error_with_context(
+            logger.error(
                 "Error closing block stream manager",
-                e,
-                operation="cleanup",
-                component="block_stream_manager",
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "operation": "cleanup",
+                    "component": "block_stream_manager"
+                }
             )
 
 
@@ -450,8 +452,32 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Setup simple logging with auto-detection
-    setup_logger()
+    service_name = f'substrate-{args.network}-balance-series'
+    setup_logger(service_name)
+    
+    logger.info(
+        "Starting Balance Series Consumer",
+        extra={
+            "service": service_name,
+            "network": args.network,
+            "period_hours": args.period_hours,
+            "batch_size": args.batch_size
+        }
+    )
+
+    def signal_handler(sig, frame):
+        logger.info(
+            "Shutdown signal received",
+            extra={
+                "signal": sig,
+                "service": service_name,
+                "graceful_shutdown": True
+            }
+        )
+        terminate_event.set()
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
     # Initialize components
     balance_series_indexer = None
@@ -459,16 +485,20 @@ if __name__ == "__main__":
     substrate_node = None
 
     try:
+
         clickhouse_params = get_clickhouse_connection_string(args.network)
         create_clickhouse_database(clickhouse_params)
 
-        # Setup metrics first
-        service_name = f'substrate-{args.network}-balance-series'
-        metrics_registry = setup_metrics(service_name)
+        # Setup metrics
+        metrics_registry = setup_metrics(service_name, start_server=True)
         indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'balance_series')
         
-        balance_series_indexer = get_balance_series_indexer(clickhouse_params, indexer_metrics, args.network, args.period_hours)
-        block_stream_manager = BlockStreamManager(clickhouse_params, args.network, terminate_event)
+        balance_series_indexer = get_balance_series_indexer(clickhouse_params, args.network, args.period_hours, indexer_metrics)
+        block_partioner = get_partitioner(args.network)
+        block_stream_indexer = BlockStreamIndexer(block_partioner, indexer_metrics, clickhouse_params, args.network)
+        substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
+
+        block_stream_manager = BlockStreamManager(block_stream_indexer, substrate_node, block_partioner, clickhouse_params, args.network, terminate_event)
 
         node_url = get_substrate_node_url(args.network)
         substrate_node = SubstrateNode(args.network, node_url, terminate_event)
@@ -487,11 +517,11 @@ if __name__ == "__main__":
         consumer.run()
         
     except Exception as e:
-        log_error_with_context(
+        logger.error(
             "Fatal startup error",
-            e,
-            operation="main_startup",
-            error_category=classify_error(e)
+            error=e,
+            traceback=traceback.format_exc(),
+            extra={"operation": "main_startup"}
         )
     finally:
         try:

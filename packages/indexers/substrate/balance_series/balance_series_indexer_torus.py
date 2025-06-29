@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from loguru import logger
 from decimal import Decimal
 
+from packages.indexers.base import IndexerMetrics
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import data
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
@@ -13,18 +14,18 @@ from packages.indexers.substrate.balance_series.balance_series_indexer_base impo
 class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
 
 
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4, indexer_metrics=None):
+    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int, metrics: IndexerMetrics):
         """
         Initialize the TorusBalanceSeriesIndexer.
         
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
             network: Network identifier (e.g., 'torus', 'torus_testnet')
-            period_hours: Number of hours in each period (default: 4)
-
-            indexer_metrics: Optional IndexerMetrics instance for recording metrics
+            period_hours: Number of hours in each period
+            metrics: IndexerMetrics instance for recording metrics (required)
         """
-        super().__init__(connection_params, network, period_hours, indexer_metrics)
+        super().__init__(connection_params, metrics, network, period_hours)
+        logger.info(f"Initialized Torus balance series indexer for network: {network}")
 
     def init_genesis_balances(self, first_block_info):
         """Initialize genesis balances for Torus networks if they don't exist yet"""

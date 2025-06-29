@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Dict, Any, Tuple, Optional, List
 import clickhouse_connect
 from decimal import Decimal
@@ -15,9 +16,9 @@ class BalanceSeriesIndexerBase:
         
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
+            metrics: IndexerMetrics instance for recording metrics (required)
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
             period_hours: Number of hours in each period (default: 4)
-            indexer_metrics: Optional IndexerMetrics instance for recording metrics
         """
         self.network = network
         self.asset = get_network_asset(network)
@@ -44,6 +45,9 @@ class BalanceSeriesIndexerBase:
 
     def _init_tables(self):
         """Initialize tables for balance series from schema file"""
+        start_time = time.time()
+        logger.info("Creating balance series tables if not exists")
+        
         # Read schema file
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
         
@@ -85,7 +89,7 @@ class BalanceSeriesIndexerBase:
                             logger.error(f"Statement: {statement[:100]}...")
                             raise
             
-            logger.info("Balance series tables initialized from schema.sql")
+            logger.info(f"Balance series table initialization completed in {time.time() - start_time:.2f}s")
             
         except FileNotFoundError:
             logger.error(f"Schema file not found: {schema_path}")
@@ -182,15 +186,28 @@ class BalanceSeriesIndexerBase:
                 ])
 
                 
-                # Record metrics if available
+                # Record metrics
                 duration = time.time() - start_time
                 self.metrics.record_database_operation('insert', 'balance_series', duration, True)
-                logger.info(f"Recorded balance series for {len(balance_data)} addresses in {duration:.3f}s")
+                logger.success(f"Recorded balance series for {len(balance_data)} addresses in {duration:.3f}s")
 
         except Exception as e:
-            # Record database error metric if available
+            # Record database error metric
             duration = time.time() - start_time
             self.metrics.record_database_operation('insert', 'balance_series', duration, False)
+            self.metrics.record_failed_event("database_insert_error")
+            
+            logger.error(
+                "Failed to record balance series",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "period_start": period_start_timestamp,
+                    "period_end": period_end_timestamp,
+                    "addresses_count": len(address_balances),
+                    "processing_time": duration
+                }
+            )
             raise
 
     def get_previous_period_balances(self, address: str, current_period_start: int) -> Tuple[Optional[Dict[str, Decimal]], int]:
