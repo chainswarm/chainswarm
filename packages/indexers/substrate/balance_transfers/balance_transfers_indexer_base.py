@@ -83,11 +83,8 @@ class BalanceTransfersIndexerBase:
                         logger.debug(f"Parsed chunk {len(chunks)}: {chunk_sql[:50]}...")
                     current_chunk = []
 
-            logger.info(f"Parsed {len(chunks)} chunks from schema")
-
-            # Show all chunks for debugging
-            for i, chunk in enumerate(chunks):
-                logger.debug(f"Chunk {i + 1}: {chunk}")
+            # REMOVED: Verbose chunk logging - only log summary
+            logger.debug(f"Parsed {len(chunks)} chunks from schema")
 
             # Execute chunks
             skipped_count = 0
@@ -96,12 +93,12 @@ class BalanceTransfersIndexerBase:
 
             for i, chunk in enumerate(chunks):
                 try:
-                    logger.info(f"Executing chunk {i + 1}/{len(chunks)}")
+                    # REMOVED: Individual chunk execution logging
                     logger.debug(f"SQL: {chunk}")
 
                     result = self.client.command(chunk)
                     created_count += 1
-                    logger.info(f"✓ Chunk {i + 1} executed successfully")
+                    # REMOVED: Individual chunk success logging
 
                 except Exception as e:
                     error_str = str(e).lower()
@@ -113,14 +110,16 @@ class BalanceTransfersIndexerBase:
                             "view already exists" in error_str or
                             "index already exists" in error_str):
                         skipped_count += 1
-                        logger.warning(f"○ Chunk {i + 1} skipped (already exists)")
+                        # REMOVED: Individual skip logging - only count
                     else:
                         error_count += 1
                         logger.error(f"✗ Real error in chunk {i + 1}")
                         raise
 
-            logger.info(
-                f"Schema execution complete: {created_count} created, {skipped_count} skipped, {error_count} errors")
+            # Only log final summary if there were actual changes or errors
+            if created_count > 0 or error_count > 0:
+                logger.info(
+                    f"Schema execution complete: {created_count} created, {skipped_count} skipped, {error_count} errors")
 
         except FileNotFoundError:
             logger.error(f"Schema file not found: {schema_path}")
@@ -311,6 +310,19 @@ class BalanceTransfersIndexerBase:
                     insert_duration = time.time() - insert_start_time
                     self.metrics.record_database_operation("insert", "balance_transfers", insert_duration, True)
 
+                # Strategic logging: Only log when significant transfers are found (more than 10 transfers)
+                if len(all_balance_transfers) > 10:
+                    logger.info(
+                        "Significant transfer activity detected",
+                        extra={
+                            "blocks_processed": len(sorted_blocks),
+                            "transfers_found": len(all_balance_transfers),
+                            "events_processed": total_events_processed,
+                            "first_block": sorted_blocks[0]['block_height'] if sorted_blocks else None,
+                            "last_block": sorted_blocks[-1]['block_height'] if sorted_blocks else None
+                        }
+                    )
+
             # Record batch metrics
             if self.metrics:
                 batch_duration = time.time() - batch_start_time
@@ -321,7 +333,7 @@ class BalanceTransfersIndexerBase:
                 self.metrics.record_event_processed("total_events", total_events_processed)
                 self.metrics.record_event_processed("balance_transfers", total_transfers_extracted)
 
-            logger.success(f"Bulk inserted {len(sorted_blocks)} blocks with {len(all_balance_transfers)} transfers")
+            # REMOVED: Regular bulk insert success logging - metrics handle this
 
         except Exception as e:
             # Record error metrics
@@ -329,7 +341,7 @@ class BalanceTransfersIndexerBase:
                 batch_duration = time.time() - batch_start_time
                 self.metrics.record_failed_event("batch_processing_error")
                 
-            logger.success(f"Bulk inserted {len(sorted_blocks)} blocks with {len(all_balance_transfers)} transfers")
+            # REMOVED: Duplicate success logging in exception handler
             raise
     
     def _process_network_specific_events(self, events: List[Dict]):

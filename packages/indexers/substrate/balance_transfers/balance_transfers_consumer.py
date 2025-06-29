@@ -128,6 +128,10 @@ class BalanceTransfersConsumer:
             # Track consecutive empty responses for smart logging
             consecutive_empty_responses = 0
             
+            # Track milestone logging (every 10,000 blocks processed)
+            last_milestone_logged = 0
+            milestone_interval = 10000
+            
             while not self.terminate_event.is_set():
                 try:
                     latest_block_height = self.block_stream_manager.get_latest_block_height()
