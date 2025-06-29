@@ -1,20 +1,16 @@
-import uuid
 import os
 import time
-from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple, Optional, List
 import clickhouse_connect
 from decimal import Decimal
 from loguru import logger
-
-from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
 from packages.indexers.base.metrics import IndexerMetrics
 
 
 class BalanceSeriesIndexerBase:
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int = 4, indexer_metrics: IndexerMetrics = None):
+    def __init__(self, connection_params: Dict[str, Any], metrics: IndexerMetrics, network: str, period_hours: int = 4):
         """Initialize the Balance Series Indexer with a database connection
         
         Args:
@@ -28,7 +24,7 @@ class BalanceSeriesIndexerBase:
         self.period_hours = period_hours
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.first_block_timestamp = None  # Will be set by the consumer if available
-        self.indexer_metrics = indexer_metrics
+        self.metrics = metrics
         
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
@@ -187,16 +183,14 @@ class BalanceSeriesIndexerBase:
 
                 
                 # Record metrics if available
-                if self.indexer_metrics:
-                    duration = time.time() - start_time
-                    self.indexer_metrics.record_database_operation('insert', 'balance_series', duration, True)
-                    logger.info(f"Recorded balance series for {len(balance_data)} addresses in {duration:.3f}s")
+                duration = time.time() - start_time
+                self.metrics.record_database_operation('insert', 'balance_series', duration, True)
+                logger.info(f"Recorded balance series for {len(balance_data)} addresses in {duration:.3f}s")
 
         except Exception as e:
             # Record database error metric if available
-            if self.indexer_metrics:
-                duration = time.time() - start_time
-                self.indexer_metrics.record_database_operation('insert', 'balance_series', duration, False)
+            duration = time.time() - start_time
+            self.metrics.record_database_operation('insert', 'balance_series', duration, False)
             raise
 
     def get_previous_period_balances(self, address: str, current_period_start: int) -> Tuple[Optional[Dict[str, Decimal]], int]:

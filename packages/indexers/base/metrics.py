@@ -354,7 +354,10 @@ class IndexerMetrics:
             'Total failed events',
             ['network', 'indexer', 'error_type']
         )
-    
+
+    def setup(self):
+        pass
+
     def record_block_processed(self, block_height: int, processing_time: float):
         """Record a processed block"""
         labels = {'network': self.network, 'indexer': self.indexer_type}
@@ -373,12 +376,7 @@ class IndexerMetrics:
         if not success:
             error_labels = {'network': self.network, 'indexer': self.indexer_type, 'error_type': 'operation_failed'}
             self.database_errors_total.labels(**error_labels).inc()
-    
-    def record_event_processed(self, event_type: str, count: int = 1):
-        """Record processed events"""
-        labels = {'network': self.network, 'indexer': self.indexer_type, 'event_type': event_type}
-        self.events_processed_total.labels(**labels).inc(count)
-    
+
     def record_failed_event(self, error_type: str, count: int = 1):
         """Record failed events"""
         labels = {'network': self.network, 'indexer': self.indexer_type, 'error_type': error_type}

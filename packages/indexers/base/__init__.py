@@ -5,15 +5,10 @@ import threading
 from loguru import logger
 from .metrics import setup_metrics, get_metrics_registry, shutdown_metrics_servers, IndexerMetrics
 from .enhanced_logging import (
-    setup_enhanced_logger,
-    ErrorContextManager,
+    setup_logger,
     generate_correlation_id,
     get_correlation_id,
-    set_correlation_id,
-    classify_error,
-    log_service_start,
-    log_service_stop,
-    log_configuration_change
+    set_correlation_id
 )
 
 
@@ -81,7 +76,9 @@ def create_clickhouse_database(connection_params):
     client.command(f"CREATE DATABASE IF NOT EXISTS {connection_params['database']}")
 
 
-def setup_logger(service_name):
+# Keep the old setup_logger function for backward compatibility
+def setup_logger_legacy(service_name):
+    """Legacy setup_logger function - use setup_logger() instead for auto-detection."""
     def patch_record(record):
         record["extra"]["service"] = service_name
         return True

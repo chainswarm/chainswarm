@@ -3,9 +3,10 @@ import traceback
 import time
 from loguru import logger
 from packages.indexers.base import (
-    setup_enhanced_logger, get_clickhouse_connection_string, create_clickhouse_database,
-    terminate_event, setup_metrics, get_metrics_registry, ErrorContextManager,
-    log_service_start, log_service_stop, classify_error
+    setup_logger, get_clickhouse_connection_string, create_clickhouse_database,
+    terminate_event, setup_metrics, get_metrics_registry,
+    log_service_start, log_service_stop, classify_error, log_business_decision,
+    log_error_with_context
 )
 from packages.indexers.substrate import get_substrate_node_url, networks, Network
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
@@ -65,10 +66,8 @@ class BalanceTransfersConsumer:
         self.network = network
         self.batch_size = batch_size
         
-        # Setup enhanced logging
-        self.service_name = f"substrate-{network}-balance-transfers-consumer"
-        setup_enhanced_logger(self.service_name)
-        self.error_ctx = ErrorContextManager(self.service_name)
+        # Setup simple logging with auto-detection
+        setup_logger()
         
         # Get metrics registry for additional consumer-level metrics
         service_name = f"substrate-{network}-balance-transfers"
@@ -98,20 +97,19 @@ class BalanceTransfersConsumer:
         
         # Log service startup
         log_service_start(
-            self.service_name,
             network=network,
             batch_size=batch_size,
             continuous_mode=True
         )
 
     def run(self):
-        """Main processing loop with enhanced error logging and reduced verbosity"""
+        """Main processing loop with simplified logging"""
         try:
             last_processed_height = self.balance_transfers_indexer.get_latest_processed_block_height()
             
             if last_processed_height > 0:
                 start_height = last_processed_height + 1
-                self.error_ctx.log_business_decision(
+                log_business_decision(
                     "resume_from_last_processed",
                     "existing_processed_blocks_found",
                     last_processed_height=last_processed_height,
@@ -119,7 +117,7 @@ class BalanceTransfersConsumer:
                 )
             else:
                 start_height = 1
-                self.error_ctx.log_business_decision(
+                log_business_decision(
                     "start_from_genesis",
                     "no_processed_blocks_found",
                     start_height=start_height
@@ -199,6 +197,19 @@ class BalanceTransfersConsumer:
                     # Update start height to the next block after this batch
                     start_height = end_height + 1
                     
+                    # Log milestone progress
+                    if start_height - last_milestone_logged >= milestone_interval:
+                        logger.info(
+                            f"Processing milestone reached",
+                            extra={
+                                "blocks_processed": start_height - 1,
+                                "latest_chain_height": latest_block_height,
+                                "blocks_behind": max(0, latest_block_height - (start_height - 1)),
+                                "milestone_interval": milestone_interval
+                            }
+                        )
+                        last_milestone_logged = start_height
+                    
                 except Exception as e:
                     if self.terminate_event.is_set():
                         break
@@ -211,36 +222,31 @@ class BalanceTransfersConsumer:
                             error_type=classify_error(e)
                         ).inc()
                     
-                    # ENHANCED: Error logging with full context
-                    self.error_ctx.log_error(
+                    # Simple error logging
+                    log_error_with_context(
                         "Block processing batch failed",
-                        error=e,
+                        e,
                         operation="batch_processing",
                         start_height=start_height,
                         end_height=end_height,
                         batch_size=self.batch_size,
                         latest_chain_height=latest_block_height,
-                        processing_state=self._get_processing_state(),
                         error_category=classify_error(e)
                     )
                     time.sleep(5)  # Brief pause before continuing
                     
             # Log service shutdown
             log_service_stop(
-                self.service_name,
                 reason="terminate_event_received",
                 last_processed_height=start_height - 1
             )
                     
         except KeyboardInterrupt:
-            log_service_stop(
-                self.service_name,
-                reason="keyboard_interrupt"
-            )
+            log_service_stop(reason="keyboard_interrupt")
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Fatal consumer error",
-                error=e,
+                e,
                 operation="consumer_main_loop",
                 error_category=classify_error(e)
             )
@@ -271,8 +277,6 @@ class BalanceTransfersConsumer:
                     indexer="balance_transfers"
                 ).observe(batch_duration)
             
-            # REMOVED: Success logging - metrics handle this
-            
         except Exception as e:
             # Record batch processing error
             if self.metrics_registry:
@@ -282,10 +286,10 @@ class BalanceTransfersConsumer:
                     error_type=classify_error(e)
                 ).inc()
             
-            # ENHANCED: Error logging with context
-            self.error_ctx.log_error(
+            # Simple error logging
+            log_error_with_context(
                 "Block batch processing failed",
-                error=e,
+                e,
                 operation="block_batch_processing",
                 block_count=len(blocks),
                 first_block_height=min(block['block_height'] for block in blocks) if blocks else None,
@@ -294,39 +298,16 @@ class BalanceTransfersConsumer:
                 error_category=classify_error(e)
             )
             raise
-    
-    def _get_processing_state(self) -> dict:
-        """Get current processing state for error context."""
-        try:
-            return {
-                "last_processed_height": self.balance_transfers_indexer.get_latest_processed_block_height(),
-                "terminate_event_set": self.terminate_event.is_set(),
-                "batch_size": self.batch_size,
-                "network": self.network,
-                "indexer_healthy": self._test_indexer_health()
-            }
-        except Exception:
-            return {"error": "unable_to_get_processing_state"}
-    
-    def _test_indexer_health(self) -> bool:
-        """Test if the indexer is healthy."""
-        try:
-            # Simple health check - try to get latest processed height
-            self.balance_transfers_indexer.get_latest_processed_block_height()
-            return True
-        except Exception:
-            return False
 
     def _cleanup(self):
         """Clean up resources"""
         try:
             if hasattr(self, 'balance_transfers_indexer'):
                 self.balance_transfers_indexer.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Error closing balance transfers indexer",
-                error=e,
+                e,
                 operation="cleanup",
                 component="balance_transfers_indexer",
                 error_category=classify_error(e)
@@ -335,11 +316,10 @@ class BalanceTransfersConsumer:
         try:
             if hasattr(self, 'block_stream_manager'):
                 self.block_stream_manager.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Error closing block stream manager",
-                error=e,
+                e,
                 operation="cleanup",
                 component="block_stream_manager",
                 error_category=classify_error(e)
@@ -363,12 +343,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    service_name = f'substrate-{args.network}-balance-transfers'
-    setup_enhanced_logger(service_name)
+    # Setup simple logging with auto-detection
+    setup_logger()
     
     # Setup metrics
+    service_name = f'substrate-{args.network}-balance-transfers'
     metrics_registry = setup_metrics(service_name, start_server=True)
-    # REMOVED: Metrics server startup logging - not needed
 
     # Initialize components
     balance_transfers_indexer = None
@@ -392,20 +372,16 @@ if __name__ == "__main__":
 
         consumer.run()
     except Exception as e:
-        logger.error(f"Fatal error", error=e, trb=traceback.format_exc())
+        logger.error("Fatal error", extra={"error": str(e), "traceback": traceback.format_exc()})
     finally:
         try:
             if balance_transfers_indexer:
                 balance_transfers_indexer.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            logger.error(f"Error closing balance transfers indexer: {e}")
+            logger.error("Error closing balance transfers indexer", extra={"error": str(e)})
 
         try:
             if block_stream_manager:
                 block_stream_manager.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            logger.error(f"Error closing block stream manager: {e}")
-
-        # REMOVED: Final stop logging - not needed
+            logger.error("Error closing block stream manager", extra={"error": str(e)})

@@ -8,7 +8,8 @@ from typing import Dict, Any, List
 
 from packages.indexers.base import (
     terminate_event, get_clickhouse_connection_string, get_memgraph_connection_string,
-    setup_enhanced_logger, ErrorContextManager, log_service_start, log_service_stop, classify_error
+    setup_logger, log_service_start, log_service_stop, classify_error,
+    log_business_decision, log_error_with_context
 )
 from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
 from packages.indexers.substrate import networks, data, Network
@@ -62,10 +63,8 @@ class MoneyFlowConsumer:
         self.batch_size = batch_size
         self.partitioner = get_partitioner(network)
         
-        # Setup enhanced logging
-        self.service_name = f"substrate-{network}-money-flow-consumer"
-        setup_enhanced_logger(self.service_name)
-        self.error_ctx = ErrorContextManager(self.service_name)
+        # Setup simple logging with auto-detection
+        setup_logger()
         
         # Metrics will be set from main function
         self.metrics_registry = None
@@ -81,7 +80,6 @@ class MoneyFlowConsumer:
         
         # Log service startup
         log_service_start(
-            self.service_name,
             network=network,
             batch_size=batch_size
         )
@@ -129,19 +127,23 @@ class MoneyFlowConsumer:
         )
 
     def run(self):
-        """Main processing loop with improved termination handling"""
+        """Main processing loop with simplified logging"""
         try:
             # Get the last processed block height
             last_block_height = self.get_last_processed_block()
             current_height = last_block_height + 1 if last_block_height > 0 else 1
             
-            # ENHANCED: Business decision logging
-            self.error_ctx.log_business_decision(
+            # Business decision logging
+            log_business_decision(
                 "resume_from_last_processed_block",
                 "found_existing_processed_data" if last_block_height > 0 else "starting_from_genesis",
                 last_block_height=last_block_height,
                 current_height=current_height
             )
+            
+            # Track milestone logging (every 1,000 blocks processed)
+            last_milestone_logged = 0
+            milestone_interval = 1000
             
             while not self.terminate_event.is_set():
                 try:
@@ -166,14 +168,11 @@ class MoneyFlowConsumer:
                     # Calculate batch end (don't exceed latest height or batch size)
                     end_height = min(current_height + self.batch_size - 1, latest_block_height)
                     
-                    # REMOVED: Verbose fetching logs - not needed
                     batch_start_time = time.time()
                     blocks_with_addresses = self.block_stream_manager.get_blocks_by_block_height_range(current_height, end_height, only_with_addresses=True)
                     
                     # Only proceed if we weren't terminated during block fetching
                     if not self.terminate_event.is_set() and blocks_with_addresses:
-                        # REMOVED: Verbose processing logs - metrics handle this
-                        
                         # Process blocks
                         for block in blocks_with_addresses:
                             # Check for termination before processing each block
@@ -191,8 +190,23 @@ class MoneyFlowConsumer:
                         # Update current height if we weren't terminated
                         if not self.terminate_event.is_set():
                             current_height = end_height + 1
+                            
+                        # Log milestone progress
+                        if current_height - last_milestone_logged >= milestone_interval:
+                            logger.info(
+                                "Money flow processing milestone reached",
+                                extra={
+                                    "blocks_processed": current_height - 1,
+                                    "latest_chain_height": latest_block_height,
+                                    "blocks_behind": max(0, latest_block_height - (current_height - 1)),
+                                    "milestone_interval": milestone_interval,
+                                    "batch_duration": round(batch_duration, 2) if 'batch_duration' in locals() else None
+                                }
+                            )
+                            last_milestone_logged = current_height
+                            
                     elif not self.terminate_event.is_set():
-                        # ENHANCED: Strategic warning for empty ranges
+                        # Strategic warning for empty ranges
                         logger.warning(
                             "No blocks with addresses found in range",
                             extra={
@@ -214,10 +228,10 @@ class MoneyFlowConsumer:
                         labels = {'network': self.network, 'indexer': 'money_flow', 'error_type': classify_error(e)}
                         self.consumer_errors_total.labels(**labels).inc()
                     
-                    # ENHANCED: Error logging with context
-                    self.error_ctx.log_error(
+                    # Simple error logging
+                    log_error_with_context(
                         "Block processing batch failed",
-                        error=e,
+                        e,
                         operation="batch_processing_loop",
                         current_height=current_height,
                         end_height=end_height,
@@ -228,20 +242,14 @@ class MoneyFlowConsumer:
                     time.sleep(5)  # Brief pause before continuing
             
             # Log service shutdown
-            log_service_stop(
-                self.service_name,
-                reason="terminate_event_received"
-            )
+            log_service_stop(reason="terminate_event_received")
             
         except KeyboardInterrupt:
-            log_service_stop(
-                self.service_name,
-                reason="keyboard_interrupt"
-            )
+            log_service_stop(reason="keyboard_interrupt")
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Fatal consumer error",
-                error=e,
+                e,
                 operation="consumer_main_loop",
                 error_category=classify_error(e)
             )
@@ -266,7 +274,7 @@ class MoneyFlowConsumer:
             if block_height % once_per_block == 0 and not self.terminate_event.is_set():
                 labels = {'network': self.network, 'indexer': 'money_flow'}
                 
-                # ENHANCED: Strategic logging for periodic tasks
+                # Strategic logging for periodic tasks
                 logger.info(
                     "Starting periodic graph analysis tasks",
                     extra={
@@ -298,20 +306,20 @@ class MoneyFlowConsumer:
                     if self.embeddings_update_duration:
                         self.embeddings_update_duration.labels(**labels).observe(duration)
                 
-                # ENHANCED: Strategic completion logging
+                # Strategic completion logging
                 logger.info(
                     "Completed periodic graph analysis tasks",
                     extra={
                         "block_height": block_height,
-                        "total_duration": time.time() - start_time
+                        "total_duration": round(time.time() - start_time, 2)
                     }
                 )
 
         except Exception as e:
-            # ENHANCED: Error logging with context
-            self.error_ctx.log_error(
+            # Simple error logging
+            log_error_with_context(
                 "Block processing failed",
-                error=e,
+                e,
                 operation="process_block",
                 block_height=block_height if 'block_height' in locals() else None,
                 error_category=classify_error(e)
@@ -331,10 +339,10 @@ class MoneyFlowConsumer:
                     return record["last_block_height"]
                 return 0
         except Exception as e:
-            # ENHANCED: Error logging with context
-            self.error_ctx.log_error(
+            # Simple error logging
+            log_error_with_context(
                 "Failed to get last processed block",
-                error=e,
+                e,
                 operation="get_last_processed_block",
                 error_category=classify_error(e)
             )
@@ -345,11 +353,10 @@ class MoneyFlowConsumer:
         try:
             if hasattr(self, 'block_stream_manager'):
                 self.block_stream_manager.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Error closing block stream manager",
-                error=e,
+                e,
                 operation="cleanup",
                 component="block_stream_manager",
                 error_category=classify_error(e)
@@ -374,10 +381,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    service_name = f'substrate-{args.network}-money-flow'
-    setup_enhanced_logger(service_name)
+    # Setup simple logging with auto-detection
+    setup_logger()
 
     # Setup metrics
+    service_name = f'substrate-{args.network}-money-flow'
     metrics_registry = setup_metrics(service_name)
     indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'money_flow')
 
@@ -414,13 +422,11 @@ if __name__ == "__main__":
     try:
         consumer.run()
     except Exception as e:
-        error_ctx = ErrorContextManager(service_name)
-        error_ctx.log_error(
+        log_error_with_context(
             "Fatal startup error",
-            error=e,
+            e,
             operation="main_startup",
             error_category=classify_error(e)
         )
     finally:
         graph_database.close()
-        # REMOVED: Final stop logging - not needed

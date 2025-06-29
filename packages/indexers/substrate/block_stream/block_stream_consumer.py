@@ -5,8 +5,7 @@ import signal
 from loguru import logger
 from packages.indexers.base import (
     get_clickhouse_connection_string, create_clickhouse_database, terminate_event,
-    setup_metrics, get_metrics_registry, setup_enhanced_logger, ErrorContextManager,
-    log_service_start, log_service_stop, classify_error
+    setup_metrics, get_metrics_registry, setup_logger,IndexerMetrics,
 )
 from packages.indexers.substrate import networks, get_substrate_node_url
 from packages.indexers.substrate.block_range_partitioner import get_partitioner
@@ -19,76 +18,56 @@ class BlockStreamConsumer:
             self,
             substrate_node: SubstrateNode,
             block_stream_indexer: BlockStreamIndexer,
+            metrics_registry,
+            indexer_metrics,
             terminate_event,
             network: str,
             batch_size: int = 10,
-            service_name: str = None,
             start_height: int = None,
             end_height: int = None,
             sleep_time: int = 10
     ):
         self.substrate_node = substrate_node
         self.block_stream_indexer = block_stream_indexer
+        self.metrics_registry = metrics_registry
+        self.indexer_metrics = indexer_metrics
         self.terminate_event = terminate_event
         self.network = network
         self.batch_size = batch_size
-        self.service_name = service_name or f'substrate-{network}-block-stream'
         self.start_height = start_height
         self.end_height = end_height
         self.sleep_time = sleep_time
         self.partitioner = block_stream_indexer.partitioner if hasattr(block_stream_indexer, 'partitioner') else None
-        
-        # Setup enhanced logging
-        setup_enhanced_logger(self.service_name)
-        self.error_ctx = ErrorContextManager(self.service_name)
-        
-        # Get metrics registry for additional consumer-level metrics
-        service_name = f"substrate-{network}-block-stream"
-        self.metrics_registry = get_metrics_registry(service_name)
-        # REMOVED: Verbose metrics logging - not needed
-        if self.metrics_registry:
-            # Consumer-specific metrics
-            self.batch_processing_duration = self.metrics_registry.create_histogram(
-                'consumer_batch_processing_duration_seconds',
-                'Time spent processing batches',
-                ['network', 'indexer']
-            )
-            self.blocks_fetched_total = self.metrics_registry.create_counter(
-                'consumer_blocks_fetched_total',
-                'Total blocks fetched from blockchain',
-                ['network', 'indexer']
-            )
-            self.empty_batches_total = self.metrics_registry.create_counter(
-                'consumer_empty_batches_total',
-                'Total empty batches encountered',
-                ['network', 'indexer']
-            )
-            self.consumer_errors_total = self.metrics_registry.create_counter(
-                'consumer_errors_total',
-                'Total consumer processing errors',
-                ['network', 'indexer', 'error_type']
-            )
-            self.blocks_behind_latest = self.metrics_registry.create_gauge(
-                'consumer_blocks_behind_latest',
-                'Number of blocks behind the latest block',
-                ['network', 'indexer']
-            )
-        # REMOVED: Warning log - metrics handle availability
-        
-        # Log service startup
-        log_service_start(
-            self.service_name,
-            network=network,
-            batch_size=batch_size,
-            start_height=start_height,
-            end_height=end_height,
-            mode="partition" if start_height and end_height else "continuous"
+
+        self.batch_processing_duration = metrics_registry.create_histogram(
+            'consumer_batch_processing_duration_seconds',
+            'Time spent processing batches',
+            ['network', 'indexer']
+        )
+        self.blocks_fetched_total = metrics_registry.create_counter(
+            'consumer_blocks_fetched_total',
+            'Total blocks fetched from blockchain',
+            ['network', 'indexer']
+        )
+        self.empty_batches_total = metrics_registry.create_counter(
+            'consumer_empty_batches_total',
+            'Total empty batches encountered',
+            ['network', 'indexer']
+        )
+        self.consumer_errors_total = metrics_registry.create_counter(
+            'consumer_errors_total',
+            'Total consumer processing errors',
+            ['network', 'indexer', 'error_type']
+        )
+        self.blocks_behind_latest = metrics_registry.create_gauge(
+            'consumer_blocks_behind_latest',
+            'Number of blocks behind the latest block',
+            ['network', 'indexer']
         )
 
     def run(self):
-        """Main processing loop with improved error handling and termination awareness"""
+        """Main processing loop with simplified logging"""
 
-        # Check terminate_event immediately
         if self.terminate_event.is_set():
             return
             
@@ -96,41 +75,45 @@ class BlockStreamConsumer:
             # If start_height is provided, use it; otherwise, get the last processed block height
             if self.start_height is not None:
                 current_height = self.start_height
-                # ENHANCED: Business decision logging
-                self.error_ctx.log_business_decision(
-                    "use_provided_start_height",
-                    "partition_mode_or_manual_override",
-                    start_height=current_height,
-                    end_height=self.end_height
+                logger.info(
+                    "Starting consumer from provided start height",
+                    business_decision="use_provided_start_height",
+                    reason="manual_override_or_partition_mode",
+                    extra={
+                        "start_height": current_height,
+                        "end_height": self.end_height,
+                    }
                 )
             else:
                 # Get the last processed block height directly from the block_stream table
                 last_block_height = self.block_stream_indexer.get_last_block_height()
                 current_height = last_block_height + 1 if last_block_height > 0 else 1
-                # ENHANCED: Business decision logging
-                self.error_ctx.log_business_decision(
-                    "resume_from_last_processed_block",
-                    "continuous_mode_startup",
-                    last_block_height=last_block_height,
-                    current_height=current_height
+                logger.info(
+                    "Starting consumer from last processed block height",
+                    business_decision="resume_from_last_processed_block",
+                    reason="continuous_mode_startup",
+                    extra={
+                        "last_block_height": last_block_height,
+                        "current_height": current_height,
+                    }
                 )
 
             # Check terminate_event at the start of each iteration
             while not self.terminate_event.is_set():
-                # Check terminate_event again
                 if self.terminate_event.is_set():
-                    return  # Return instead of break to exit immediately
+                    return
+
                 try:
                     chain_height = self.substrate_node.get_current_block_height()
-
-                    # If we've reached the end_height and it's not None (continuous mode), we're done
                     if self.end_height is not None and current_height > self.end_height:
-                        # ENHANCED: Business decision logging
-                        self.error_ctx.log_business_decision(
-                            "reached_end_height",
-                            "partition_mode_completion",
-                            end_height=self.end_height,
-                            current_height=current_height
+                        logger.info(
+                            "Reached end height, stopping consumer",
+                            business_decision="reached_end_height",
+                            reason="partition_mode_completion",
+                            extra={
+                                "current_height": current_height,
+                                "end_height": self.end_height
+                            }
                         )
                         break
 
@@ -166,7 +149,7 @@ class BlockStreamConsumer:
                     blocks = self.substrate_node.get_blocks_by_height_range(current_height, end_height)
 
                     # Record blocks fetched metric
-                    if self.metrics_registry and blocks:
+                    if blocks:
                         self.blocks_fetched_total.labels(network=self.network, indexer="block_stream").inc(len(blocks))
 
                     if not self.terminate_event.is_set() and blocks:
@@ -178,52 +161,45 @@ class BlockStreamConsumer:
                             self.block_stream_indexer.index_blocks(blocks)
                             
                             # Record batch processing metrics
-                            if self.metrics_registry:
-                                batch_duration = time.time() - batch_start_time
-                                self.batch_processing_duration.labels(
-                                    network=self.network,
-                                    indexer="block_stream"
-                                ).observe(batch_duration)
-                                
-                                # Update blocks behind metric
-                                blocks_behind = max(0, chain_height - end_height)
-                                self.blocks_behind_latest.labels(
-                                    network=self.network,
-                                    indexer="block_stream"
-                                ).set(blocks_behind)
-                            
-                            # REMOVED: Verbose success logging - metrics handle this
-                            
+                            batch_duration = time.time() - batch_start_time
+                            self.batch_processing_duration.labels(
+                                network=self.network,
+                                indexer="block_stream"
+                            ).observe(batch_duration)
+
+                            # Update blocks behind metric
+                            blocks_behind = max(0, chain_height - end_height)
+                            self.blocks_behind_latest.labels(
+                                network=self.network,
+                                indexer="block_stream"
+                            ).set(blocks_behind)
+
                             if self.terminate_event.is_set():
                                 return
                                 
                             current_height = end_height + 1
+
                         except Exception as e:
-                            # Record indexing error metric
-                            if self.metrics_registry:
-                                self.consumer_errors_total.labels(
-                                    network=self.network,
-                                    indexer="block_stream",
-                                    error_type=classify_error(e)
-                                ).inc()
-                            
-                            # ENHANCED: Error logging with context
-                            self.error_ctx.log_error(
-                                "Block indexing failed",
+                            self.consumer_errors_total.labels(
+                                network=self.network,
+                                indexer="block_stream"
+                            ).inc()
+
+                            logger.error(
+                                "Error indexing blocks",
                                 error=e,
-                                operation="index_blocks",
-                                current_height=current_height,
-                                end_height=end_height,
-                                blocks_count=len(blocks) if blocks else 0,
-                                error_category=classify_error(e)
+                                traceback=traceback.format_exc(),
+                                extra={
+                                    "current_height": current_height,
+                                    "end_height": end_height,
+                                    "blocks_count": len(blocks),
+                                    "chain_height": chain_height
+                                }
                             )
+
                             time.sleep(5)
                     elif not self.terminate_event.is_set():
-                        # Record empty batch metric
-                        if self.metrics_registry:
-                            self.empty_batches_total.labels(network=self.network, indexer="block_stream").inc()
-                        
-                        # ENHANCED: Strategic warning for empty ranges
+                        self.empty_batches_total.labels(network=self.network, indexer="block_stream").inc()
                         logger.warning(
                             "No blocks returned from blockchain",
                             extra={
@@ -242,40 +218,34 @@ class BlockStreamConsumer:
                 except Exception as e:
                     if self.terminate_event.is_set():
                         return
-                    
-                    # Record processing error metric
-                    if self.metrics_registry:
-                        self.consumer_errors_total.labels(
-                            network=self.network,
-                            indexer="block_stream",
-                            error_type=classify_error(e)
-                        ).inc()
-                    
-                    # ENHANCED: Error logging with context
-                    self.error_ctx.log_error(
-                        "Block processing failed",
+
+                    self.consumer_errors_total.labels(
+                        network=self.network,
+                        indexer="block_stream"
+                    ).inc()
+
+                    logger.error(
+                        "Error processing block range",
                         error=e,
-                        operation="block_processing_loop",
-                        current_height=current_height if 'current_height' in locals() else None,
-                        chain_height=chain_height if 'chain_height' in locals() else None,
-                        error_category=classify_error(e)
+                        traceback=traceback.format_exc(),
+                        extra={
+                            "current_height": current_height if 'current_height' in locals() else None,
+                            "chain_height": chain_height if 'chain_height' in locals() else None,
+                        }
                     )
+
                     for _ in range(5):
                         if self.terminate_event.is_set():
                             return
                         time.sleep(1)
 
         except KeyboardInterrupt:
-            log_service_stop(
-                self.service_name,
-                reason="keyboard_interrupt"
-            )
+            logger.info("Consumer interrupted by user")
         except Exception as e:
-            self.error_ctx.log_error(
-                "Fatal consumer error",
+            logger.error(
+                "Fatal error in consumer main loop",
                 error=e,
-                operation="consumer_main_loop",
-                error_category=classify_error(e)
+                traceback=traceback.format_exc()
             )
 
 
@@ -299,14 +269,22 @@ if __name__ == "__main__":
     if args.partition is not None:
         service_name = f"{service_name}-partition-{args.partition}"
         
-    setup_enhanced_logger(service_name)
-    
-    # Setup metrics server for Prometheus to scrape
-    metrics_registry = setup_metrics(service_name, start_server=True)
-    # REMOVED: Verbose metrics server logging - not needed
+    setup_logger(service_name)
+
+    logger.info(
+        "Starting Block Stream Consumer",
+        extra={
+            "service": service_name,
+            "network": args.network,
+            "batch_size": args.batch_size,
+            "start_height": args.start_height,
+            "end_height": args.end_height,
+            "partition": args.partition,
+            "sleep_time": args.sleep_time
+        }
+    )
 
     def signal_handler(sig, frame):
-        # ENHANCED: Strategic signal logging
         logger.info(
             "Shutdown signal received",
             extra={
@@ -322,11 +300,14 @@ if __name__ == "__main__":
 
     connection_params = get_clickhouse_connection_string(args.network)
     create_clickhouse_database(connection_params)
-    
+
+    metrics_registry = setup_metrics(service_name, start_server=True)
+    metrics = IndexerMetrics(metrics_registry, args.network, "block_stream")
+
     partitioner = get_partitioner(args.network)
     substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
-    block_stream_indexer = BlockStreamIndexer(connection_params, partitioner, args.network)
-    
+    block_stream_indexer = BlockStreamIndexer(connection_params, partitioner, metrics, args.network)
+
     if args.partition is not None and args.start_height is None:
         chain_height = substrate_node.get_current_block_height()
         start_height, end_height = partitioner.get_partition_range(args.partition)
@@ -334,52 +315,46 @@ if __name__ == "__main__":
         
         if last_indexed_height > start_height:
             start_height = last_indexed_height + 1
-            # ENHANCED: Business decision logging
-            error_ctx = ErrorContextManager(service_name)
-            error_ctx.log_business_decision(
-                "resume_partition_indexing",
-                "found_existing_indexed_blocks",
-                partition_id=args.partition,
-                last_indexed_height=last_indexed_height,
-                resume_from_height=start_height,
-                partition_end=end_height
+            logger.info(
+                "Resuming partition indexing from last indexed block",
+                extra={
+                    "partition_id": args.partition,
+                    "last_indexed_height": last_indexed_height,
+                    "start_height": start_height,
+                    "end_height": end_height
+                }
             )
         else:
-            # ENHANCED: Business decision logging
-            error_ctx = ErrorContextManager(service_name)
-            error_ctx.log_business_decision(
-                "start_partition_from_beginning",
-                "no_existing_indexed_blocks",
-                partition_id=args.partition,
-                start_height=start_height,
-                end_height=end_height
+            logger.info(
+                "Starting partition indexing from beginning",
+                extra={
+                    "partition_id": args.partition,
+                    "start_height": start_height,
+                    "end_height": end_height
+                }
             )
-            
+
         args.start_height = start_height
         args.end_height = end_height
-        
-        # REMOVED: Verbose partition range logging - business decision logs handle this
-    
+
     consumer = BlockStreamConsumer(
         substrate_node,
         block_stream_indexer,
+        metrics_registry,
+        metrics,
         terminate_event,
         args.network,
         args.batch_size,
-        service_name,
         args.start_height,
         args.end_height,
         args.sleep_time
     )
     
     try:
-        # REMOVED: Verbose startup logging - service lifecycle logs handle this
         consumer.run()
-        
-        # Log completion for partition mode
+
         if args.end_height is not None:
-            error_ctx = ErrorContextManager(service_name)
-            error_ctx.log_business_decision(
+            log_business_decision(
                 "partition_indexing_completed",
                 "reached_end_height",
                 start_height=args.start_height,
@@ -387,10 +362,8 @@ if __name__ == "__main__":
                 partition_id=args.partition
             )
     except Exception as e:
-        error_ctx = ErrorContextManager(service_name)
-        error_ctx.log_error(
+        log_error_with_context(
             "Fatal startup error",
-            error=e,
-            operation="main_startup",
-            error_category=classify_error(e)
+            e,
+            operation="main_startup"
         )

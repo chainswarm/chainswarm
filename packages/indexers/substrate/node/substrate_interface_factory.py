@@ -1,10 +1,6 @@
-from packages.indexers.base.enhanced_logging import (
-    ErrorContextManager,
-    setup_enhanced_logger,
-    classify_error
-)
 from packages.indexers.substrate import Network
 from substrateinterface import SubstrateInterface
+from loguru import logger
 
 
 class SubstrateInterfaceFactory:
@@ -12,9 +8,6 @@ class SubstrateInterfaceFactory:
     Factory class for creating SubstrateInterface instances based on network type.
     Each network may have different configuration requirements for the substrate interface.
     """
-    
-    # Class-level error context manager
-    _error_ctx = ErrorContextManager("substrate-interface-factory")
     
     @staticmethod
     def create_substrate_interface(network: str, node_ws_url: str) -> SubstrateInterface:
@@ -41,27 +34,23 @@ class SubstrateInterfaceFactory:
             elif network == Network.POLKADOT.value:
                 return SubstrateInterfaceFactory._create_polkadot_interface(node_ws_url)
             else:
-                # Enhanced error logging for unsupported networks
-                error = ValueError(f"Unsupported network: {network}")
-                SubstrateInterfaceFactory._error_ctx.log_error(
-                    "Unsupported network configuration",
-                    error,
-                    network=network,
-                    endpoint=node_ws_url,
-                    error_category="validation_error",
-                    supported_networks=[Network.BITTENSOR.value, Network.TORUS.value, Network.POLKADOT.value]
-                )
-                raise error
+                # Simplified error logging for unsupported networks
+                logger.error("Unsupported network configuration", extra={
+                    "network": network,
+                    "endpoint": node_ws_url,
+                    "error_category": "validation_error",
+                    "supported_networks": [Network.BITTENSOR.value, Network.TORUS.value, Network.POLKADOT.value]
+                })
+                raise ValueError(f"Unsupported network: {network}")
         except Exception as e:
             if not isinstance(e, ValueError):
-                # Enhanced error logging for interface creation failures
-                SubstrateInterfaceFactory._error_ctx.log_error(
-                    "Failed to create SubstrateInterface",
-                    e,
-                    network=network,
-                    endpoint=node_ws_url,
-                    error_category=classify_error(e)
-                )
+                # Simplified error logging for interface creation failures
+                logger.error("Failed to create SubstrateInterface", extra={
+                    "network": network,
+                    "endpoint": node_ws_url,
+                    "error": str(e),
+                    "error_category": classify_error(e)
+                })
             raise
 
     @staticmethod
@@ -80,18 +69,17 @@ class SubstrateInterfaceFactory:
             )
             return substrate
         except Exception as e:
-            # Enhanced error logging for Bittensor interface creation failures
-            SubstrateInterfaceFactory._error_ctx.log_error(
-                "Failed to create Bittensor SubstrateInterface",
-                e,
-                network="bittensor",
-                endpoint=node_ws_url,
-                error_category=classify_error(e),
-                interface_config={
+            # Simplified error logging for Bittensor interface creation failures
+            logger.error("Failed to create Bittensor SubstrateInterface", extra={
+                "network": "bittensor",
+                "endpoint": node_ws_url,
+                "error": str(e),
+                "error_category": classify_error(e),
+                "interface_config": {
                     "use_remote_preset": True,
                     "cache_region": None
                 }
-            )
+            })
             raise RuntimeError(f"Failed to create Bittensor SubstrateInterface: {e}")
     
     @staticmethod
@@ -105,18 +93,17 @@ class SubstrateInterfaceFactory:
             )
             return substrate
         except Exception as e:
-            # Enhanced error logging for Torus interface creation failures
-            SubstrateInterfaceFactory._error_ctx.log_error(
-                "Failed to create Torus SubstrateInterface",
-                e,
-                network="torus",
-                endpoint=node_ws_url,
-                error_category=classify_error(e),
-                interface_config={
+            # Simplified error logging for Torus interface creation failures
+            logger.error("Failed to create Torus SubstrateInterface", extra={
+                "network": "torus",
+                "endpoint": node_ws_url,
+                "error": str(e),
+                "error_category": classify_error(e),
+                "interface_config": {
                     "use_remote_preset": True,
                     "cache_region": None
                 }
-            )
+            })
             raise RuntimeError(f"Failed to create Torus SubstrateInterface: {e}")
     
     @staticmethod
@@ -130,16 +117,15 @@ class SubstrateInterfaceFactory:
             )
             return substrate
         except Exception as e:
-            # Enhanced error logging for Polkadot interface creation failures
-            SubstrateInterfaceFactory._error_ctx.log_error(
-                "Failed to create Polkadot SubstrateInterface",
-                e,
-                network="polkadot",
-                endpoint=node_ws_url,
-                error_category=classify_error(e),
-                interface_config={
+            # Simplified error logging for Polkadot interface creation failures
+            logger.error("Failed to create Polkadot SubstrateInterface", extra={
+                "network": "polkadot",
+                "endpoint": node_ws_url,
+                "error": str(e),
+                "error_category": classify_error(e),
+                "interface_config": {
                     "use_remote_preset": True,
                     "cache_region": None
                 }
-            )
+            })
             raise RuntimeError(f"Failed to create Polkadot SubstrateInterface: {e}")

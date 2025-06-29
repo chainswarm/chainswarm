@@ -7,7 +7,8 @@ from datetime import datetime
 
 from packages.indexers.base import (
     get_clickhouse_connection_string, create_clickhouse_database, terminate_event,
-    setup_enhanced_logger, ErrorContextManager, log_service_start, log_service_stop, classify_error
+    setup_logger, log_service_start, log_service_stop, classify_error,
+    log_business_decision, log_error_with_context
 )
 
 from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
@@ -20,15 +21,15 @@ from packages.indexers.substrate.block_stream.block_stream_manager import BlockS
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
 
-def get_balance_series_indexer(network: str, connection_params, period_hours: int = 4, indexer_metrics: IndexerMetrics = None):
+def get_balance_series_indexer(connection_params, indexer_metrics: IndexerMetrics, network: str, period_hours: int = 4):
     """
     Factory function to get the appropriate indexer based on network.
 
     Args:
-        network: Network identifier (torus, bittensor, polkadot)
         connection_params: ClickHouse connection parameters
-        period_hours: Number of hours in each period (default: 4)
         indexer_metrics: Optional IndexerMetrics instance for recording metrics
+        network: Network identifier (torus, bittensor, polkadot)
+        period_hours: Number of hours in each period (default: 4)
 
     Returns:
         BalanceSeriesIndexer: Appropriate indexer instance for the network
@@ -77,10 +78,8 @@ class BalanceSeriesConsumer:
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.batch_size = batch_size
         
-        # Setup enhanced logging
-        self.service_name = f"substrate-{network}-balance-series-consumer"
-        setup_enhanced_logger(self.service_name)
-        self.error_ctx = ErrorContextManager(self.service_name)
+        # Setup simple logging with auto-detection
+        setup_logger()
         
         # Metrics will be passed from main function
         self.metrics_registry = None
@@ -94,7 +93,6 @@ class BalanceSeriesConsumer:
         
         # Log service startup
         log_service_start(
-            self.service_name,
             network=network,
             period_hours=period_hours,
             batch_size=batch_size
@@ -133,7 +131,6 @@ class BalanceSeriesConsumer:
     def run(self):
         """Main processing loop for balance series data"""
         try:
-
             block_info = self.block_stream_manager.get_blocks_by_block_height_range(1, 1)
             if not block_info or len(block_info) == 0:
                 raise ValueError("No block information found for height 1, cannot initialize balance series consumer")
@@ -144,8 +141,8 @@ class BalanceSeriesConsumer:
             last_processed_timestamp, last_processed_block_height = self.balance_series_indexer.get_latest_processed_period()
             next_period_start, next_period_end = self.balance_series_indexer.get_next_period_to_process()
 
-            # ENHANCED: Business decision logging
-            self.error_ctx.log_business_decision(
+            # Business decision logging
+            log_business_decision(
                 "resume_from_last_processed_period",
                 "found_existing_processed_data",
                 last_processed_timestamp=last_processed_timestamp,
@@ -154,13 +151,11 @@ class BalanceSeriesConsumer:
                 next_period_end=next_period_end
             )
 
-
             while not self.terminate_event.is_set():
                 try:
                     current_time = int(datetime.now().timestamp() * 1000)
 
                     if next_period_end <= current_time:
-                        # REMOVED: Verbose processing logs - metrics handle this
                         self._process_period(next_period_start, next_period_end)
 
                         # Update to the next period
@@ -194,10 +189,10 @@ class BalanceSeriesConsumer:
                     if self.terminate_event.is_set():
                         break
 
-                    # ENHANCED: Error logging with context
-                    self.error_ctx.log_error(
+                    # Simple error logging
+                    log_error_with_context(
                         "Period processing failed",
-                        error=e,
+                        e,
                         operation="period_processing_loop",
                         period_start=next_period_start,
                         period_end=next_period_end,
@@ -207,20 +202,14 @@ class BalanceSeriesConsumer:
                     time.sleep(5)  # Brief pause before continuing
 
             # Log service shutdown
-            log_service_stop(
-                self.service_name,
-                reason="terminate_event_received"
-            )
+            log_service_stop(reason="terminate_event_received")
 
         except KeyboardInterrupt:
-            log_service_stop(
-                self.service_name,
-                reason="keyboard_interrupt"
-            )
+            log_service_stop(reason="keyboard_interrupt")
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Fatal consumer error",
-                error=e,
+                e,
                 operation="consumer_main_loop",
                 error_category=classify_error(e)
             )
@@ -234,7 +223,6 @@ class BalanceSeriesConsumer:
             period_start: Start timestamp of the period (milliseconds)
             period_end: End timestamp of the period (milliseconds)
         """
-
         start_time = time.time()
         labels = {'network': self.network, 'indexer': 'balance_series'}
 
@@ -246,10 +234,10 @@ class BalanceSeriesConsumer:
                 if self.consumer_errors_total:
                     self.consumer_errors_total.labels(**labels, error_type='no_block_found').inc()
                 
-                # ENHANCED: Error logging with context
-                self.error_ctx.log_error(
+                # Simple error logging
+                log_error_with_context(
                     "No block found for period end timestamp",
-                    error=ValueError("Block not found"),
+                    ValueError("Block not found"),
                     operation="find_period_end_block",
                     period_start=period_start,
                     period_end=period_end,
@@ -261,13 +249,11 @@ class BalanceSeriesConsumer:
             block_hash = end_block['block_hash']
             block_timestamp = end_block['timestamp']
 
-            # REMOVED: Verbose block found logging - not needed
-
             # Get all active addresses during this period
             active_addresses = self.block_stream_manager.get_blocks_by_block_timestamp_range(period_start, period_end, only_with_addresses=True)
             if not active_addresses:
-                # ENHANCED: Business decision logging for empty periods
-                self.error_ctx.log_business_decision(
+                # Business decision logging for empty periods
+                log_business_decision(
                     "skip_empty_period",
                     "no_active_addresses_found",
                     period_start=period_start,
@@ -280,16 +266,14 @@ class BalanceSeriesConsumer:
             for block in active_addresses:
                 all_addresses.update(block['addresses'])
 
-            # REMOVED: Verbose processing logs - metrics handle counts
-
             if not all_addresses:
                 if self.consumer_errors_total:
                     self.consumer_errors_total.labels(**labels, error_type='no_addresses_found').inc()
                 
-                # ENHANCED: Error logging with context
-                self.error_ctx.log_error(
+                # Simple error logging
+                log_error_with_context(
                     "No addresses found despite active blocks",
-                    error=ValueError("Address extraction failed"),
+                    ValueError("Address extraction failed"),
                     operation="extract_active_addresses",
                     period_start=period_start,
                     period_end=period_end,
@@ -317,16 +301,31 @@ class BalanceSeriesConsumer:
             if self.indexer_metrics:
                 self.indexer_metrics.record_block_processed(block_height, processing_time)
 
-            # REMOVED: Success logging - metrics handle this
+            # Log milestone progress every 10 periods
+            if hasattr(self, '_periods_processed'):
+                self._periods_processed += 1
+            else:
+                self._periods_processed = 1
+                
+            if self._periods_processed % 10 == 0:
+                logger.info(
+                    "Period processing milestone",
+                    extra={
+                        "periods_processed": self._periods_processed,
+                        "addresses_in_period": len(address_balances),
+                        "block_height": block_height,
+                        "processing_time": round(processing_time, 2)
+                    }
+                )
 
         except Exception as e:
             if self.consumer_errors_total:
                 self.consumer_errors_total.labels(**labels, error_type='processing_error').inc()
             
-            # ENHANCED: Error logging with context
-            self.error_ctx.log_error(
+            # Simple error logging
+            log_error_with_context(
                 "Period processing failed",
-                error=e,
+                e,
                 operation="process_period",
                 period_start=period_start,
                 period_end=period_end,
@@ -356,7 +355,6 @@ class BalanceSeriesConsumer:
                 break
 
             batch = address_list[i:i + self.batch_size]
-            # REMOVED: Verbose batch logging - not needed
 
             for address in batch:
                 # The get_balances_at_block method now has infinite retry built-in
@@ -384,10 +382,10 @@ class BalanceSeriesConsumer:
                     if self.terminate_event.is_set():
                         break
                     else:
-                        # ENHANCED: Error logging with context
-                        self.error_ctx.log_error(
+                        # Simple error logging
+                        log_error_with_context(
                             "Unexpected balance query error",
-                            error=e,
+                            e,
                             operation="query_blockchain_balances",
                             address=address,
                             block_hash=block_hash,
@@ -400,7 +398,6 @@ class BalanceSeriesConsumer:
             if i + self.batch_size < len(address_list) and not self.terminate_event.is_set():
                 time.sleep(0.1)
 
-        # REMOVED: Success logging - not needed
         return result
 
     def _cleanup(self):
@@ -408,11 +405,10 @@ class BalanceSeriesConsumer:
         try:
             if hasattr(self, 'balance_series_indexer'):
                 self.balance_series_indexer.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Error closing balance series indexer",
-                error=e,
+                e,
                 operation="cleanup",
                 component="balance_series_indexer",
                 error_category=classify_error(e)
@@ -421,11 +417,10 @@ class BalanceSeriesConsumer:
         try:
             if hasattr(self, 'block_stream_manager'):
                 self.block_stream_manager.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            self.error_ctx.log_error(
+            log_error_with_context(
                 "Error closing block stream manager",
-                error=e,
+                e,
                 operation="cleanup",
                 component="block_stream_manager",
                 error_category=classify_error(e)
@@ -455,8 +450,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    service_name = f'substrate-{args.network}-balance-series'
-    setup_enhanced_logger(service_name)
+    # Setup simple logging with auto-detection
+    setup_logger()
 
     # Initialize components
     balance_series_indexer = None
@@ -472,7 +467,7 @@ if __name__ == "__main__":
         metrics_registry = setup_metrics(service_name)
         indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'balance_series')
         
-        balance_series_indexer = get_balance_series_indexer(args.network, clickhouse_params, args.period_hours, indexer_metrics)
+        balance_series_indexer = get_balance_series_indexer(clickhouse_params, indexer_metrics, args.network, args.period_hours)
         block_stream_manager = BlockStreamManager(clickhouse_params, args.network, terminate_event)
 
         node_url = get_substrate_node_url(args.network)
@@ -488,16 +483,13 @@ if __name__ == "__main__":
             args.batch_size
         )
 
-        
-        # Set metrics after consumer creation
         consumer.set_metrics(metrics_registry, indexer_metrics)
         consumer.run()
         
     except Exception as e:
-        error_ctx = ErrorContextManager(service_name)
-        error_ctx.log_error(
+        log_error_with_context(
             "Fatal startup error",
-            error=e,
+            e,
             operation="main_startup",
             error_category=classify_error(e)
         )
@@ -505,15 +497,11 @@ if __name__ == "__main__":
         try:
             if balance_series_indexer:
                 balance_series_indexer.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            logger.error(f"Error closing balance series indexer: {e}")
+            logger.error("Error closing balance series indexer", extra={"error": str(e)})
 
         try:
             if block_stream_manager:
                 block_stream_manager.close()
-                # REMOVED: Success logging - not needed
         except Exception as e:
-            logger.error(f"Error closing block stream manager: {e}")
-
-        # REMOVED: Final stop logging - not needed
+            logger.error("Error closing block stream manager", extra={"error": str(e)})
