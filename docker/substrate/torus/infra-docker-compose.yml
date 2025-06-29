@@ -120,6 +120,56 @@ services:
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
     restart: unless-stopped
+    networks:
+      - torus-network
+
+  infra-grafana:
+    container_name: infra-grafana
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - infra-grafana-data:/var/lib/grafana
+    depends_on:
+      - infra-prometheus
+      - infra-loki
+    restart: unless-stopped
+    networks:
+      - torus-network
+
+  infra-loki:
+    container_name: infra-loki
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki:/etc/loki
+      - infra-loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    networks:
+      - torus-network
+
+  infra-promtail:
+    container_name: infra-promtail
+    image: grafana/promtail:2.9.0
+    volumes:
+      - ./promtail:/etc/promtail
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - infra-loki
+    restart: unless-stopped
+    networks:
+      - torus-network
 
 networks:
     torus-network:
@@ -145,8 +195,16 @@ volumes:
 
   infra-docker-manager-data:
     name: infra-docker-manager-data
+
   infra-prometheus-data:
     name: infra-prometheus-data
+
+  infra-grafana-data:
+    name: infra-grafana-data
+
+  infra-loki-data:
+    name: infra-loki-data
+
 
 
 

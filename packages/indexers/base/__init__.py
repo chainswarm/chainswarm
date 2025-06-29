@@ -84,17 +84,19 @@ def setup_logger(service_name):
     
     logger.remove()
 
+    # File logger with JSON serialization for Loki ingestion
     logger.add(
         os.path.join(logs_dir, f"{service_name}.log"),
         rotation="500 MB",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message} | {extra}",
         level="DEBUG",
-        filter=patch_record
+        filter=patch_record,
+        serialize=True  # Use loguru's built-in JSON serialization
     )
 
+    # Console logger with human-readable format
     logger.add(
         sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <blue>{message}</blue> | {extra}",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{extra[service]}</cyan> | <blue>{message}</blue>",
         level="DEBUG",
         filter=patch_record,
         enqueue=True,
