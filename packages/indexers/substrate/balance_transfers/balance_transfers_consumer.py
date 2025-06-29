@@ -5,8 +5,6 @@ from loguru import logger
 from packages.indexers.base import (
     setup_logger, get_clickhouse_connection_string, create_clickhouse_database,
     terminate_event, setup_metrics, get_metrics_registry,
-    log_service_start, log_service_stop, classify_error, log_business_decision,
-    log_error_with_context
 )
 from packages.indexers.substrate import get_substrate_node_url, networks, Network
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
