@@ -6,13 +6,18 @@ import os
 from loguru import logger
 from collections import defaultdict
 from datetime import datetime, timedelta
-from packages.indexers.base import get_metrics_registry
+from packages.indexers.base import get_metrics_registry, ErrorContextManager, classify_error
 
 # Simple in-memory rate limiting storage
 class InMemoryRateLimiter:
     def __init__(self):
         self.requests = defaultdict(list)
         self.limit_per_hour = 100
+        
+        # Initialize enhanced logging
+        network = os.getenv("NETWORK", "torus").lower()
+        self.service_name = f"{network}-api-rate-limiter"
+        self.error_ctx = ErrorContextManager(self.service_name)
         
         # Initialize metrics if available
         self.rate_limit_hits_total = None
@@ -114,13 +119,12 @@ def should_apply_rate_limit(request: Request) -> bool:
     """Determine if rate limiting should be applied to this request"""
     # Skip rate limiting if x-api-key header is present
     if has_api_key(request):
-        logger.debug(f"Skipping rate limit for {request.url.path} - API key present")
+        # REMOVED: Debug logging - not needed
         # Record bypass metric
         rate_limiter.record_bypass(request.url.path, "api_key")
         return False
     
-    # Apply rate limiting for requests without API key
-    logger.debug(f"Applying rate limit for {request.url.path} - No API key")
+    # REMOVED: Debug logging - not needed
     return True
 
 async def rate_limit_middleware(request: Request, call_next):
@@ -133,7 +137,18 @@ async def rate_limit_middleware(request: Request, call_next):
             allowed, retry_after = rate_limiter.is_allowed(client_ip, request.url.path)
             
             if not allowed:
-                logger.warning(f"Rate limit exceeded for IP {client_ip} on {request.url.path}")
+                # ENHANCED: Strategic warning with context (rate limit violations are important)
+                logger.warning(
+                    "Rate limit exceeded - blocking request",
+                    extra={
+                        "client_ip": client_ip,
+                        "endpoint": request.url.path,
+                        "retry_after_seconds": retry_after,
+                        "limit_per_hour": rate_limiter.limit_per_hour,
+                        "user_agent": request.headers.get("user-agent", "unknown"),
+                        "method": request.method
+                    }
+                )
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     content={
@@ -144,10 +159,19 @@ async def rate_limit_middleware(request: Request, call_next):
                     headers={"Retry-After": str(retry_after)}
                 )
             
-            logger.debug(f"Rate limit check passed for IP {client_ip} on {request.url.path}")
+            # REMOVED: Success debug logging - not needed
             
         except Exception as e:
-            logger.error(f"Error in rate limiting middleware: {e}")
+            # ENHANCED: Error logging with context
+            rate_limiter.error_ctx.log_error(
+                "Rate limiting middleware error",
+                error=e,
+                operation="rate_limit_check",
+                client_ip=get_client_ip(request),
+                endpoint=request.url.path,
+                method=request.method,
+                error_category=classify_error(e)
+            )
             # Continue without rate limiting if there's an error
     
     # Continue with the request

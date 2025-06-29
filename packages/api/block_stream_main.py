@@ -2,8 +2,9 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from packages.api.routers import block_stream
-from packages.indexers.base import setup_logger, setup_metrics
+from packages.indexers.base import setup_enhanced_logger, setup_metrics
 from packages.api.middleware.prometheus_middleware import PrometheusMiddleware, create_metrics_endpoint
+from packages.api.middleware.correlation_middleware import CorrelationMiddleware
 
 app = FastAPI(
     title="Block Stream API",
@@ -13,12 +14,15 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
-# Setup logging and metrics
+# Setup enhanced logging and metrics
 import os
 network = os.getenv("NETWORK", "torus").lower()
 service_name = f"{network}-block-stream-api"
-setup_logger(service_name)
+setup_enhanced_logger(service_name)
 metrics_registry = setup_metrics(service_name, start_server=False)
+
+# Add correlation middleware FIRST
+app.add_middleware(CorrelationMiddleware)
 
 # Add Prometheus metrics middleware
 app.add_middleware(PrometheusMiddleware, metrics_registry=metrics_registry, service_name=service_name)

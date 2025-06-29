@@ -1,4 +1,8 @@
-from loguru import logger
+from packages.indexers.base.enhanced_logging import (
+    ErrorContextManager,
+    setup_enhanced_logger,
+    classify_error
+)
 from packages.indexers.substrate import Network
 from substrateinterface import SubstrateInterface
 
@@ -8,6 +12,9 @@ class SubstrateInterfaceFactory:
     Factory class for creating SubstrateInterface instances based on network type.
     Each network may have different configuration requirements for the substrate interface.
     """
+    
+    # Class-level error context manager
+    _error_ctx = ErrorContextManager("substrate-interface-factory")
     
     @staticmethod
     def create_substrate_interface(network: str, node_ws_url: str) -> SubstrateInterface:
@@ -26,14 +33,36 @@ class SubstrateInterfaceFactory:
         """
         network = network.lower()
         
-        if network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
-            return SubstrateInterfaceFactory._create_bittensor_interface(node_ws_url)
-        elif network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
-            return SubstrateInterfaceFactory._create_torus_interface(node_ws_url)
-        elif network == Network.POLKADOT.value:
-            return SubstrateInterfaceFactory._create_polkadot_interface(node_ws_url)
-        else:
-            raise ValueError(f"Unsupported network: {network}")
+        try:
+            if network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
+                return SubstrateInterfaceFactory._create_bittensor_interface(node_ws_url)
+            elif network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
+                return SubstrateInterfaceFactory._create_torus_interface(node_ws_url)
+            elif network == Network.POLKADOT.value:
+                return SubstrateInterfaceFactory._create_polkadot_interface(node_ws_url)
+            else:
+                # Enhanced error logging for unsupported networks
+                error = ValueError(f"Unsupported network: {network}")
+                SubstrateInterfaceFactory._error_ctx.log_error(
+                    "Unsupported network configuration",
+                    error,
+                    network=network,
+                    endpoint=node_ws_url,
+                    error_category="validation_error",
+                    supported_networks=[Network.BITTENSOR.value, Network.TORUS.value, Network.POLKADOT.value]
+                )
+                raise error
+        except Exception as e:
+            if not isinstance(e, ValueError):
+                # Enhanced error logging for interface creation failures
+                SubstrateInterfaceFactory._error_ctx.log_error(
+                    "Failed to create SubstrateInterface",
+                    e,
+                    network=network,
+                    endpoint=node_ws_url,
+                    error_category=classify_error(e)
+                )
+            raise
 
     @staticmethod
     def _create_bittensor_interface(node_ws_url: str) -> SubstrateInterface:
@@ -49,11 +78,21 @@ class SubstrateInterfaceFactory:
                    # 'ping_timeout': 300,
                 #}
             )
-
-            logger.info(f"Torus SubstrateInterface created for {node_ws_url}")
             return substrate
         except Exception as e:
-            raise RuntimeError(f"Failed to create SubstrateInterface")
+            # Enhanced error logging for Bittensor interface creation failures
+            SubstrateInterfaceFactory._error_ctx.log_error(
+                "Failed to create Bittensor SubstrateInterface",
+                e,
+                network="bittensor",
+                endpoint=node_ws_url,
+                error_category=classify_error(e),
+                interface_config={
+                    "use_remote_preset": True,
+                    "cache_region": None
+                }
+            )
+            raise RuntimeError(f"Failed to create Bittensor SubstrateInterface: {e}")
     
     @staticmethod
     def _create_torus_interface(node_ws_url: str) -> SubstrateInterface:
@@ -64,11 +103,21 @@ class SubstrateInterfaceFactory:
                 use_remote_preset=True,
                 cache_region=None
             )
-            
-            logger.info(f"Torus SubstrateInterface created for {node_ws_url}")
             return substrate
         except Exception as e:
-            raise RuntimeError(f"Failed to create SubstrateInterface")
+            # Enhanced error logging for Torus interface creation failures
+            SubstrateInterfaceFactory._error_ctx.log_error(
+                "Failed to create Torus SubstrateInterface",
+                e,
+                network="torus",
+                endpoint=node_ws_url,
+                error_category=classify_error(e),
+                interface_config={
+                    "use_remote_preset": True,
+                    "cache_region": None
+                }
+            )
+            raise RuntimeError(f"Failed to create Torus SubstrateInterface: {e}")
     
     @staticmethod
     def _create_polkadot_interface(node_ws_url: str) -> SubstrateInterface:
@@ -79,8 +128,18 @@ class SubstrateInterfaceFactory:
                 use_remote_preset=True,
                 cache_region=None
             )
-            
-            logger.info(f"Polkadot SubstrateInterface created for {node_ws_url}")
             return substrate
         except Exception as e:
-            raise RuntimeError(f"Failed to create SubstrateInterface")
+            # Enhanced error logging for Polkadot interface creation failures
+            SubstrateInterfaceFactory._error_ctx.log_error(
+                "Failed to create Polkadot SubstrateInterface",
+                e,
+                network="polkadot",
+                endpoint=node_ws_url,
+                error_category=classify_error(e),
+                interface_config={
+                    "use_remote_preset": True,
+                    "cache_region": None
+                }
+            )
+            raise RuntimeError(f"Failed to create Polkadot SubstrateInterface: {e}")

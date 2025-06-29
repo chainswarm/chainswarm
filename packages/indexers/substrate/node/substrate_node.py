@@ -4,11 +4,17 @@ import time
 import functools
 from concurrent.futures import ThreadPoolExecutor
 from substrateinterface.base import SubstrateInterface
-from loguru import logger
 from typing import List, Dict, Any, Optional, Tuple
 from scalecodec.base import ScaleBytes
 from scalecodec.types import CompactU32
 
+from packages.indexers.base.enhanced_logging import (
+    ErrorContextManager,
+    setup_enhanced_logger,
+    generate_correlation_id,
+    set_correlation_id,
+    classify_error
+)
 from packages.indexers.substrate.node.abstract_node import Node
 from packages.indexers.substrate.node.substrate_interface_factory import SubstrateInterfaceFactory
 from packages.indexers.substrate import Network
@@ -28,6 +34,8 @@ def with_infinite_retry(method):
     def wrapper(self, *args, **kwargs):
         retry_count = 0
         backoff_time = 1  # Constant 1 second backoff
+        correlation_id = generate_correlation_id()
+        set_correlation_id(correlation_id)
         
         while True:  # Infinite loop
             try:
@@ -36,10 +44,29 @@ def with_infinite_retry(method):
                 
             except Exception as e:
                 retry_count += 1
-                logger.warning(f"Retry {retry_count} for {method.__name__}: {e}")
+                
+                # Only log connection/network errors with enhanced context
+                error_category = classify_error(e)
+                if error_category in ['connection_error', 'substrate_error'] and retry_count % 10 == 1:
+                    # Throttled logging - only every 10th retry to reduce noise
+                    self.error_ctx.log_error(
+                        f"Substrate operation retry {retry_count} for {method.__name__}",
+                        e,
+                        correlation_id=correlation_id,
+                        method=method.__name__,
+                        retry_count=retry_count,
+                        error_category=error_category,
+                        endpoint=getattr(self, 'node_ws_url', 'unknown'),
+                        network=getattr(self, 'network', 'unknown')
+                    )
                 
                 if hasattr(self, 'terminate_event') and self.terminate_event.is_set():
-                    logger.info(f"Termination requested during {method.__name__} retry")
+                    self.error_ctx.log_service_lifecycle(
+                        "operation_terminated_during_retry",
+                        correlation_id=correlation_id,
+                        method=method.__name__,
+                        retry_count=retry_count
+                    )
                     raise RuntimeError(f"Operation {method.__name__} terminated during retry")
                 
                 self._reinitialize_substrate_interfaces()
@@ -58,6 +85,19 @@ class SubstrateNode(Node):
         self.node_ws_url = node_ws_url
         self.terminate_event = terminate_event  # Store termination event
 
+        # Setup enhanced logging
+        service_name = f"substrate-node-{network.lower()}"
+        setup_enhanced_logger(service_name)
+        self.error_ctx = ErrorContextManager(service_name)
+        
+        # Log service initialization
+        self.error_ctx.log_service_lifecycle(
+            "substrate_node_init",
+            network=network,
+            endpoint=node_ws_url,
+            service_name=service_name
+        )
+
         # Initialize substrate interfaces to None first
         self._get_block_data_substrate = None
         self._get_events_substrate = None
@@ -70,15 +110,13 @@ class SubstrateNode(Node):
     def _test_connection(self):
         """Test connection to the Substrate node"""
         max_attempts = 2  # Number of connection attempts before giving up
+        correlation_id = generate_correlation_id()
+        set_correlation_id(correlation_id)
         
         for attempt in range(1, max_attempts + 1):
             try:
-                # Test connection for block data substrate instance
-                logger.info(f"Testing connection to Substrate node at {self.node_ws_url} (Attempt {attempt}/{max_attempts})")
-                
-                # Check if websocket is connected
+                # Check if websocket is connected for block data instance
                 if not hasattr(self._get_block_data_substrate, 'websocket') or not self._get_block_data_substrate.websocket:
-                    logger.warning("Block data substrate websocket not connected, attempting to reconnect")
                     # Close and recreate if needed
                     try:
                         self._get_block_data_substrate.close()
@@ -90,22 +128,15 @@ class SubstrateNode(Node):
                 
                 # Test the connection
                 chain_info = self._get_block_data_substrate.get_chain_head()
-                logger.info(f"Connected to chain: {self._get_block_data_substrate.chain}")
                 
                 # Ensure metadata is initialized for block data instance
                 if self._get_block_data_substrate.metadata is None:
-                    logger.info("Initializing metadata for block data substrate instance")
                     self._get_block_data_substrate.init_runtime()
                     if self._get_block_data_substrate.metadata is None:
                         raise RuntimeError("Failed to initialize metadata for block data substrate instance")
-                    logger.info("Successfully initialized metadata for block data substrate instance")
                 
-                # Test connection for events substrate instance
-                logger.info(f"Testing connection for events substrate instance (Attempt {attempt}/{max_attempts})")
-                
-                # Check if websocket is connected
+                # Check if websocket is connected for events instance
                 if not hasattr(self._get_events_substrate, 'websocket') or not self._get_events_substrate.websocket:
-                    logger.warning("Events substrate websocket not connected, attempting to reconnect")
                     # Close and recreate if needed
                     try:
                         self._get_events_substrate.close()
@@ -120,25 +151,45 @@ class SubstrateNode(Node):
                 
                 # Ensure metadata is initialized for events instance
                 if self._get_events_substrate.metadata is None:
-                    logger.info("Initializing metadata for events substrate instance")
                     self._get_events_substrate.init_runtime()
                     if self._get_events_substrate.metadata is None:
                         raise RuntimeError("Failed to initialize metadata for events substrate instance")
-                    logger.info("Successfully initialized metadata for events substrate instance")
                 
-                logger.info("Successfully connected to Substrate node and initialized metadata for both instances")
+                # Only log successful connection establishment once per session
+                if attempt == 1:
+                    self.error_ctx.log_service_lifecycle(
+                        "substrate_connection_established",
+                        correlation_id=correlation_id,
+                        endpoint=self.node_ws_url,
+                        network=self.network,
+                        chain=getattr(self._get_block_data_substrate, 'chain', 'unknown')
+                    )
                 return  # Success, exit the method
                 
             except Exception as e:
                 error_message = str(e)
+                error_category = classify_error(e)
+                
                 if "Broken pipe" in error_message or "Connection" in error_message or "WebSocket" in error_message:
                     if attempt < max_attempts:
-                        logger.warning(f"Connection error during test: {e}. Retrying ({attempt}/{max_attempts})")
                         time.sleep(2)  # Wait before retrying
                         continue
                 
-                # If we've reached max attempts or it's not a connection error, log and raise
-                logger.error(f"Failed to connect to Substrate node: {e}", trb=traceback.format_exc())
+                # Enhanced error logging with full diagnostic context
+                self.error_ctx.log_error(
+                    f"Substrate connection test failed after {attempt} attempts",
+                    e,
+                    correlation_id=correlation_id,
+                    endpoint=self.node_ws_url,
+                    network=self.network,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error_category=error_category,
+                    websocket_state={
+                        'block_data_connected': hasattr(self._get_block_data_substrate, 'websocket') and bool(self._get_block_data_substrate.websocket),
+                        'events_connected': hasattr(self._get_events_substrate, 'websocket') and bool(self._get_events_substrate.websocket)
+                    }
+                )
                 raise RuntimeError(f"Failed to connect to Substrate node: {e}")
 
     def _get_block_data(self, block_hash: str) -> Dict[str, Any]:
@@ -147,7 +198,16 @@ class SubstrateNode(Node):
             raw_block_data = self._get_block_data_substrate.get_block(block_hash)
             return raw_block_data
         except Exception as e:
-            logger.error(f"Failed to fetch block data for {block_hash}: {e}", trb=traceback.format_exc())
+            # Enhanced error logging with RPC context
+            self.error_ctx.log_error(
+                "Failed to fetch block data via RPC",
+                e,
+                block_hash=block_hash,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                rpc_method="get_block"
+            )
             raise RuntimeError(f"Failed to fetch block data for {block_hash}: {e}")
 
     def _get_events(self, block_hash: str) -> Any:
@@ -155,19 +215,37 @@ class SubstrateNode(Node):
         try:
             # Check if metadata is available
             if self._get_events_substrate.metadata is None:
-                logger.warning(f"Metadata is None for block {block_hash}, attempting to refresh metadata")
                 # Try to refresh the metadata
                 self._get_events_substrate.init_runtime()
                 
                 # Check again after refresh
                 if self._get_events_substrate.metadata is None:
-                    logger.error(f"Failed to initialize metadata even after refresh for block {block_hash}")
+                    # Enhanced error logging for metadata issues
+                    self.error_ctx.log_error(
+                        "Metadata initialization failed after refresh",
+                        RuntimeError("Metadata is still None after refresh"),
+                        block_hash=block_hash,
+                        endpoint=self.node_ws_url,
+                        network=self.network,
+                        error_category="substrate_error",
+                        rpc_method="get_events"
+                    )
                     raise RuntimeError(f"Metadata is still None after refresh for block {block_hash}")
 
             raw_events = self._get_events_substrate.get_events(block_hash)
             return raw_events
         except Exception as e:
-            logger.error(f"Failed to fetch events for {block_hash}: {e}", trb=traceback.format_exc())
+            # Enhanced error logging with RPC context
+            self.error_ctx.log_error(
+                "Failed to fetch events via RPC",
+                e,
+                block_hash=block_hash,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                rpc_method="get_events",
+                metadata_available=self._get_events_substrate.metadata is not None
+            )
             raise RuntimeError(f"Failed to fetch events for {block_hash}: {e}")
 
     async def _fetch_concurrently(self, block_hash: str) -> Dict[str, Any]:
@@ -188,15 +266,22 @@ class SubstrateNode(Node):
                 
                 # Check if either result is an exception
                 if isinstance(block_data, Exception):
-                    logger.error(f"Error fetching block data: {block_data}")
                     raise block_data
                 
                 if isinstance(events, Exception):
-                    logger.error(f"Error fetching events: {events}")
                     raise events
 
             except Exception as e:
-                logger.error(f"Error during gather operation: {e}", trb=traceback.format_exc())
+                # Enhanced error logging for concurrent fetch failures
+                self.error_ctx.log_error(
+                    "Concurrent block data fetch failed",
+                    e,
+                    block_hash=block_hash,
+                    endpoint=self.node_ws_url,
+                    network=self.network,
+                    error_category=classify_error(e),
+                    operation="concurrent_fetch"
+                )
                 raise RuntimeError(f"Failed to gather block data and events: {e}")
 
             # Extract timestamp
@@ -209,7 +294,16 @@ class SubstrateNode(Node):
                             break
 
             if timestamp is None:
-                logger.error(f"Timestamp not found in block extrinsics for {block_hash}")
+                # Enhanced error logging for timestamp extraction failures
+                self.error_ctx.log_error(
+                    "Timestamp extraction failed from block extrinsics",
+                    ValueError("Timestamp not found in block extrinsics"),
+                    block_hash=block_hash,
+                    endpoint=self.node_ws_url,
+                    network=self.network,
+                    error_category="validation_error",
+                    extrinsics_count=len(block_data.get("extrinsics", []))
+                )
                 raise ValueError("Timestamp not found in block extrinsics")
 
             return {
@@ -218,7 +312,16 @@ class SubstrateNode(Node):
                 "timestamp": timestamp
             }
         except Exception as e:
-            logger.error(f"Error in _fetch_concurrently for {block_hash}: {e}", trb=traceback.format_exc())
+            # Enhanced error logging for general concurrent fetch failures
+            self.error_ctx.log_error(
+                "Concurrent fetch operation failed",
+                e,
+                block_hash=block_hash,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                operation="fetch_concurrently"
+            )
             raise RuntimeError(f"Failed to fetch block data concurrently for {block_hash}: {e}")
 
     @with_infinite_retry
@@ -228,16 +331,13 @@ class SubstrateNode(Node):
             # Use the block data instance to fetch the block hash
             block_hash = self._get_block_data_substrate.get_block_hash(block_height)
             if not block_hash:
-                logger.warning(f"No block hash found for height {block_height}")
                 return None
 
             # Check metadata status before concurrent fetch
             if self._get_block_data_substrate.metadata is None:
-                logger.warning(f"Block data substrate metadata is None for block {block_height}, refreshing")
                 self._get_block_data_substrate.init_runtime()
             
             if self._get_events_substrate.metadata is None:
-                logger.warning(f"Events substrate metadata is None for block {block_height}, refreshing")
                 self._get_events_substrate.init_runtime()
 
             # Run the concurrent fetch in the event loop
@@ -260,13 +360,27 @@ class SubstrateNode(Node):
             }
 
         except Exception as e:
-            logger.error(f"Error getting block {block_height}: {e}", trb=traceback.format_exc())
+            # Enhanced error logging with block context
+            error_context = {
+                "block_height": block_height,
+                "endpoint": self.node_ws_url,
+                "network": self.network,
+                "error_category": classify_error(e)
+            }
             
             # Check if this is a metadata-related error and provide more context
             if "NoneType" in str(e) and "get_metadata_pallet" in str(e):
-                logger.error(f"Metadata error detected for block {block_height}. Substrate connection state: "
-                           f"block_data_metadata={self._get_block_data_substrate.metadata is not None}, "
-                           f"events_metadata={self._get_events_substrate.metadata is not None}")
+                error_context.update({
+                    "metadata_error": True,
+                    "block_data_metadata_available": self._get_block_data_substrate.metadata is not None,
+                    "events_metadata_available": self._get_events_substrate.metadata is not None
+                })
+                
+            self.error_ctx.log_error(
+                f"Block fetch failed for height {block_height}",
+                e,
+                **error_context
+            )
             
             raise RuntimeError(f"Error getting block {block_height}: {e}")
 
@@ -276,35 +390,55 @@ class SubstrateNode(Node):
         try:
             return self._get_block_data_substrate.get_block_number(None)
         except Exception as e:
-            logger.error(f"Failed to fetch current block height: {e}")
+            # Enhanced error logging for block height fetch failures
+            self.error_ctx.log_error(
+                "Failed to fetch current block height",
+                e,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                rpc_method="get_block_number"
+            )
             raise RuntimeError(f"Failed to fetch current block height: {e}")
 
     def _reinitialize_substrate_interfaces(self):
         """Reinitialize both SubstrateInterface instances to recover from connection or metadata issues"""
-        logger.warning("Reinitializing SubstrateInterface instances")
+        correlation_id = generate_correlation_id()
+        set_correlation_id(correlation_id)
+        
         try:
-            # Log connection state before closing
-            logger.info(f"Connection state before reinitializing - Block data substrate: "
-                      f"{'Connected' if hasattr(self._get_block_data_substrate, 'websocket') and self._get_block_data_substrate.websocket else 'Disconnected'}, "
-                      f"Events substrate: {'Connected' if hasattr(self._get_events_substrate, 'websocket') and self._get_events_substrate.websocket else 'Disconnected'}")
-            
             # Close existing connections if possible
             try:
                 if hasattr(self._get_block_data_substrate, 'websocket') and self._get_block_data_substrate.websocket:
-                    logger.info("Closing block data substrate connection")
                     self._get_block_data_substrate.close()
             except Exception as e:
-                logger.warning(f"Error closing block data substrate connection: {e}")
+                # Only log if it's a significant error
+                if not any(err in str(e).lower() for err in ['closed', 'disconnected', 'none']):
+                    self.error_ctx.log_error(
+                        "Error closing block data substrate connection",
+                        e,
+                        correlation_id=correlation_id,
+                        endpoint=self.node_ws_url,
+                        network=self.network,
+                        error_category=classify_error(e)
+                    )
                 
             try:
                 if hasattr(self._get_events_substrate, 'websocket') and self._get_events_substrate.websocket:
-                    logger.info("Closing events substrate connection")
                     self._get_events_substrate.close()
             except Exception as e:
-                logger.warning(f"Error closing events substrate connection: {e}")
+                # Only log if it's a significant error
+                if not any(err in str(e).lower() for err in ['closed', 'disconnected', 'none']):
+                    self.error_ctx.log_error(
+                        "Error closing events substrate connection",
+                        e,
+                        correlation_id=correlation_id,
+                        endpoint=self.node_ws_url,
+                        network=self.network,
+                        error_category=classify_error(e)
+                    )
             
             # Create new instances with a small delay to ensure clean connections
-            logger.info(f"Creating new SubstrateInterface instances to {self.node_ws_url}")
             time.sleep(1)
             self._get_block_data_substrate = SubstrateInterfaceFactory.create_substrate_interface(
                 self.network, self.node_ws_url
@@ -315,13 +449,27 @@ class SubstrateNode(Node):
             )
             
             # Test the new connections
-            logger.info("Testing new connections")
             self._test_connection()
             
-            logger.info("Successfully reinitialized SubstrateInterface instances")
+            # Log successful reinitialization
+            self.error_ctx.log_service_lifecycle(
+                "substrate_interfaces_reinitialized",
+                correlation_id=correlation_id,
+                endpoint=self.node_ws_url,
+                network=self.network
+            )
             return True
         except Exception as e:
-            logger.error(f"Failed to reinitialize SubstrateInterface instances: {e}", trb=traceback.format_exc())
+            # Enhanced error logging for reinitialization failures
+            self.error_ctx.log_error(
+                "Failed to reinitialize SubstrateInterface instances",
+                e,
+                correlation_id=correlation_id,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                operation="reinitialize_interfaces"
+            )
             return False
     
     @with_infinite_retry
@@ -334,12 +482,28 @@ class SubstrateNode(Node):
             if block:
                 blocks.append(block)
             else:
-                logger.error(f"No block found at height {height}")
+                # Enhanced error logging for missing blocks
+                self.error_ctx.log_error(
+                    f"No block found at height {height}",
+                    ValueError(f"No block found at height {height}"),
+                    height=height,
+                    start_height=start_height,
+                    end_height=end_height,
+                    endpoint=self.node_ws_url,
+                    network=self.network,
+                    error_category="validation_error"
+                )
                 raise ValueError(f"No block found at height {height}")
                 
             # Check for termination between blocks
             if hasattr(self, 'terminate_event') and self.terminate_event.is_set():
-                logger.info(f"Termination requested during block range fetch at height {height}")
+                self.error_ctx.log_service_lifecycle(
+                    "block_range_fetch_terminated",
+                    current_height=height,
+                    start_height=start_height,
+                    end_height=end_height,
+                    blocks_fetched=len(blocks)
+                )
                 break
                 
         return blocks
@@ -389,8 +553,19 @@ class SubstrateNode(Node):
             return result
                 
         except Exception as e:
-            # This will be caught by the decorator and retried
-            logger.warning(f"Error querying storage at block {block_hash}: {e}")
+            # Enhanced error logging for storage query failures
+            self.error_ctx.log_error(
+                "Storage query failed at block",
+                e,
+                block_hash=block_hash,
+                params=params,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                rpc_method="query_storage",
+                module="System",
+                storage_function="Account"
+            )
             raise RuntimeError(f"Error querying storage at block {block_hash}: {e}")
 
     @with_infinite_retry
@@ -408,7 +583,6 @@ class SubstrateNode(Node):
                     for storage in pallet.storage:
                         if storage.name == "Account":
                             balance_type = storage.type
-                            logger.info(f"Balance type: {balance_type}")
 
                             # Extract decimals based on known Substrate patterns
                             if "u128" in str(balance_type):  # Most Substrate chains use u128 for balances
@@ -416,10 +590,29 @@ class SubstrateNode(Node):
                             elif "u256" in str(balance_type):  # EVM-like chains use u256
                                 return 18
 
+            # Enhanced error logging for metadata parsing failures
+            self.error_ctx.log_error(
+                "Could not determine token decimals from metadata",
+                RuntimeError("Could not determine token decimals from metadata"),
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category="substrate_error",
+                rpc_method="get_metadata",
+                metadata_available=metadata is not None,
+                pallets_count=len(metadata.pallets) if metadata else 0
+            )
             raise RuntimeError("Could not determine token decimals from metadata.")
 
         except Exception as e:
-            logger.error(f"Failed to fetch token decimals: {e}")
+            # Enhanced error logging for token decimals fetch failures
+            self.error_ctx.log_error(
+                "Failed to fetch token decimals",
+                e,
+                endpoint=self.node_ws_url,
+                network=self.network,
+                error_category=classify_error(e),
+                rpc_method="get_metadata"
+            )
             raise RuntimeError(f"Failed to fetch token decimals: {e}")
 
 

@@ -2,8 +2,11 @@ import argparse
 import traceback
 import time
 from loguru import logger
-from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \
-    terminate_event, setup_metrics, get_metrics_registry
+from packages.indexers.base import (
+    setup_enhanced_logger, get_clickhouse_connection_string, create_clickhouse_database,
+    terminate_event, setup_metrics, get_metrics_registry, ErrorContextManager,
+    log_service_start, log_service_stop, classify_error
+)
 from packages.indexers.substrate import get_substrate_node_url, networks, Network
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer_torus import TorusBalanceTransfersIndexer
@@ -62,6 +65,11 @@ class BalanceTransfersConsumer:
         self.network = network
         self.batch_size = batch_size
         
+        # Setup enhanced logging
+        self.service_name = f"substrate-{network}-balance-transfers-consumer"
+        setup_enhanced_logger(self.service_name)
+        self.error_ctx = ErrorContextManager(self.service_name)
+        
         # Get metrics registry for additional consumer-level metrics
         service_name = f"substrate-{network}-balance-transfers"
         self.metrics_registry = get_metrics_registry(service_name)
@@ -87,56 +95,96 @@ class BalanceTransfersConsumer:
                 'Total consumer processing errors',
                 ['network', 'indexer', 'error_type']
             )
+        
+        # Log service startup
+        log_service_start(
+            self.service_name,
+            network=network,
+            batch_size=batch_size,
+            continuous_mode=True
+        )
 
     def run(self):
-        """Main processing loop with improved termination handling and batch processing"""
+        """Main processing loop with enhanced error logging and reduced verbosity"""
         try:
             last_processed_height = self.balance_transfers_indexer.get_latest_processed_block_height()
             
             if last_processed_height > 0:
                 start_height = last_processed_height + 1
+                self.error_ctx.log_business_decision(
+                    "resume_from_last_processed",
+                    "existing_processed_blocks_found",
+                    last_processed_height=last_processed_height,
+                    start_height=start_height
+                )
             else:
                 start_height = 1
+                self.error_ctx.log_business_decision(
+                    "start_from_genesis",
+                    "no_processed_blocks_found",
+                    start_height=start_height
+                )
 
-            # Use the batch_size from constructor
-            logger.info(f"Starting balance transfers consumer from block {start_height}")
-            logger.info(f"Batch size for block processing: {self.batch_size}")
+            # Track consecutive empty responses for smart logging
+            consecutive_empty_responses = 0
             
             while not self.terminate_event.is_set():
                 try:
                     latest_block_height = self.block_stream_manager.get_latest_block_height()
                     
                     if start_height > latest_block_height:
-                        logger.info(f"Waiting for new blocks. Current target: {start_height}, Latest height: {latest_block_height}")
+                        # Only log if we're significantly ahead (unusual situation)
+                        if start_height - latest_block_height > 10:
+                            logger.warning(
+                                "Consumer significantly ahead of chain tip",
+                                extra={
+                                    "current_target": start_height,
+                                    "latest_height": latest_block_height,
+                                    "blocks_ahead": start_height - latest_block_height,
+                                    "possible_causes": ["chain_sync_lag", "indexer_too_fast"]
+                                }
+                            )
                         time.sleep(10)
                         continue
                     
                     # Calculate end height for the batch (don't exceed latest block height)
                     end_height = min(start_height + self.batch_size - 1, latest_block_height)
                     
-                    logger.info(f"Fetching blocks from {start_height} to {end_height}")
-                    
                     # Get blocks in batch
                     blocks = self.block_stream_manager.get_blocks_by_block_height_range(start_height, end_height)
                     
                     if not blocks:
-                        logger.warning(f"No blocks returned for range {start_height}-{end_height}")
-
+                        consecutive_empty_responses += 1
+                        
                         # Record empty batch metric
                         if self.metrics_registry:
                             self.empty_batches_total.labels(network=self.network, indexer="balance_transfers").inc()
+                        
+                        # Only log warning after multiple consecutive empty responses
+                        if consecutive_empty_responses >= 3:
+                            logger.warning(
+                                "Multiple consecutive empty block responses",
+                                extra={
+                                    "consecutive_count": consecutive_empty_responses,
+                                    "height_range": f"{start_height}-{end_height}",
+                                    "latest_chain_height": latest_block_height,
+                                    "possible_causes": ["block_stream_lag", "database_sync_issues"]
+                                }
+                            )
+                            consecutive_empty_responses = 0  # Reset counter
                             
                         # Move to the next batch even if no blocks were found
                         start_height = end_height + 1
                         continue
-
+                    
+                    # Reset empty response counter on successful fetch
+                    consecutive_empty_responses = 0
 
                     # Record blocks fetched metric
                     if self.metrics_registry:
                         self.blocks_fetched_total.labels(network=self.network, indexer="balance_transfers").inc(len(blocks))
 
-                    # Process blocks for transfers
-                    logger.info(f"Processing {len(blocks)} blocks for transfer extraction")
+                    # Process blocks for transfers (metrics handle the counts)
                     self._process_blocks(blocks)
                     
                     # Update blocks behind metric
@@ -149,7 +197,6 @@ class BalanceTransfersConsumer:
                     
                 except Exception as e:
                     if self.terminate_event.is_set():
-                        logger.info("Termination requested, stopping processing")
                         break
 
                     # Record error metric
@@ -157,22 +204,44 @@ class BalanceTransfersConsumer:
                         self.consumer_errors_total.labels(
                             network=self.network,
                             indexer="balance_transfers",
-                            error_type="processing_error"
+                            error_type=classify_error(e)
                         ).inc()
-                        
-                    logger.error(f"Error processing blocks starting from {start_height}: {e}", error=e, trb=traceback.format_exc())
-                    time.sleep(5)  # Brief pause before continuing
-                    # We don't break the loop - continue processing
                     
-            logger.info("Termination event received, shutting down")
+                    # ENHANCED: Error logging with full context
+                    self.error_ctx.log_error(
+                        "Block processing batch failed",
+                        error=e,
+                        operation="batch_processing",
+                        start_height=start_height,
+                        end_height=end_height,
+                        batch_size=self.batch_size,
+                        latest_chain_height=latest_block_height,
+                        processing_state=self._get_processing_state(),
+                        error_category=classify_error(e)
+                    )
+                    time.sleep(5)  # Brief pause before continuing
+                    
+            # Log service shutdown
+            log_service_stop(
+                self.service_name,
+                reason="terminate_event_received",
+                last_processed_height=start_height - 1
+            )
                     
         except KeyboardInterrupt:
-            logger.info("Received shutdown signal")
+            log_service_stop(
+                self.service_name,
+                reason="keyboard_interrupt"
+            )
         except Exception as e:
-            logger.error(f"Fatal error: {e}", error=e, trb=traceback.format_exc())
+            self.error_ctx.log_error(
+                "Fatal consumer error",
+                error=e,
+                operation="consumer_main_loop",
+                error_category=classify_error(e)
+            )
         finally:
             self._cleanup()
-            logger.info("Balance transfers consumer stopped")
 
     def _process_blocks(self, blocks):
         """Process a batch of blocks for transfer extraction
@@ -180,13 +249,11 @@ class BalanceTransfersConsumer:
         Args:
             blocks: List of blocks to process
         """
-
         batch_start_time = time.time()
 
         try:
             # Check for termination before starting
             if self.terminate_event.is_set():
-                logger.info(f"Skipping block processing due to termination request")
                 return
                 
             # Index transfers from the blocks
@@ -200,7 +267,7 @@ class BalanceTransfersConsumer:
                     indexer="balance_transfers"
                 ).observe(batch_duration)
             
-            logger.success(f"Processed {len(blocks)} blocks for transfer extraction")
+            # REMOVED: Success logging - metrics handle this
             
         except Exception as e:
             # Record batch processing error
@@ -208,26 +275,71 @@ class BalanceTransfersConsumer:
                 self.consumer_errors_total.labels(
                     network=self.network,
                     indexer="balance_transfers",
-                    error_type="batch_processing_error"
+                    error_type=classify_error(e)
                 ).inc()
             
-            logger.success(f"Processed {len(blocks)} blocks for transfer extraction")         
+            # ENHANCED: Error logging with context
+            self.error_ctx.log_error(
+                "Block batch processing failed",
+                error=e,
+                operation="block_batch_processing",
+                block_count=len(blocks),
+                first_block_height=min(block['block_height'] for block in blocks) if blocks else None,
+                last_block_height=max(block['block_height'] for block in blocks) if blocks else None,
+                batch_duration=time.time() - batch_start_time,
+                error_category=classify_error(e)
+            )
+            raise
+    
+    def _get_processing_state(self) -> dict:
+        """Get current processing state for error context."""
+        try:
+            return {
+                "last_processed_height": self.balance_transfers_indexer.get_latest_processed_block_height(),
+                "terminate_event_set": self.terminate_event.is_set(),
+                "batch_size": self.batch_size,
+                "network": self.network,
+                "indexer_healthy": self._test_indexer_health()
+            }
+        except Exception:
+            return {"error": "unable_to_get_processing_state"}
+    
+    def _test_indexer_health(self) -> bool:
+        """Test if the indexer is healthy."""
+        try:
+            # Simple health check - try to get latest processed height
+            self.balance_transfers_indexer.get_latest_processed_block_height()
+            return True
+        except Exception:
+            return False
 
     def _cleanup(self):
         """Clean up resources"""
         try:
             if hasattr(self, 'balance_transfers_indexer'):
                 self.balance_transfers_indexer.close()
-                logger.info("Closed balance transfers indexer connection")
+                # REMOVED: Success logging - not needed
         except Exception as e:
-            logger.error(f"Error closing balance transfers indexer: {e}")
+            self.error_ctx.log_error(
+                "Error closing balance transfers indexer",
+                error=e,
+                operation="cleanup",
+                component="balance_transfers_indexer",
+                error_category=classify_error(e)
+            )
         
         try:
             if hasattr(self, 'block_stream_manager'):
                 self.block_stream_manager.close()
-                logger.info("Closed block stream manager connection")
+                # REMOVED: Success logging - not needed
         except Exception as e:
-            logger.error(f"Error closing block stream manager: {e}")
+            self.error_ctx.log_error(
+                "Error closing block stream manager",
+                error=e,
+                operation="cleanup",
+                component="block_stream_manager",
+                error_category=classify_error(e)
+            )
     
 
 if __name__ == "__main__":
@@ -248,11 +360,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     service_name = f'substrate-{args.network}-balance-transfers'
-    setup_logger(service_name)
+    setup_enhanced_logger(service_name)
     
     # Setup metrics
     metrics_registry = setup_metrics(service_name, start_server=True)
-    logger.info(f"Metrics server started for {service_name}")
+    # REMOVED: Metrics server startup logging - not needed
 
     # Initialize components
     balance_transfers_indexer = None
@@ -281,15 +393,15 @@ if __name__ == "__main__":
         try:
             if balance_transfers_indexer:
                 balance_transfers_indexer.close()
-                logger.info("Closed balance transfers indexer connection")
+                # REMOVED: Success logging - not needed
         except Exception as e:
             logger.error(f"Error closing balance transfers indexer: {e}")
 
         try:
             if block_stream_manager:
                 block_stream_manager.close()
-                logger.info("Closed block stream manager connection")
+                # REMOVED: Success logging - not needed
         except Exception as e:
             logger.error(f"Error closing block stream manager: {e}")
 
-        logger.info("Balance transfers consumer stopped")
+        # REMOVED: Final stop logging - not needed

@@ -11,7 +11,10 @@ from packages.api.tools.balance_series import BalanceSeriesAnalyticsTool
 from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
-from packages.indexers.base import get_clickhouse_connection_string, setup_logger, setup_metrics, get_metrics_registry
+from packages.indexers.base import (
+    get_clickhouse_connection_string, setup_metrics, get_metrics_registry,
+    setup_enhanced_logger, ErrorContextManager, log_service_start, log_service_stop, classify_error
+)
 from packages.indexers.substrate import get_network_asset
 from packages.api.middleware.mcp_session_rate_limiting import (
     session_rate_limit,
@@ -32,8 +35,7 @@ class MCPMetrics:
         
         if metrics_registry:
             self._init_metrics()
-        else:
-            logger.warning("No metrics registry available for MCP server")
+        # REMOVED: Warning log - metrics handle availability
     
     def _init_metrics(self):
         """Initialize MCP-specific metrics"""
@@ -139,10 +141,20 @@ class MCPMetrics:
             return
         self.mcp_active_sessions.labels(network=self.network).set(count)
 
-# Initialize metrics
+# Initialize enhanced logging and metrics
 service_name = f"{network}-mcp-server"
+setup_enhanced_logger(service_name)
+error_ctx = ErrorContextManager(service_name)
 metrics_registry = setup_metrics(service_name, start_server=True)
 mcp_metrics = MCPMetrics(metrics_registry, network)
+
+# Log service startup
+log_service_start(
+    service_name,
+    network=network,
+    port=8005,
+    transport="sse"
+)
 
 
 async def get_assets_from_clickhouse(network: str) -> List[str]:
@@ -172,7 +184,15 @@ async def get_assets_from_clickhouse(network: str) -> List[str]:
 
         return assets
     except Exception as e:
-        # If query fails, return at least the native asset
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Failed to query available assets from ClickHouse",
+            error=e,
+            operation="get_assets_from_clickhouse",
+            network=network,
+            fallback_asset=get_network_asset(network),
+            error_category=classify_error(e)
+        )
         return [get_network_asset(network)]
 
 
@@ -736,7 +756,19 @@ async def money_flow_shortest_path(
         # Record failed tool call
         duration = time.time() - start_time
         mcp_metrics.record_tool_call(tool_name, duration, False, "execution_error")
-        logger.error(f"Error in {tool_name}: {e}")
+        
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            f"MCP tool execution failed: {tool_name}",
+            error=e,
+            operation="mcp_tool_execution",
+            tool_name=tool_name,
+            source_address=source_address,
+            target_address=target_address,
+            assets=assets,
+            duration=duration,
+            error_category=classify_error(e)
+        )
         raise
 
 @session_rate_limit
@@ -908,7 +940,17 @@ async def execute_balance_series_query(query: Annotated[str, Field(
         # Record failed tool call
         duration = time.time() - start_time
         mcp_metrics.record_tool_call(tool_name, duration, False, "query_error")
-        logger.error(f"Error in {tool_name}: {e}")
+        
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            f"MCP tool query failed: {tool_name}",
+            error=e,
+            operation="mcp_tool_query",
+            tool_name=tool_name,
+            query_preview=query[:200] if len(query) > 200 else query,
+            duration=duration,
+            error_category=classify_error(e)
+        )
         raise
 
 
@@ -955,14 +997,44 @@ async def execute_balance_transfers_query(query: Annotated[str, Field(
         # Record failed tool call
         duration = time.time() - start_time
         mcp_metrics.record_tool_call(tool_name, duration, False, "query_error")
-        logger.error(f"Error in {tool_name}: {e}")
+        
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            f"MCP tool query failed: {tool_name}",
+            error=e,
+            operation="mcp_tool_query",
+            tool_name=tool_name,
+            query_preview=query[:200] if len(query) > 200 else query,
+            duration=duration,
+            error_category=classify_error(e)
+        )
         raise
 
  
 if __name__ == "__main__":
-    setup_logger(f"{network}-mcp-server")
-
-    schema_response = asyncio.run(get_instructions())
-    json_schema = json.dumps(schema_response, indent=2)
-    logger.info(f"Schema loaded: {json_schema}")
-    mcp.run(transport="sse", host="0.0.0.0", port=8005, log_level="debug")
+    try:
+        # REMOVED: Verbose schema logging - not needed
+        schema_response = asyncio.run(get_instructions())
+        
+        # Log service ready
+        error_ctx.log_service_lifecycle(
+            "service_ready",
+            host="0.0.0.0",
+            port=8005,
+            transport="sse"
+        )
+        
+        mcp.run(transport="sse", host="0.0.0.0", port=8005, log_level="info")
+        
+    except KeyboardInterrupt:
+        log_service_stop(service_name, reason="keyboard_interrupt")
+    except Exception as e:
+        error_ctx.log_error(
+            "Fatal MCP server error",
+            error=e,
+            operation="mcp_server_startup",
+            error_category=classify_error(e)
+        )
+        raise
+    finally:
+        log_service_stop(service_name, reason="shutdown")

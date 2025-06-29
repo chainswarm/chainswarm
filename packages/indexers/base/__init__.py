@@ -4,6 +4,17 @@ import signal
 import threading
 from loguru import logger
 from .metrics import setup_metrics, get_metrics_registry, shutdown_metrics_servers, IndexerMetrics
+from .enhanced_logging import (
+    setup_enhanced_logger,
+    ErrorContextManager,
+    generate_correlation_id,
+    get_correlation_id,
+    set_correlation_id,
+    classify_error,
+    log_service_start,
+    log_service_stop,
+    log_configuration_change
+)
 
 
 def get_memgraph_connection_string(network: str):

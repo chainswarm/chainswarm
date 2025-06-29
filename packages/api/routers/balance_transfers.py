@@ -1,8 +1,15 @@
 from typing import Optional, List
-from fastapi import APIRouter, Query, Path, HTTPException
+from fastapi import APIRouter, Query, Path, HTTPException, Request
 from packages.api.services.balance_transfers_service import BalanceTransferService
-from packages.indexers.base import get_clickhouse_connection_string
+from packages.indexers.base import get_clickhouse_connection_string, ErrorContextManager, classify_error
 from packages.indexers.substrate import get_network_asset
+from packages.api.middleware.correlation_middleware import get_request_context, sanitize_params
+import os
+
+# Initialize enhanced logging
+network = os.getenv("NETWORK", "torus").lower()
+service_name = f"{network}-api-balance-transfers-router"
+error_ctx = ErrorContextManager(service_name)
 
 router = APIRouter(
     prefix="/substrate",
@@ -31,6 +38,7 @@ router = APIRouter(
     }
 )
 async def get_address_transactions(
+        request: Request,
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         address: str = Path(..., description="The blockchain address to query",
                             example="5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f"),
@@ -55,6 +63,22 @@ async def get_address_transactions(
 
         return result
     except Exception as e:
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Balance transfers address transactions query failed",
+            error=e,
+            operation="get_address_transactions",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "address": address,
+                "target_address": target_address,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets
+            }),
+            error_category=classify_error(e)
+        )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -76,6 +100,7 @@ async def get_address_transactions(
     }
 )
 async def get_balance_transfers_volume_series(
+        request: Request,
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of volume series records per page", ge=1, le=100),
@@ -117,6 +142,23 @@ async def get_balance_transfers_volume_series(
         balance_service.close()
         return result
     except Exception as e:
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Balance transfers volume series query failed",
+            error=e,
+            operation="get_balance_transfers_volume_series",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets,
+                "start_timestamp": start_timestamp,
+                "end_timestamp": end_timestamp,
+                "period_type": period_type
+            }),
+            error_category=classify_error(e)
+        )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -136,6 +178,7 @@ async def get_balance_transfers_volume_series(
     }
 )
 async def get_network_analytics(
+        request: Request,
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         period: str = Path(..., description="Analytics period", regex="^(daily|weekly|monthly)$", example="daily"),
         page: int = Query(1, description="Page number for pagination", ge=1),
@@ -172,6 +215,23 @@ async def get_network_analytics(
         balance_service.close()
         return result
     except Exception as e:
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Network analytics query failed",
+            error=e,
+            operation="get_network_analytics",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "period": period,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets,
+                "start_date": start_date,
+                "end_date": end_date
+            }),
+            error_category=classify_error(e)
+        )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -190,6 +250,7 @@ async def get_network_analytics(
     }
 )
 async def get_address_analytics(
+        request: Request,
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of address analytics records per page", ge=1, le=100),
@@ -221,6 +282,22 @@ async def get_address_analytics(
         balance_service.close()
         return result
     except Exception as e:
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Address analytics query failed",
+            error=e,
+            operation="get_address_analytics",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets,
+                "address_type": address_type,
+                "min_volume": min_volume
+            }),
+            error_category=classify_error(e)
+        )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -240,6 +317,7 @@ async def get_address_analytics(
     }
 )
 async def get_volume_aggregations(
+        request: Request,
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         period: str = Path(..., description="Aggregation period", regex="^(daily|weekly|monthly)$", example="daily"),
         page: int = Query(1, description="Page number for pagination", ge=1),
@@ -276,6 +354,23 @@ async def get_volume_aggregations(
         balance_service.close()
         return result
     except Exception as e:
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Volume aggregations query failed",
+            error=e,
+            operation="get_volume_aggregations",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "period": period,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets,
+                "start_date": start_date,
+                "end_date": end_date
+            }),
+            error_category=classify_error(e)
+        )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -294,6 +389,7 @@ async def get_volume_aggregations(
     }
 )
 async def get_volume_trends(
+        request: Request,
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of trend records per page", ge=1, le=100),
@@ -325,4 +421,20 @@ async def get_volume_trends(
         balance_service.close()
         return result
     except Exception as e:
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            "Volume trends query failed",
+            error=e,
+            operation="get_volume_trends",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets,
+                "start_timestamp": start_timestamp,
+                "end_timestamp": end_timestamp
+            }),
+            error_category=classify_error(e)
+        )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

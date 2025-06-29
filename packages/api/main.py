@@ -5,12 +5,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST
 from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers
-from packages.indexers.base import setup_logger, setup_metrics
+from packages.indexers.base import setup_enhanced_logger, setup_metrics, ErrorContextManager, classify_error, log_service_start
 from loguru import logger
-from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers
-from packages.indexers.base import setup_logger
 from packages.api.middleware.rate_limiting import rate_limit_middleware
 from packages.api.middleware.prometheus_middleware import PrometheusMiddleware, create_metrics_endpoint
+from packages.api.middleware.correlation_middleware import CorrelationMiddleware
 
 version = "0.2.0"
 app = FastAPI(
@@ -22,13 +21,25 @@ app = FastAPI(
 )
 
 
-# Setup logging and metrics
+# Setup enhanced logging and metrics
 import os
 network = os.getenv("NETWORK", "torus").lower()
 service_name = f"{network}-api"
-setup_logger(service_name)
+setup_enhanced_logger(service_name)
 metrics_registry = setup_metrics(service_name, start_server=False)  # Use environment variable for port
+error_ctx = ErrorContextManager(service_name)
 
+# Log service startup
+log_service_start(
+    service_name,
+    version=version,
+    network=network,
+    cors_origins=["http://localhost:3000", "http://localhost:3001", "https://chain-insights-ui.vercel.app"],
+    metrics_enabled=metrics_registry is not None
+)
+
+# Add correlation middleware FIRST (before other middleware)
+app.add_middleware(CorrelationMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,7 +88,14 @@ def create_aggregated_metrics_endpoint():
             return Response(content=combined_metrics, media_type=CONTENT_TYPE_LATEST)
             
         except Exception as e:
-            logger.error(f"Error generating aggregated metrics: {e}")
+            # ENHANCED: Error logging with context
+            error_ctx.log_error(
+                "Metrics aggregation failed",
+                error=e,
+                operation="metrics_aggregation",
+                service_registries_count=len(_service_registries) if '_service_registries' in globals() else 0,
+                error_category=classify_error(e)
+            )
             return JSONResponse(
                 status_code=503,
                 content={"error": "Metrics aggregation failed"}
