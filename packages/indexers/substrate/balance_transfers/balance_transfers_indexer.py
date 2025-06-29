@@ -6,16 +6,17 @@ from packages.indexers.substrate.block_range_partitioner import BlockRangePartit
 
 
 class BalanceTransfersIndexer(BalanceTransfersIndexerBase):
-    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str):
+    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str, metrics):
         """Initialize the Balance Transfers Indexer with database connection
 
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
+            metrics: IndexerMetrics instance for recording metrics (required)
         """
         # Initialize the base class
-        super().__init__(connection_params, partitioner, network)
+        super().__init__(connection_params, partitioner, network, metrics)
 
     def _init_tables(self):
         """Initialize tables for balance transfers"""

@@ -12,7 +12,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
     Handles Torus-specific transfer events like staking and governance events.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str):
+    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str, metrics):
         """
         Initialize the TorusBalanceTransfersIndexer.
         
@@ -20,8 +20,9 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
             connection_params: Dictionary with ClickHouse connection parameters
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'torus', 'torus_testnet')
+            metrics: IndexerMetrics instance for recording metrics (required)
         """
-        super().__init__(connection_params, partitioner, network)
+        super().__init__(connection_params, partitioner, network, metrics)
     
     def _process_network_specific_events(self, events: List[Dict]):
         """
@@ -63,7 +64,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
                         self.asset,  # Use network asset (TOR)
                         reward_amount,
                         Decimal(0),  # No fee for rewards
-                        self.version
+                        str(event.get('block_height'))
                     ))
                 except Exception as e:
                     logger.warning(f"Error processing Staking.Reward event: {e}")
@@ -85,7 +86,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
                         self.asset,  # Use network asset (TOR)
                         award_amount,
                         Decimal(0),  # No fee for treasury awards
-                        self.version
+                        str(event.get('block_height'))
                     ))
                 except Exception as e:
                     logger.warning(f"Error processing Treasury.Awarded event: {e}")

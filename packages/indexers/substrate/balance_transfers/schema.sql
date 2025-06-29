@@ -18,19 +18,6 @@ PARTITION BY intDiv(block_height, 100000)
 ORDER BY (extrinsic_id, event_idx, asset)
 SETTINGS index_granularity = 8192;
 
-CREATE TABLE IF NOT EXISTS known_addresses (
-    id UUID,
-    network String,
-    address String,
-    label String,
-    source String,
-    source_type String,
-    last_updated DateTime,
-    _version UInt64
-) ENGINE = ReplacingMergeTree(_version)
-ORDER BY (network, address)
-SETTINGS index_granularity = 8192;
-
 -- CHUNK 2: Primary Indexes
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_address from_address TYPE bloom_filter(0.01) GRANULARITY 4;
 

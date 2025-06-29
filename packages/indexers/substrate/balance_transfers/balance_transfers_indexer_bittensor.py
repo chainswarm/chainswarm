@@ -12,7 +12,7 @@ class BittensorBalanceTransfersIndexer(BalanceTransfersIndexer):
     Handles Bittensor-specific transfer events like neuron staking and TAO transfers.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str):
+    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str, metrics):
         """
         Initialize the BittensorBalanceTransfersIndexer.
         
@@ -20,8 +20,9 @@ class BittensorBalanceTransfersIndexer(BalanceTransfersIndexer):
             connection_params: Dictionary with ClickHouse connection parameters
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'bittensor', 'bittensor_testnet')
+            metrics: IndexerMetrics instance for recording metrics (required)
         """
-        super().__init__(connection_params, partitioner, network)
+        super().__init__(connection_params, partitioner, network, metrics)
     
     def _process_network_specific_events(self, events: List[Dict]):
         """
@@ -64,7 +65,7 @@ class BittensorBalanceTransfersIndexer(BalanceTransfersIndexer):
                         self.asset,  # Use network asset (TAO)
                         amount,
                         Decimal(0),  # No fee recorded for staking
-                        self.version
+                        str(event.get('block_height'))
                     ))
                 except Exception as e:
                     logger.warning(f"Error processing SubtensorModule.StakeAdded event: {e}")
@@ -87,7 +88,7 @@ class BittensorBalanceTransfersIndexer(BalanceTransfersIndexer):
                         self.asset,  # Use network asset (TAO)
                         amount,
                         Decimal(0),  # No fee recorded for unstaking
-                        self.version
+                        str(event.get('block_height'))
                     ))
                 except Exception as e:
                     logger.warning(f"Error processing SubtensorModule.StakeRemoved event: {e}")
@@ -109,7 +110,7 @@ class BittensorBalanceTransfersIndexer(BalanceTransfersIndexer):
                         self.asset,  # Use network asset (TAO)
                         amount,
                         Decimal(0),  # No fee for emissions
-                        self.version
+                        str(event.get('block_height'))
                     ))
                 except Exception as e:
                     logger.warning(f"Error processing SubtensorModule.EmissionReceived event: {e}")
