@@ -1,4 +1,5 @@
 import os
+import signal
 import time
 import argparse
 import traceback
@@ -8,18 +9,19 @@ from typing import Dict, Any, List
 
 from packages.indexers.base import (
     terminate_event, get_clickhouse_connection_string, get_memgraph_connection_string,
-    setup_logger, log_service_start, log_service_stop, classify_error,
-    log_business_decision, log_error_with_context
+    setup_logger, create_clickhouse_database
 )
 from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
-from packages.indexers.substrate import networks, data, Network
+from packages.indexers.substrate import networks, data, Network, get_substrate_node_url
 from packages.indexers.substrate.block_range_partitioner import get_partitioner
+from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
 from packages.indexers.substrate.money_flow import populate_genesis_balances
 from packages.indexers.substrate.money_flow.money_flow_indexer import BaseMoneyFlowIndexer
 from packages.indexers.substrate.money_flow.money_flow_indexer_torus import TorusMoneyFlowIndexer
 from packages.indexers.substrate.money_flow.money_flow_indexer_bittensor import BittensorMoneyFlowIndexer
 from packages.indexers.substrate.money_flow.money_flow_indexer_polkadot import PolkadotMoneyFlowIndexer
+from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
 
 def get_money_flow_indexer(network: str, graph_database, indexer_metrics: IndexerMetrics = None):
@@ -78,12 +80,7 @@ class MoneyFlowConsumer:
         self.page_rank_duration = None
         self.embeddings_update_duration = None
         
-        # Log service startup
-        log_service_start(
-            network=network,
-            batch_size=batch_size
-        )
-    
+
     def set_metrics(self, metrics_registry, indexer_metrics):
         """Set metrics after initialization"""
         self.metrics_registry = metrics_registry
@@ -366,6 +363,7 @@ class MoneyFlowConsumer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Money Flow Consumer using Block Stream')
+    parser.add_argument('--batch-size', type=int, default=10, help='Number of blocks to process in a batch')
     parser.add_argument(
         '--network',
         type=str,
@@ -373,25 +371,46 @@ if __name__ == "__main__":
         choices=networks,
         help='Network to stream blocks from (polkadot, torus, or bittensor)'
     )
-    parser.add_argument(
-        '--batch-size',
-        type=int,
-        default=256,
-        help='Number of blocks to process in a batch'
-    )
     args = parser.parse_args()
 
-    # Setup simple logging with auto-detection
-    setup_logger()
-
-    # Setup metrics
     service_name = f'substrate-{args.network}-money-flow'
-    metrics_registry = setup_metrics(service_name)
-    indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'money_flow')
+    setup_logger(service_name)
+
+    logger.info(
+        "Starting Money Flow Consumer",
+        extra={
+            "service": service_name,
+            "network": args.network,
+            "batch_size": args.batch_size
+        }
+    )
+
+    def signal_handler(sig, frame):
+        logger.info(
+            "Shutdown signal received",
+            extra={
+                "signal": sig,
+                "service": service_name,
+                "graceful_shutdown": True
+            }
+        )
+        terminate_event.set()
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
     # Get connection parameters
     clickhouse_params = get_clickhouse_connection_string(args.network)
+    create_clickhouse_database(clickhouse_params)
     graph_db_url, graph_db_user, graph_db_password = get_memgraph_connection_string(args.network)
+
+    # Setup metrics
+    metrics_registry = setup_metrics(service_name, start_server=True)
+    indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'money_flow')
+
+    partitioner = get_partitioner(args.network)
+    substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
+    block_stream_indexer = BlockStreamIndexer(partitioner, indexer_metrics, clickhouse_params, args.network)
 
     # Initialize components
     graph_database = GraphDatabase.driver(
@@ -405,28 +424,27 @@ if __name__ == "__main__":
     money_flow_indexer = get_money_flow_indexer(args.network, graph_database, indexer_metrics)
     money_flow_indexer.create_indexes()
     
-    block_stream_manager = BlockStreamManager(clickhouse_params, args.network, terminate_event)
+    block_stream_manager = BlockStreamManager(block_stream_indexer, substrate_node, partitioner, clickhouse_params, args.network, terminate_event)
     
     # Create and run consumer
     consumer = MoneyFlowConsumer(
         block_stream_manager,
         money_flow_indexer,
+        metrics_registry,
+        indexer_metrics,
         terminate_event,
         args.network,
         args.batch_size
     )
     
-    # Set metrics after consumer creation
-    consumer.set_metrics(metrics_registry, indexer_metrics)
-    
     try:
         consumer.run()
     except Exception as e:
-        log_error_with_context(
+        logger.error(
             "Fatal startup error",
-            e,
-            operation="main_startup",
-            error_category=classify_error(e)
+            error=e,
+            traceback=traceback.format_exc(),
+            extra={"operation": "main_startup"}
         )
     finally:
         graph_database.close()

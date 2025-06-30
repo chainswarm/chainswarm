@@ -186,7 +186,12 @@ class BaseMoneyFlowIndexer:
                                         'end_height': end_height
                                     })
         except Exception as e:
-            logger.error(f"Error indexing empty block", error=e, trb=traceback.format_exc())
+            logger.error(
+                "Error indexing empty block",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"end_height": end_height}
+            )
             raise e
 
     @infinite_retry_with_backoff
@@ -247,7 +252,15 @@ class BaseMoneyFlowIndexer:
                         self.indexer_metrics.record_event_processed('total_events', total_events)
 
         except Exception as e:
-            logger.error(f"Error indexing transaction", error=e, trb=traceback.format_exc())
+            logger.error(
+                "Error indexing transaction",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "block_height": block.get('block_height') if 'block' in locals() else None,
+                    "processing_time": time.time() - start_time
+                }
+            )
             raise e
 
     def extract_addresses_from_blocks(self, blocks: List[Dict]) -> List[str]:
@@ -308,7 +321,12 @@ class BaseMoneyFlowIndexer:
                     session.run(query, params)
 
         except Exception as e:
-            logger.error("Failed to update calculated properties", error=e)
+            logger.error(
+                "Failed to update calculated properties",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"addresses_count": len(addresses) if addresses else "all"}
+            )
             raise
 
     @infinite_retry_with_backoff
@@ -342,7 +360,12 @@ class BaseMoneyFlowIndexer:
                     session.run(query)
 
         except Exception as e:
-            logger.error("Failed to update embeddings", error=e)
+            logger.error(
+                "Failed to update embeddings",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"addresses_count": len(addresses) if addresses else "all"}
+            )
             raise
 
     @infinite_retry_with_backoff
@@ -366,7 +389,11 @@ class BaseMoneyFlowIndexer:
             if e.args[0] == 'leiden_community_detection.get_subgraph: No communities detected.':
                 logger.warning("No communities detected")
             else:
-                logger.error(f"Error running community detection query", error=e, trb=traceback.format_exc())
+                logger.error(
+                    "Error running community detection query",
+                    error=e,
+                    traceback=traceback.format_exc()
+                )
                 raise e
 
     @infinite_retry_with_backoff
@@ -411,7 +438,12 @@ class BaseMoneyFlowIndexer:
                     f"Completed PageRank for {processed_count}/{len(communities)} communities in {total_duration:.2f} seconds (avg: {avg_duration:.2f}s per community) (asset: {self.asset})")
 
         except Exception as e:
-            logger.error("Error running PageRank query", error=e, trb=traceback.format_exc())
+            logger.error(
+                "Error running PageRank query",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"asset": self.asset}
+            )
             raise e
 
     def _group_events(self, events):

@@ -87,4 +87,9 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
             logger.success(f"Genesis balances initialized for Torus network: {self.network}")
             
         except Exception as e:
-            logger.error(f"Error initializing genesis balances for Torus network: {e}", error=e, trb=traceback.format_exc())
+            logger.error(
+                "Error initializing genesis balances for Torus network",
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"network": self.network}
+            )

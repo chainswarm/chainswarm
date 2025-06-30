@@ -91,7 +91,16 @@ def run(file: str, network: str):
         logger.info(f"Genesis balances populated successfully for asset: {asset}")
 
     except Exception as e:
-        logger.error(f"Error populating genesis balances", error=e, trb=traceback.format_exc())
+        logger.error(
+            "Error populating genesis balances",
+            error=e,
+            traceback=traceback.format_exc(),
+            extra={
+                "file": file,
+                "network": network,
+                "asset": asset if 'asset' in locals() else None
+            }
+        )
         raise e
 
 
