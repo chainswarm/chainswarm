@@ -558,14 +558,21 @@ WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
    
    Provides comprehensive metrics for each address, including transaction counts, volume metrics, temporal patterns, transaction size distribution, and address classification.
 
-3. **Volume Aggregation Views** (Daily, Weekly, Monthly):
+3. **Address Time-Series Views** (Daily, Weekly, Monthly):
+   - `balance_transfers_address_daily_view`
+   - `balance_transfers_address_weekly_view`
+   - `balance_transfers_address_monthly_view`
+   
+   These views provide address-level volume metrics over time, showing volume in/out, transaction counts, and fees paid for each address and asset combination. Built on efficient materialized views (`balance_transfers_address_daily_internal`, `balance_transfers_address_weekly_internal`, `balance_transfers_address_monthly_internal`) for fast time-based analytics.
+
+4. **Volume Aggregation Views** (Daily, Weekly, Monthly):
    - `balance_transfers_volume_daily_view`
    - `balance_transfers_volume_weekly_view`
    - `balance_transfers_volume_monthly_view`
    
    These views aggregate transaction volumes at different time scales with detailed metrics.
 
-4. **Analysis Views**:
+5. **Analysis Views**:
    - `balance_transfers_volume_trends_view`: Calculates rolling averages for trend analysis
 
 **Transaction Size Histogram Bins**:
@@ -658,6 +665,53 @@ FROM balance_transfers_volume_trends_view
 WHERE asset = 'DOT'
 ORDER BY period_start DESC
 LIMIT 30;
+
+-- Get address-level daily volume metrics
+SELECT
+    address,
+    asset,
+    date,
+    volume_in,
+    volume_out,
+    net_volume,
+    total_transactions,
+    fees_paid
+FROM balance_transfers_address_daily_view
+WHERE address = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
+  AND asset = 'DOT'
+ORDER BY date DESC
+LIMIT 30;
+
+-- Analyze weekly volume patterns for multiple addresses
+SELECT
+    address,
+    asset,
+    week_start,
+    volume_in,
+    volume_out,
+    net_volume,
+    total_transactions
+FROM balance_transfers_address_weekly_view
+WHERE address IN ('5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY', '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty')
+  AND asset = 'DOT'
+  AND week_start >= toStartOfWeek(today() - 90)
+ORDER BY address, week_start DESC;
+
+-- Find addresses with highest monthly volume growth
+SELECT
+    address,
+    asset,
+    month_start,
+    volume_in,
+    volume_out,
+    net_volume,
+    total_transactions
+FROM balance_transfers_address_monthly_view
+WHERE asset = 'DOT'
+  AND month_start = toStartOfMonth(today() - 30)
+  AND net_volume > 0
+ORDER BY net_volume DESC
+LIMIT 20;
 ```
 
 **ClickHouse Query Guidelines:**

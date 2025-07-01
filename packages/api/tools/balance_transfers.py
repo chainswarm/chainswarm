@@ -50,6 +50,11 @@ class BalanceTransfersTool:
             # Address analytics
             "balance_transfers_address_analytics_view",
             
+            # Address time-series views
+            "balance_transfers_address_daily_view",
+            "balance_transfers_address_weekly_view",
+            "balance_transfers_address_monthly_view",
+            
             # Volume aggregation views
             "balance_transfers_volume_daily_view",
             "balance_transfers_volume_weekly_view",
@@ -200,6 +205,52 @@ class BalanceTransfersTool:
                 
                 if "unique_senders" in schema["balance_transfers_address_analytics_view"]["columns"]:
                     schema["balance_transfers_address_analytics_view"]["columns"]["unique_senders"]["description"] = "Number of unique addresses this address has received from"
+                
+            # Add descriptions for address time-series views
+            if "balance_transfers_address_daily_view" in schema:
+                schema["balance_transfers_address_daily_view"]["description"] = "Daily address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset"
+                
+                # Add column descriptions for key metrics
+                if "volume_in" in schema["balance_transfers_address_daily_view"]["columns"]:
+                    schema["balance_transfers_address_daily_view"]["columns"]["volume_in"]["description"] = "Total amount received by this address on this date"
+                
+                if "volume_out" in schema["balance_transfers_address_daily_view"]["columns"]:
+                    schema["balance_transfers_address_daily_view"]["columns"]["volume_out"]["description"] = "Total amount sent from this address on this date"
+                
+                if "net_volume" in schema["balance_transfers_address_daily_view"]["columns"]:
+                    schema["balance_transfers_address_daily_view"]["columns"]["net_volume"]["description"] = "Net volume (volume_out - volume_in) for this address on this date"
+                
+                if "total_transactions" in schema["balance_transfers_address_daily_view"]["columns"]:
+                    schema["balance_transfers_address_daily_view"]["columns"]["total_transactions"]["description"] = "Total number of transactions (in + out) for this address on this date"
+                
+                if "fees_paid" in schema["balance_transfers_address_daily_view"]["columns"]:
+                    schema["balance_transfers_address_daily_view"]["columns"]["fees_paid"]["description"] = "Total fees paid by this address on this date"
+                
+            if "balance_transfers_address_weekly_view" in schema:
+                schema["balance_transfers_address_weekly_view"]["description"] = "Weekly address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset"
+                
+                # Add column descriptions for key metrics
+                if "week_start" in schema["balance_transfers_address_weekly_view"]["columns"]:
+                    schema["balance_transfers_address_weekly_view"]["columns"]["week_start"]["description"] = "Start of the week (Monday) for this aggregation period"
+                
+                if "volume_in" in schema["balance_transfers_address_weekly_view"]["columns"]:
+                    schema["balance_transfers_address_weekly_view"]["columns"]["volume_in"]["description"] = "Total amount received by this address during this week"
+                
+                if "volume_out" in schema["balance_transfers_address_weekly_view"]["columns"]:
+                    schema["balance_transfers_address_weekly_view"]["columns"]["volume_out"]["description"] = "Total amount sent from this address during this week"
+                
+            if "balance_transfers_address_monthly_view" in schema:
+                schema["balance_transfers_address_monthly_view"]["description"] = "Monthly address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset"
+                
+                # Add column descriptions for key metrics
+                if "month_start" in schema["balance_transfers_address_monthly_view"]["columns"]:
+                    schema["balance_transfers_address_monthly_view"]["columns"]["month_start"]["description"] = "Start of the month (1st day) for this aggregation period"
+                
+                if "volume_in" in schema["balance_transfers_address_monthly_view"]["columns"]:
+                    schema["balance_transfers_address_monthly_view"]["columns"]["volume_in"]["description"] = "Total amount received by this address during this month"
+                
+                if "volume_out" in schema["balance_transfers_address_monthly_view"]["columns"]:
+                    schema["balance_transfers_address_monthly_view"]["columns"]["volume_out"]["description"] = "Total amount sent from this address during this month"
                 
             # Add descriptions for volume aggregation views
             if "balance_transfers_volume_daily_view" in schema:
