@@ -41,22 +41,16 @@ def with_infinite_retry(method):
                 
             except Exception as e:
                 retry_count += 1
-                
-                # Only log connection/network errors with simplified context
-                error_category = classify_error(e)
-                if error_category in ['connection_error', 'substrate_error'] and retry_count % 10 == 1:
-                    # Throttled logging - only every 10th retry to reduce noise
-                    log_error_with_context(
-                        f"Substrate operation retry {retry_count} for {method.__name__}",
-                        e,
-                        correlation_id=correlation_id,
-                        method=method.__name__,
-                        retry_count=retry_count,
-                        error_category=error_category,
-                        endpoint=getattr(self, 'node_ws_url', 'unknown'),
-                        network=getattr(self, 'network', 'unknown')
-                    )
-                
+                logger.error(
+                    f"Substrate operation failed: {method.__name__} (retry {retry_count})",
+                    error=e,
+                    correlation_id=correlation_id,
+                    method=method.__name__,
+                    retry_count=retry_count,
+                    endpoint=getattr(self, 'node_ws_url', 'unknown'),
+                    network=getattr(self, 'network', 'unknown')
+                )
+
                 if hasattr(self, 'terminate_event') and self.terminate_event.is_set():
                     logger.info(
                         f"Operation {method.__name__} terminated during retry",
@@ -171,10 +165,9 @@ class SubstrateNode(Node):
                         time.sleep(2)  # Wait before retrying
                         continue
                 
-                # Simple error logging
-                log_error_with_context(
+                logger.error(
                     f"Substrate connection test failed after {attempt} attempts",
-                    e,
+                    error=e,
                     correlation_id=correlation_id,
                     endpoint=self.node_ws_url,
                     network=self.network,
@@ -193,15 +186,16 @@ class SubstrateNode(Node):
             raw_block_data = self._get_block_data_substrate.get_block(block_hash)
             return raw_block_data
         except Exception as e:
-            # Simple error logging
-            log_error_with_context(
+
+            logger.error(
                 "Failed to fetch block data via RPC",
-                e,
+                error=e,
                 block_hash=block_hash,
                 endpoint=self.node_ws_url,
                 network=self.network,
                 rpc_method="get_block"
             )
+
             raise RuntimeError(f"Failed to fetch block data for {block_hash}: {e}")
 
     def _get_events(self, block_hash: str) -> Any:
@@ -214,31 +208,30 @@ class SubstrateNode(Node):
                 
                 # Check again after refresh
                 if self._get_events_substrate.metadata is None:
-                    # Simple error logging for metadata issues
-                    log_error_with_context(
+                    logger.error(
                         "Metadata initialization failed after refresh",
-                        RuntimeError("Metadata is still None after refresh"),
-                        block_hash=block_hash,
-                        endpoint=self.node_ws_url,
-                        network=self.network,
-                        error_category="substrate_error",
-                        rpc_method="get_events"
-                    )
+                        extra={
+                            "block_hash": block_hash,
+                            "endpoint": self.node_ws_url,
+                            "network": self.network,
+                            "error_category": "substrate_error",
+                            "rpc_method": "get_events"
+                        })
                     raise RuntimeError(f"Metadata is still None after refresh for block {block_hash}")
 
             raw_events = self._get_events_substrate.get_events(block_hash)
             return raw_events
         except Exception as e:
-            # Simple error logging
-            log_error_with_context(
+            logger.error(
                 "Failed to fetch events via RPC",
-                e,
+                error=e,
                 block_hash=block_hash,
                 endpoint=self.node_ws_url,
                 network=self.network,
                 rpc_method="get_events",
                 metadata_available=self._get_events_substrate.metadata is not None
             )
+
             raise RuntimeError(f"Failed to fetch events for {block_hash}: {e}")
 
     async def _fetch_concurrently(self, block_hash: str) -> Dict[str, Any]:
@@ -266,14 +259,16 @@ class SubstrateNode(Node):
 
             except Exception as e:
                 # Simple error logging for concurrent fetch failures
-                log_error_with_context(
-                    "Concurrent block data fetch failed",
-                    e,
+
+                logger.error(
+                    "Concurrent fetch operation failed",
+                    error=e,
                     block_hash=block_hash,
                     endpoint=self.node_ws_url,
                     network=self.network,
                     operation="concurrent_fetch"
                 )
+
                 raise RuntimeError(f"Failed to gather block data and events: {e}")
 
             # Extract timestamp
@@ -286,16 +281,17 @@ class SubstrateNode(Node):
                             break
 
             if timestamp is None:
-                # Simple error logging for timestamp extraction failures
-                log_error_with_context(
+                logger.error(
                     "Timestamp extraction failed from block extrinsics",
-                    ValueError("Timestamp not found in block extrinsics"),
-                    block_hash=block_hash,
-                    endpoint=self.node_ws_url,
-                    network=self.network,
-                    error_category="validation_error",
-                    extrinsics_count=len(block_data.get("extrinsics", []))
+                    extra={
+                        "block_hash": block_hash,
+                        "endpoint": self.node_ws_url,
+                        "network": self.network,
+                        "error_category": "validation_error",
+                        "extrinsics_count": len(block_data.get("extrinsics", []))
+                    }
                 )
+
                 raise ValueError("Timestamp not found in block extrinsics")
 
             return {
@@ -304,10 +300,9 @@ class SubstrateNode(Node):
                 "timestamp": timestamp
             }
         except Exception as e:
-            # Simple error logging for general concurrent fetch failures
-            log_error_with_context(
+            logger.error(
                 "Concurrent fetch operation failed",
-                e,
+                error=e,
                 block_hash=block_hash,
                 endpoint=self.node_ws_url,
                 network=self.network,
@@ -365,13 +360,13 @@ class SubstrateNode(Node):
                     "block_data_metadata_available": self._get_block_data_substrate.metadata is not None,
                     "events_metadata_available": self._get_events_substrate.metadata is not None
                 })
-                
-            log_error_with_context(
-                f"Block fetch failed for height {block_height}",
-                e,
-                **error_context
+
+            logger.error(
+                "Block fetch failed",
+                error=e,
+                extra=error_context
             )
-            
+
             raise RuntimeError(f"Error getting block {block_height}: {e}")
 
     @with_infinite_retry
@@ -381,9 +376,9 @@ class SubstrateNode(Node):
             return self._get_block_data_substrate.get_block_number(None)
         except Exception as e:
             # Simple error logging for block height fetch failures
-            log_error_with_context(
+            logger.error(
                 "Failed to fetch current block height",
-                e,
+                error=e,
                 endpoint=self.node_ws_url,
                 network=self.network,
                 rpc_method="get_block_number"
@@ -401,11 +396,10 @@ class SubstrateNode(Node):
                 if hasattr(self._get_block_data_substrate, 'websocket') and self._get_block_data_substrate.websocket:
                     self._get_block_data_substrate.close()
             except Exception as e:
-                # Only log if it's a significant error
                 if not any(err in str(e).lower() for err in ['closed', 'disconnected', 'none']):
-                    log_error_with_context(
+                    logger.error(
                         "Error closing block data substrate connection",
-                        e,
+                        error=e,
                         correlation_id=correlation_id,
                         endpoint=self.node_ws_url,
                         network=self.network,
@@ -417,9 +411,9 @@ class SubstrateNode(Node):
             except Exception as e:
                 # Only log if it's a significant error
                 if not any(err in str(e).lower() for err in ['closed', 'disconnected', 'none']):
-                    log_error_with_context(
+                    logger.error(
                         "Error closing events substrate connection",
-                        e,
+                        error=e,
                         correlation_id=correlation_id,
                         endpoint=self.node_ws_url,
                         network=self.network,
@@ -450,9 +444,9 @@ class SubstrateNode(Node):
             return True
         except Exception as e:
             # Simple error logging for reinitialization failures
-            log_error_with_context(
+            logger.error(
                 "Failed to reinitialize SubstrateInterface instances",
-                e,
+                error=e,
                 correlation_id=correlation_id,
                 endpoint=self.node_ws_url,
                 network=self.network,
@@ -471,9 +465,9 @@ class SubstrateNode(Node):
                 blocks.append(block)
             else:
                 # Simple error logging for missing blocks
-                log_error_with_context(
+                logger.error(
                     f"No block found at height {height}",
-                    ValueError(f"No block found at height {height}"),
+                    error=ValueError(f"No block found at height {height}"),
                     height=height,
                     start_height=start_height,
                     end_height=end_height,
@@ -544,9 +538,9 @@ class SubstrateNode(Node):
                 
         except Exception as e:
             # Simple error logging for storage query failures
-            log_error_with_context(
+            logger.error(
                 "Storage query failed at block",
-                e,
+                error=e,
                 block_hash=block_hash,
                 params=params,
                 endpoint=self.node_ws_url,
@@ -580,9 +574,9 @@ class SubstrateNode(Node):
                                 return 18
 
             # Simple error logging for metadata parsing failures
-            log_error_with_context(
+            logger.error(
                 "Could not determine token decimals from metadata",
-                RuntimeError("Could not determine token decimals from metadata"),
+                error=RuntimeError("Could not determine token decimals from metadata"),
                 endpoint=self.node_ws_url,
                 network=self.network,
                 error_category="substrate_error",
@@ -594,9 +588,9 @@ class SubstrateNode(Node):
 
         except Exception as e:
             # Simple error logging for token decimals fetch failures
-            log_error_with_context(
+            logger.error(
                 "Failed to fetch token decimals",
-                e,
+                error=e,
                 endpoint=self.node_ws_url,
                 network=self.network,
                 rpc_method="get_metadata"

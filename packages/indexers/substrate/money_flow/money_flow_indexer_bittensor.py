@@ -1,6 +1,8 @@
+import traceback
 from loguru import logger
 from neo4j import Driver
 
+from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.money_flow.money_flow_indexer import BaseMoneyFlowIndexer
 
 
@@ -11,16 +13,17 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
     to enhance address labeling in the graph database.
     """
     
-    def __init__(self, graph_database: Driver, network: str, indexer_metrics=None):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics):
         """
         Initialize the BittensorMoneyFlowIndexer.
         
         Args:
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'bittensor', 'bittensor_testnet')
-            indexer_metrics: Optional IndexerMetrics instance for recording metrics
+            indexer_metrics: IndexerMetrics instance for recording metrics (required)
         """
         super().__init__(graph_database, network, indexer_metrics)
+        logger.info(f"Initialized Bittensor money flow indexer for network: {network}")
     
     def _process_network_specific_events(self, transaction, timestamp, events_by_type):
         """
@@ -54,7 +57,14 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
             neuron_id = event['attributes'][1]
             owner_address = event['attributes'][2]
             
-            logger.debug(f"Processing NeuronRegistered event: network_id={network_id}, neuron_id={neuron_id}, owner={owner_address}")
+            logger.debug(
+                "Processing NeuronRegistered event",
+                extra={
+                    "network_id": network_id,
+                    "neuron_id": neuron_id,
+                    "owner_address": owner_address
+                }
+            )
             
             # Create or update the owner address node with neuron owner label
             query = """
@@ -144,7 +154,10 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
         for event in events:
             network_id = event['attributes'][0]
             
-            logger.debug(f"Processing NetworkAdded event: network_id={network_id}")
+            logger.debug(
+                "Processing NetworkAdded event",
+                extra={"network_id": network_id}
+            )
             
             # Create or update the subnet node
             query = """
@@ -164,7 +177,13 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
             if 'extrinsic' in event and 'signer' in event['extrinsic']:
                 creator_address = event['extrinsic']['signer']
                 
-                logger.debug(f"Found subnet creator: {creator_address} for subnet: {network_id}")
+                logger.debug(
+                    "Found subnet creator",
+                    extra={
+                        "creator_address": creator_address,
+                        "subnet_id": network_id
+                    }
+                )
                 
                 # Update the creator address with subnet creator label
                 query = """
@@ -211,4 +230,7 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
                     'timestamp': timestamp
                 })
             else:
-                logger.debug(f"Could not identify subnet creator for subnet: {network_id}")
+                logger.debug(
+                    "Could not identify subnet creator",
+                    extra={"subnet_id": network_id}
+                )

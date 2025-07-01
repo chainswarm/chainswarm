@@ -1,15 +1,12 @@
 from typing import Optional, List
 from fastapi import APIRouter, Query, Path, HTTPException, Request
+from loguru import logger
+
 from packages.api.services.balance_transfers_service import BalanceTransferService
-from packages.indexers.base import get_clickhouse_connection_string, ErrorContextManager, classify_error
+from packages.indexers.base import get_clickhouse_connection_string
 from packages.indexers.substrate import get_network_asset
 from packages.api.middleware.correlation_middleware import get_request_context, sanitize_params
 import os
-
-# Initialize enhanced logging
-network = os.getenv("NETWORK", "torus").lower()
-service_name = f"{network}-api-balance-transfers-router"
-error_ctx = ErrorContextManager(service_name)
 
 router = APIRouter(
     prefix="/substrate",
@@ -63,8 +60,7 @@ async def get_address_transactions(
 
         return result
     except Exception as e:
-        # ENHANCED: Error logging with context
-        error_ctx.log_error(
+        logger.error(
             "Balance transfers address transactions query failed",
             error=e,
             operation="get_address_transactions",
@@ -76,9 +72,8 @@ async def get_address_transactions(
                 "page": page,
                 "page_size": page_size,
                 "assets": assets
-            }),
-            error_category=classify_error(e)
-        )
+            }))
+
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -142,8 +137,8 @@ async def get_balance_transfers_volume_series(
         balance_service.close()
         return result
     except Exception as e:
-        # ENHANCED: Error logging with context
-        error_ctx.log_error(
+
+        logger.error(
             "Balance transfers volume series query failed",
             error=e,
             operation="get_balance_transfers_volume_series",
@@ -156,9 +151,7 @@ async def get_balance_transfers_volume_series(
                 "start_timestamp": start_timestamp,
                 "end_timestamp": end_timestamp,
                 "period_type": period_type
-            }),
-            error_category=classify_error(e)
-        )
+            }))
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -215,8 +208,7 @@ async def get_network_analytics(
         balance_service.close()
         return result
     except Exception as e:
-        # ENHANCED: Error logging with context
-        error_ctx.log_error(
+        logger.error(
             "Network analytics query failed",
             error=e,
             operation="get_network_analytics",
@@ -229,8 +221,7 @@ async def get_network_analytics(
                 "assets": assets,
                 "start_date": start_date,
                 "end_date": end_date
-            }),
-            error_category=classify_error(e)
+            })
         )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -282,8 +273,7 @@ async def get_address_analytics(
         balance_service.close()
         return result
     except Exception as e:
-        # ENHANCED: Error logging with context
-        error_ctx.log_error(
+        logger.error(
             "Address analytics query failed",
             error=e,
             operation="get_address_analytics",
@@ -295,8 +285,7 @@ async def get_address_analytics(
                 "assets": assets,
                 "address_type": address_type,
                 "min_volume": min_volume
-            }),
-            error_category=classify_error(e)
+            })
         )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -354,8 +343,7 @@ async def get_volume_aggregations(
         balance_service.close()
         return result
     except Exception as e:
-        # ENHANCED: Error logging with context
-        error_ctx.log_error(
+        logger.error(
             "Volume aggregations query failed",
             error=e,
             operation="get_volume_aggregations",
@@ -368,8 +356,7 @@ async def get_volume_aggregations(
                 "assets": assets,
                 "start_date": start_date,
                 "end_date": end_date
-            }),
-            error_category=classify_error(e)
+            })
         )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -421,8 +408,7 @@ async def get_volume_trends(
         balance_service.close()
         return result
     except Exception as e:
-        # ENHANCED: Error logging with context
-        error_ctx.log_error(
+        logger.error(
             "Volume trends query failed",
             error=e,
             operation="get_volume_trends",
@@ -434,7 +420,7 @@ async def get_volume_trends(
                 "assets": assets,
                 "start_timestamp": start_timestamp,
                 "end_timestamp": end_timestamp
-            }),
-            error_category=classify_error(e)
+            })
         )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+

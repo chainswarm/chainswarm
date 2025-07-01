@@ -65,7 +65,7 @@ class BaseMoneyFlowIndexer:
     _process_network_specific_events method.
     """
 
-    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics = None):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics):
         """
         Initialize the BaseMoneyFlowIndexer.
 
@@ -240,16 +240,8 @@ class BaseMoneyFlowIndexer:
 
                 # Process network-specific events
                 self._process_network_specific_events(transaction, timestamp, events_by_type)
-
-                # Record metrics if available
-                if self.indexer_metrics:
-                    processing_time = time.time() - start_time
-                    self.indexer_metrics.record_block_processed(block_height, processing_time)
-                    
-                    # Count events processed
-                    total_events = sum(len(events) for events in events_by_type.values())
-                    if total_events > 0:
-                        self.indexer_metrics.record_event_processed('total_events', total_events)
+                processing_time = time.time() - start_time
+                self.indexer_metrics.record_block_processed(block_height, processing_time)
 
         except Exception as e:
             logger.error(
@@ -493,23 +485,29 @@ class BaseMoneyFlowIndexer:
                 sender.last_activity_timestamp = $timestamp,
                 sender.first_activity_block_height = $block_height,
                 sender.last_activity_block_height = $block_height,
-                sender.transfer_count = 1
+                sender.transfer_count = 1,
+                sender.volume_out = $amount,
+                sender.volume_in = 0
               SET 
                 sender.last_activity_timestamp = $timestamp, 
                 sender.last_activity_block_height = $block_height,
-                sender.transfer_count = coalesce(sender.transfer_count, 0) + 1
-                  
+                sender.transfer_count = coalesce(sender.transfer_count, 0) + 1,
+                sender.volume_out = coalesce(sender.volume_out, 0) + $amount
+
             MERGE (receiver:Address { address: $to })
               ON CREATE SET
                 receiver.first_activity_timestamp = $timestamp,
                 receiver.last_activity_timestamp = $timestamp,
                 receiver.first_activity_block_height = $block_height,
                 receiver.last_activity_block_height = $block_height,
-                receiver.transfer_count = 1
+                receiver.transfer_count = 1,
+                receiver.volume_in = $amount,
+                receiver.volume_out = 0
               SET
                 receiver.last_activity_timestamp = $timestamp,
                 receiver.last_activity_block_height = $block_height,
-                receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1
+                receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1,
+                receiver.volume_in = coalesce(receiver.volume_in, 0) + $amount
 
             MERGE (sender)-[r:TO { id: $to_id, asset: $asset }]->(receiver)
               ON CREATE SET
@@ -517,22 +515,22 @@ class BaseMoneyFlowIndexer:
                   r.transfer_count = 1,
                   r.first_activity_timestamp = $timestamp,
                   r.last_activity_timestamp = $timestamp,
-                  
+
                   r.first_activity_block_height = $block_height,
                   r.last_activity_block_height = $block_height,
-                  
+
                   sender.neighbor_count = coalesce(sender.neighbor_count, 0) + 1,
                   sender.unique_receivers = coalesce(sender.unique_receivers, 0) + 1,
-                  
+
                   receiver.neighbor_count = coalesce(receiver.neighbor_count, 0) + 1,
                   receiver.unique_senders = coalesce(receiver.unique_senders, 0) + 1
-                  
+
               ON MATCH SET
                   r.volume = r.volume + $amount,
                   r.transfer_count = r.transfer_count + 1,
                   r.last_activity_timestamp = $timestamp,
                   r.last_activity_block_height = $block_height
-                  
+
             """
             transaction.run(query, {
                 'block_height': event['block_height'],

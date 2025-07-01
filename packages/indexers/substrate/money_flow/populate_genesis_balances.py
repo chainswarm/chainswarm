@@ -101,7 +101,7 @@ def run(file: str, network: str):
                 "asset": asset if 'asset' in locals() else None
             }
         )
-        raise e
+        raise
 
 
 if __name__ == "__main__":

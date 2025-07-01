@@ -11,7 +11,7 @@ from packages.indexers.base import (
     terminate_event, get_clickhouse_connection_string, get_memgraph_connection_string,
     setup_logger, create_clickhouse_database
 )
-from packages.indexers.base.metrics import setup_metrics, IndexerMetrics
+from packages.indexers.base.metrics import setup_metrics, IndexerMetrics, MetricsRegistry
 from packages.indexers.substrate import networks, data, Network, get_substrate_node_url
 from packages.indexers.substrate.block_range_partitioner import get_partitioner
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
@@ -54,69 +54,51 @@ class MoneyFlowConsumer:
             self,
             block_stream_manager: BlockStreamManager,
             money_flow_indexer: BaseMoneyFlowIndexer,
+            metrics_registry: MetricsRegistry,
+            indexer_metrics: IndexerMetrics,
             terminate_event,
             network: str,
             batch_size: int = 10
     ):
         self.block_stream_manager = block_stream_manager
         self.money_flow_indexer = money_flow_indexer
+        self.metrics_registry = metrics_registry
+        self.indexer_metrics = indexer_metrics
         self.terminate_event = terminate_event
         self.network = network
         self.batch_size = batch_size
         self.partitioner = get_partitioner(network)
-        
-        # Setup simple logging with auto-detection
-        setup_logger()
-        
-        # Metrics will be set from main function
-        self.metrics_registry = None
-        self.indexer_metrics = None
-        
-        # Consumer-specific metrics (will be initialized when metrics are set)
-        self.batch_processing_duration = None
-        self.blocks_processed_total = None
-        self.consumer_errors_total = None
-        self.community_detection_duration = None
-        self.page_rank_duration = None
-        self.embeddings_update_duration = None
-        
 
-    def set_metrics(self, metrics_registry, indexer_metrics):
-        """Set metrics after initialization"""
-        self.metrics_registry = metrics_registry
-        self.indexer_metrics = indexer_metrics
-        
-        # Initialize consumer-specific metrics
         self.batch_processing_duration = self.metrics_registry.create_histogram(
             'consumer_batch_processing_duration_seconds',
             'Time spent processing batches',
             ['network', 'indexer']
         )
-        
+
         self.blocks_processed_total = self.metrics_registry.create_counter(
             'consumer_blocks_processed_total',
             'Total blocks processed',
             ['network', 'indexer']
         )
-        
+
         self.consumer_errors_total = self.metrics_registry.create_counter(
             'consumer_errors_total',
             'Total consumer processing errors',
             ['network', 'indexer', 'error_type']
         )
-        
+
         self.community_detection_duration = self.metrics_registry.create_histogram(
             'consumer_community_detection_duration_seconds',
             'Time spent on community detection',
             ['network', 'indexer']
         )
-        
+
         self.page_rank_duration = self.metrics_registry.create_histogram(
             'consumer_page_rank_duration_seconds',
             'Time spent on page rank calculation',
             ['network', 'indexer']
         )
-        
+
         self.embeddings_update_duration = self.metrics_registry.create_histogram(
             'consumer_embeddings_update_duration_seconds',
             'Time spent updating embeddings',
@@ -124,18 +106,21 @@ class MoneyFlowConsumer:
         )
 
     def run(self):
-        """Main processing loop with simplified logging"""
+        """Main processing loop"""
         try:
             # Get the last processed block height
             last_block_height = self.get_last_processed_block()
             current_height = last_block_height + 1 if last_block_height > 0 else 1
             
             # Business decision logging
-            log_business_decision(
-                "resume_from_last_processed_block",
-                "found_existing_processed_data" if last_block_height > 0 else "starting_from_genesis",
-                last_block_height=last_block_height,
-                current_height=current_height
+            logger.info(
+                "Resuming from last processed block",
+                business_decision="resume_from_last_processed_block",
+                reason="found_existing_processed_data" if last_block_height > 0 else "starting_from_genesis",
+                extra={
+                    "last_block_height": last_block_height,
+                    "current_height": current_height
+                }
             )
             
             # Track milestone logging (every 1,000 blocks processed)
@@ -204,7 +189,7 @@ class MoneyFlowConsumer:
                             
                     elif not self.terminate_event.is_set():
                         # Strategic warning for empty ranges
-                        logger.warning(
+                        logger.info(
                             "No blocks with addresses found in range",
                             extra={
                                 "start_height": current_height,
@@ -222,33 +207,35 @@ class MoneyFlowConsumer:
                     
                     # Record error metric
                     if self.consumer_errors_total:
-                        labels = {'network': self.network, 'indexer': 'money_flow', 'error_type': classify_error(e)}
+                        error_type = type(e).__name__
+                        labels = {'network': self.network, 'indexer': 'money_flow', 'error_type': error_type}
                         self.consumer_errors_total.labels(**labels).inc()
                     
-                    # Simple error logging
-                    log_error_with_context(
+                    # Error logging with context
+                    logger.error(
                         "Block processing batch failed",
-                        e,
-                        operation="batch_processing_loop",
-                        current_height=current_height,
-                        end_height=end_height,
-                        batch_size=self.batch_size,
-                        latest_chain_height=latest_block_height if 'latest_block_height' in locals() else None,
-                        error_category=classify_error(e)
+                        error=e,
+                        traceback=traceback.format_exc(),
+                        extra={
+                            "operation": "batch_processing_loop",
+                            "current_height": current_height,
+                            "end_height": end_height if 'end_height' in locals() else None,
+                            "batch_size": self.batch_size,
+                            "latest_chain_height": latest_block_height if 'latest_block_height' in locals() else None
+                        }
                     )
                     time.sleep(5)  # Brief pause before continuing
             
-            # Log service shutdown
-            log_service_stop(reason="terminate_event_received")
+            logger.info("Money Flow Consumer stopped", extra={"reason": "terminate_event_received"})
             
         except KeyboardInterrupt:
-            log_service_stop(reason="keyboard_interrupt")
+            logger.info("Money Flow Consumer stopped", extra={"reason": "keyboard_interrupt"})
         except Exception as e:
-            log_error_with_context(
+            logger.error(
                 "Fatal consumer error",
-                e,
-                operation="consumer_main_loop",
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"operation": "consumer_main_loop"}
             )
         finally:
             self._cleanup()
@@ -313,13 +300,15 @@ class MoneyFlowConsumer:
                 )
 
         except Exception as e:
-            # Simple error logging
-            log_error_with_context(
+            # Error logging with context
+            logger.error(
                 "Block processing failed",
-                e,
-                operation="process_block",
-                block_height=block_height if 'block_height' in locals() else None,
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "operation": "process_block",
+                    "block_height": block_height if 'block_height' in locals() else None
+                }
             )
             raise
     
@@ -336,12 +325,11 @@ class MoneyFlowConsumer:
                     return record["last_block_height"]
                 return 0
         except Exception as e:
-            # Simple error logging
-            log_error_with_context(
+            logger.error(
                 "Failed to get last processed block",
-                e,
-                operation="get_last_processed_block",
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={"operation": "get_last_processed_block"}
             )
             return 0
             
@@ -351,14 +339,15 @@ class MoneyFlowConsumer:
             if hasattr(self, 'block_stream_manager'):
                 self.block_stream_manager.close()
         except Exception as e:
-            log_error_with_context(
+            logger.error(
                 "Error closing block stream manager",
-                e,
-                operation="cleanup",
-                component="block_stream_manager",
-                error_category=classify_error(e)
+                error=e,
+                traceback=traceback.format_exc(),
+                extra={
+                    "operation": "cleanup",
+                    "component": "block_stream_manager"
+                }
             )
-            
 
 
 if __name__ == "__main__":
@@ -436,7 +425,7 @@ if __name__ == "__main__":
         args.network,
         args.batch_size
     )
-    
+
     try:
         consumer.run()
     except Exception as e:

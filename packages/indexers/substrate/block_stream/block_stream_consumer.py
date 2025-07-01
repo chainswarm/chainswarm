@@ -354,16 +354,28 @@ if __name__ == "__main__":
         consumer.run()
 
         if args.end_height is not None:
-            log_business_decision(
-                "partition_indexing_completed",
-                "reached_end_height",
-                start_height=args.start_height,
-                end_height=args.end_height,
-                partition_id=args.partition
+            logger.info(
+                "Partition indexing completed",
+                business_decision="partition_indexing_completed",
+                reason="reached_end_height",
+                extra={
+                    "partition_id": args.partition,
+                    "start_height": args.start_height,
+                    "end_height": args.end_height
+                }
             )
     except Exception as e:
-        log_error_with_context(
-            "Fatal startup error",
-            e,
-            operation="main_startup"
+        logger.error(
+            "Fatal startup error in Block Stream Consumer",
+            error=e,
+            traceback=traceback.format_exc(),
+            extra={
+                "service": service_name,
+                "network": args.network,
+                "batch_size": args.batch_size,
+                "start_height": args.start_height,
+                "end_height": args.end_height,
+                "partition": args.partition,
+                "sleep_time": args.sleep_time
+            }
         )

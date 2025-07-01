@@ -1,11 +1,9 @@
 import json
-import time
 import traceback
 from typing import Dict, Any, List
 from loguru import logger
 import clickhouse_connect
-from packages.indexers.substrate import get_substrate_node_url
-from packages.indexers.substrate.block_range_partitioner import get_partitioner, BlockRangePartitioner
+from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
@@ -274,7 +272,7 @@ class BlockStreamManager:
     def get_partition_progress(self, partition_id: int) -> Dict[str, Any]:
         """Get the progress of a specific partition by querying the block_stream table"""
 
-        start_height, end_height = self.partitioner.get_partition_range(partition_id)
+        start_height, end_height = self.block_partitioner.get_partition_range(partition_id)
         chain_height = self.substrate_node.get_current_block_height()
         
         # If end_height is infinity (last partition), use chain_height
@@ -373,7 +371,7 @@ class BlockStreamManager:
             partition_progress = self.get_partition_progress(partition_id)
             
             # Log the progress of each partition
-            start, end = self.partitioner.get_partition_range(partition_id)
+            start, end = self.block_partitioner.get_partition_range(partition_id)
             last_indexed = partition_progress['last_indexed_height']
             status = partition_progress['status']
             
@@ -392,7 +390,7 @@ class BlockStreamManager:
 
     def get_indexing_status(self) -> Dict[str, Any]:
         """Get the current status of the block stream indexing process"""
-        if not hasattr(self, 'partitioner') or not hasattr(self, 'substrate_node'):
+        if not hasattr(self, 'block_partitioner') or not hasattr(self, 'substrate_node'):
             raise ValueError("Components for parallel indexing not initialized. Make sure to provide a network when initializing BlockStreamManager.")
             
         try:
@@ -401,10 +399,10 @@ class BlockStreamManager:
             gap = chain_height - latest_height
             
             start_partition = 0
-            end_partition = self.partitioner(chain_height)
+            end_partition = self.block_partitioner(chain_height)
             all_progress = self.get_all_partition_progress(start_partition, end_partition)
             all_historical_complete = True
-            latest_partition_id = self.partitioner(chain_height)
+            latest_partition_id = self.block_partitioner(chain_height)
             
             for progress in all_progress:
                 # Skip the latest partition

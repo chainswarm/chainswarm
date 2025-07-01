@@ -3,6 +3,7 @@ import traceback
 from loguru import logger
 from neo4j import Driver
 
+from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.money_flow.money_flow_indexer import BaseMoneyFlowIndexer
 from packages.indexers.substrate.money_flow import populate_genesis_balances
 from packages.indexers.substrate import data
@@ -14,16 +15,17 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
     Handles Torus-specific events like AgentRegistered.
     """
     
-    def __init__(self, graph_database: Driver, network: str, indexer_metrics=None):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics ):
         """
         Initialize the TorusMoneyFlowIndexer.
         
         Args:
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'torus', 'torus_testnet')
-            indexer_metrics: Optional IndexerMetrics instance for recording metrics
+            indexer_metrics: IndexerMetrics instance for recording metrics (required)
         """
         super().__init__(graph_database, network, indexer_metrics)
+        logger.info(f"Initialized Torus money flow indexer for network: {network}")
         
         # Initialize genesis balances for Torus networks
         self._init_genesis_balances()

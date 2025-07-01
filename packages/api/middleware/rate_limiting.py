@@ -6,20 +6,13 @@ import os
 from loguru import logger
 from collections import defaultdict
 from datetime import datetime, timedelta
-from packages.indexers.base import get_metrics_registry, ErrorContextManager, classify_error
+from packages.indexers.base import get_metrics_registry
 
 # Simple in-memory rate limiting storage
 class InMemoryRateLimiter:
     def __init__(self):
         self.requests = defaultdict(list)
         self.limit_per_hour = 100
-        
-        # Initialize enhanced logging
-        network = os.getenv("NETWORK", "torus").lower()
-        self.service_name = f"{network}-api-rate-limiter"
-        self.error_ctx = ErrorContextManager(self.service_name)
-        
-        # Initialize metrics if available
         self.rate_limit_hits_total = None
         self.rate_limit_bypassed_total = None
         self.rate_limit_current_usage = None
@@ -158,22 +151,15 @@ async def rate_limit_middleware(request: Request, call_next):
                     },
                     headers={"Retry-After": str(retry_after)}
                 )
-            
-            # REMOVED: Success debug logging - not needed
-            
         except Exception as e:
-            # ENHANCED: Error logging with context
-            rate_limiter.error_ctx.log_error(
+            logger.error(
                 "Rate limiting middleware error",
                 error=e,
                 operation="rate_limit_check",
                 client_ip=get_client_ip(request),
                 endpoint=request.url.path,
                 method=request.method,
-                error_category=classify_error(e)
             )
-            # Continue without rate limiting if there's an error
-    
-    # Continue with the request
+
     response = await call_next(request)
     return response

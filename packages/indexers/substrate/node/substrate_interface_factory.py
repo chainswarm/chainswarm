@@ -49,7 +49,6 @@ class SubstrateInterfaceFactory:
                     "network": network,
                     "endpoint": node_ws_url,
                     "error": str(e),
-                    "error_category": classify_error(e)
                 })
             raise
 
@@ -74,7 +73,6 @@ class SubstrateInterfaceFactory:
                 "network": "bittensor",
                 "endpoint": node_ws_url,
                 "error": str(e),
-                "error_category": classify_error(e),
                 "interface_config": {
                     "use_remote_preset": True,
                     "cache_region": None
@@ -98,7 +96,6 @@ class SubstrateInterfaceFactory:
                 "network": "torus",
                 "endpoint": node_ws_url,
                 "error": str(e),
-                "error_category": classify_error(e),
                 "interface_config": {
                     "use_remote_preset": True,
                     "cache_region": None
@@ -122,7 +119,6 @@ class SubstrateInterfaceFactory:
                 "network": "polkadot",
                 "endpoint": node_ws_url,
                 "error": str(e),
-                "error_category": classify_error(e),
                 "interface_config": {
                     "use_remote_preset": True,
                     "cache_region": None
