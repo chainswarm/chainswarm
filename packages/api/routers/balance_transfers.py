@@ -424,3 +424,74 @@ async def get_volume_trends(
         )
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+
+@router.get(
+    "/{network}/balance-transfers/addresses/analytics",
+    summary="Get Analytics for Multiple Addresses",
+    description=(
+        "Retrieves comprehensive analytics for a list of addresses from the balance transfers system.\n\n"
+        "This endpoint provides detailed analytics including volume in/out, transaction patterns, "
+        "counterparty analysis, time-based activity patterns, volume distributions, and address "
+        "classification for each address-asset combination. Perfect for bulk address analysis.\n\n"
+        "Use `return_all=true` to get all results without pagination."
+    ),
+    response_description="Comprehensive address analytics data with pagination or all results",
+    responses={
+        200: {"description": "Address analytics retrieved successfully"},
+        400: {"description": "Invalid input parameters"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_addresses_analytics(
+        request: Request,
+        network: str = Path(..., description="The blockchain network identifier", example="torus"),
+        addresses: List[str] = Query(
+            ...,
+            description="List of blockchain addresses to analyze",
+            example=["5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f", "5FZdduraHpWTVFBehbH4yqsfi7LabXFQkmqc2vKqbQTaspwM"]
+        ),
+        page: int = Query(1, description="Page number for pagination (ignored if return_all=true)", ge=1),
+        page_size: int = Query(20, description="Number of analytics records per page (ignored if return_all=true)", ge=1, le=100),
+        assets: List[str] = Query(
+            None,
+            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
+            example=["TOR"]
+        ),
+        return_all: bool = Query(
+            False,
+            description="If true, returns all results without pagination. Ignores page and page_size parameters.",
+            example=False
+        )
+):
+    # Handle assets parameter - default to network's native asset if not provided
+    if assets is None:
+        assets = [get_network_asset(network)]
+
+    # Validate addresses parameter
+    if not addresses:
+        raise HTTPException(status_code=400, detail="At least one address must be provided")
+
+    try:
+        balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
+        result = balance_service.get_addresses_analytics(addresses, page, page_size, assets, return_all)
+        balance_service.close()
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(
+            "Addresses analytics query failed",
+            error=e,
+            operation="get_addresses_analytics",
+            request_context=get_request_context(request),
+            query_params=sanitize_params({
+                "network": network,
+                "addresses": addresses,
+                "page": page,
+                "page_size": page_size,
+                "assets": assets,
+                "return_all": return_all
+            }))
+
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+

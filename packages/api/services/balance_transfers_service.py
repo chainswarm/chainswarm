@@ -21,6 +21,12 @@ def get_balance_transfers_tables() -> List[str]:
         "balance_transfers_network_monthly_view",
         "balance_transfers_address_analytics_view",
         "balance_transfers_volume_trends_view",
+        "balance_transfers_address_daily_view",
+        "balance_transfers_address_weekly_view",
+        "balance_transfers_address_monthly_view",
+        "balance_transfers_address_daily_internal",
+        "balance_transfers_address_weekly_internal",
+        "balance_transfers_address_monthly_internal",
     ]
 
 
@@ -789,4 +795,257 @@ class BalanceTransferService:
         if not result:
             return None
         return [row[0] for row in result]
+
+    def get_addresses_time_volume_metrics(self, addresses: List[str], assets: List[str] = None):
+        """
+        Returns time-based volume metrics (24h, 7d, 30d, 60d, 90d) for addresses using address-level time-series views
+        
+        Args:
+            addresses: List of blockchain addresses to query
+            assets: List of assets to filter by
+            
+        Returns:
+            Dictionary with time-based volume metrics per address and asset
+        """
+        if not addresses:
+            return {}
+        
+        # Build address filter
+        address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
+        address_filter = f"({address_conditions})"
+        
+        # Build asset filter
+        asset_filter = ""
+        if assets and assets != ["all"]:
+            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
+            asset_filter = f" AND ({asset_conditions})"
+        
+        results = {}
+        
+        # 24 hours - use daily view with last 1 day
+        query_24h = f"""
+                    SELECT address, asset,
+                           sum(volume_in) as volume_in,
+                           sum(volume_out) as volume_out,
+                           sum(volume_out) - sum(volume_in) as net_volume
+                    FROM balance_transfers_address_daily_view
+                    WHERE {address_filter}{asset_filter}
+                    AND date >= today() - 1
+                    GROUP BY address, asset
+                    ORDER BY address, asset
+                    """
+        
+        # 7 days - use daily view with last 7 days
+        query_7d = f"""
+                   SELECT address, asset,
+                          sum(volume_in) as volume_in,
+                          sum(volume_out) as volume_out,
+                          sum(volume_out) - sum(volume_in) as net_volume
+                   FROM balance_transfers_address_daily_view
+                   WHERE {address_filter}{asset_filter}
+                   AND date >= today() - 7
+                   GROUP BY address, asset
+                   ORDER BY address, asset
+                   """
+        
+        # 30 days - use daily view with last 30 days
+        query_30d = f"""
+                    SELECT address, asset,
+                           sum(volume_in) as volume_in,
+                           sum(volume_out) as volume_out,
+                           sum(volume_out) - sum(volume_in) as net_volume
+                    FROM balance_transfers_address_daily_view
+                    WHERE {address_filter}{asset_filter}
+                    AND date >= today() - 30
+                    GROUP BY address, asset
+                    ORDER BY address, asset
+                    """
+        
+        # 60 days - use weekly view with last ~9 weeks
+        query_60d = f"""
+                    SELECT address, asset,
+                           sum(volume_in) as volume_in,
+                           sum(volume_out) as volume_out,
+                           sum(volume_out) - sum(volume_in) as net_volume
+                    FROM balance_transfers_address_weekly_view
+                    WHERE {address_filter}{asset_filter}
+                    AND week_start >= toStartOfWeek(today() - 60)
+                    GROUP BY address, asset
+                    ORDER BY address, asset
+                    """
+        
+        # 90 days - use weekly view with last ~13 weeks
+        query_90d = f"""
+                    SELECT address, asset,
+                           sum(volume_in) as volume_in,
+                           sum(volume_out) as volume_out,
+                           sum(volume_out) - sum(volume_in) as net_volume
+                    FROM balance_transfers_address_weekly_view
+                    WHERE {address_filter}{asset_filter}
+                    AND week_start >= toStartOfWeek(today() - 90)
+                    GROUP BY address, asset
+                    ORDER BY address, asset
+                    """
+        
+        # Execute queries for each time period
+        time_queries = {
+            'last_24h': query_24h,
+            'last_7d': query_7d,
+            'last_30d': query_30d,
+            'last_60d': query_60d,
+            'last_90d': query_90d
+        }
+        
+        for period_name, query in time_queries.items():
+            query_result = self.client.query(query)
+            rows = query_result.result_rows
+            
+            # Process results for this time period
+            for row in rows:
+                address, asset, volume_in, volume_out, net_volume = row
+                
+                if address not in results:
+                    results[address] = {}
+                if asset not in results[address]:
+                    results[address][asset] = {}
+                
+                results[address][asset][period_name] = {
+                    'volume_in': str(volume_in),
+                    'volume_out': str(volume_out),
+                    'net_volume': str(net_volume)
+                }
+        
+        return results
+
+    def get_addresses_analytics(self, addresses: List[str], page: int = 1, page_size: int = 20, assets: List[str] = None, return_all: bool = False):
+        """
+        Returns comprehensive analytics for a list of addresses from balance_transfers_address_analytics_view
+        
+        Args:
+            addresses: List of blockchain addresses to query
+            page: Page number for pagination
+            page_size: Number of items per page
+            assets: List of assets to filter by
+            return_all: If True, returns all results without pagination
+            
+        Returns:
+            Dictionary with paginated address analytics data or all results if return_all=True
+        """
+        # Build address filter
+        if not addresses:
+            raise ValueError("At least one address must be provided")
+        
+        address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
+        address_filter = f"({address_conditions})"
+        
+        # Build asset filter
+        asset_filter = ""
+        if assets and assets != ["all"]:
+            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
+            asset_filter = f" AND ({asset_conditions})"
+        
+        # Always get total count for consistent pagination format
+        count_query = f"""
+                      SELECT COUNT(*) AS total
+                      FROM balance_transfers_address_analytics_view
+                      WHERE {address_filter}{asset_filter}
+                      """
+        
+        count_result = self.client.query(count_query).result_rows
+        total_count = count_result[0][0] if count_result else 0
+        
+        if return_all:
+            # Return all results but maintain pagination format
+            data_query = f"""
+                         SELECT *
+                         FROM balance_transfers_address_analytics_view
+                         WHERE {address_filter}{asset_filter}
+                         ORDER BY address, asset
+                         """
+            
+            query_result = self.client.query(data_query)
+            rows = query_result.result_rows
+            
+            # Get column names from the query result
+            columns = query_result.column_names
+            
+            # Map each row into a dictionary
+            analytics = [dict(zip(columns, row)) for row in rows]
+            
+            # Get time-based volume metrics
+            time_metrics = self.get_addresses_time_volume_metrics(addresses, assets)
+            
+            # Merge time metrics with analytics
+            for item in analytics:
+                address = item['address']
+                asset = item['asset']
+                if address in time_metrics and asset in time_metrics[address]:
+                    item['volume_metrics'] = time_metrics[address][asset]
+                else:
+                    # Default empty metrics if no data found
+                    item['volume_metrics'] = {
+                        'last_24h': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_7d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_30d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_60d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_90d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'}
+                    }
+            
+            # Return with pagination format but all items
+            return format_paginated_response(
+                items=analytics,
+                page=1,
+                page_size=total_count if total_count > 0 else 1,
+                total_items=total_count
+            )
+        else:
+            # Use standard pagination
+            data_query = f"""
+                         SELECT *
+                         FROM balance_transfers_address_analytics_view
+                         WHERE {address_filter}{asset_filter}
+                         ORDER BY address, asset
+                         LIMIT {{limit:Int}} OFFSET {{offset:Int}}
+                         """
+            
+            # Calculate pagination parameters
+            offset = (page - 1) * page_size
+            
+            # Execute data query
+            data_params = {'limit': page_size, 'offset': offset}
+            query_result = self.client.query(data_query, data_params)
+            rows = query_result.result_rows
+            
+            # Get column names from the query result
+            columns = query_result.column_names
+            
+            # Map each row into a dictionary
+            analytics = [dict(zip(columns, row)) for row in rows]
+            
+            # Get time-based volume metrics for the addresses in this page
+            page_addresses = [item['address'] for item in analytics]
+            time_metrics = self.get_addresses_time_volume_metrics(page_addresses, assets)
+            
+            # Merge time metrics with analytics
+            for item in analytics:
+                address = item['address']
+                asset = item['asset']
+                if address in time_metrics and asset in time_metrics[address]:
+                    item['volume_metrics'] = time_metrics[address][asset]
+                else:
+                    # Default empty metrics if no data found
+                    item['volume_metrics'] = {
+                        'last_24h': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_7d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_30d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_60d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'},
+                        'last_90d': {'volume_in': '0', 'volume_out': '0', 'net_volume': '0'}
+                    }
+            
+            return format_paginated_response(
+                items=analytics,
+                page=page,
+                page_size=page_size,
+                total_items=total_count
+            )
 

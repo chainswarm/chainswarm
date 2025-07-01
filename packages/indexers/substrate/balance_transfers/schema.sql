@@ -426,12 +426,12 @@ SELECT
     CASE
         WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 100000 AND COALESCE(out.unique_recipients, 0) >= 100 THEN 'Exchange'
         WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 100000 AND COALESCE(out.unique_recipients, 0) < 10 THEN 'Whale'
-        WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 10000 AND COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) >= 1000 THEN 'High_Volume_Trader'
-        WHEN COALESCE(out.unique_recipients, 0) >= 50 AND COALESCE(inc.unique_senders, 0) >= 50 THEN 'Hub_Address'
-        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) >= 100 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) < 1000 THEN 'Retail_Active'
-        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) < 10 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 10000 THEN 'Whale_Inactive'
-        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) < 10 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) < 100 THEN 'Retail_Inactive'
-        ELSE 'Regular_User'
+        WHEN COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 10000 AND COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) >= 1000 THEN 'High Volume Trader'
+        WHEN COALESCE(out.unique_recipients, 0) >= 50 AND COALESCE(inc.unique_senders, 0) >= 50 THEN 'Hub Address'
+        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) >= 100 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) < 1000 THEN 'Retail Active'
+        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) < 10 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) >= 10000 THEN 'Whale Inactive'
+        WHEN COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) < 10 AND COALESCE(out.total_sent, 0) + COALESCE(inc.total_received, 0) < 100 THEN 'Retail Inactive'
+        ELSE 'Regular User'
     END as address_type
 FROM outgoing_metrics out
 FULL OUTER JOIN incoming_metrics inc ON out.address = inc.address AND out.asset = inc.asset
@@ -442,11 +442,131 @@ CREATE VIEW IF NOT EXISTS balance_transfers_volume_trends_view AS
 SELECT
     period_start,
     asset,
-    sum(total_volume) as total_volume,
-    sum(transaction_count) as transaction_count,
+    total_volume,
+    transaction_count,
     avg(total_volume) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_volume,
     avg(transaction_count) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_tx_count,
     avg(total_volume) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as rolling_30_period_avg_volume
 FROM balance_transfers_volume_series_mv_internal
-GROUP BY period_start, asset
 ORDER BY period_start DESC, asset;
+
+-- CHUNK 10: Address-Level Time Series Views
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_address_daily_internal
+ENGINE = SummingMergeTree((
+    volume_in,
+    volume_out,
+    transaction_count_in,
+    transaction_count_out,
+    fees_paid
+))
+PARTITION BY toYYYYMM(date)
+ORDER BY (address, asset, date)
+SETTINGS index_granularity = 8192
+AS
+SELECT
+    arrayJoin([from_address, to_address]) as address,
+    asset,
+    toDate(toDateTime(intDiv(block_timestamp, 1000))) as date,
+    multiIf(address = to_address, amount, 0) as volume_in,
+    multiIf(address = from_address, amount, 0) as volume_out,
+    multiIf(address = to_address, 1, 0) as transaction_count_in,
+    multiIf(address = from_address, 1, 0) as transaction_count_out,
+    multiIf(address = from_address, fee, 0) as fees_paid
+FROM balance_transfers;
+
+CREATE VIEW IF NOT EXISTS balance_transfers_address_daily_view AS
+SELECT
+    address,
+    asset,
+    date,
+    volume_in,
+    volume_out,
+    volume_in + volume_out as total_volume,
+    volume_out - volume_in as net_volume,
+    transaction_count_in,
+    transaction_count_out,
+    transaction_count_in + transaction_count_out as total_transactions,
+    fees_paid,
+    CASE WHEN transaction_count_out > 0 THEN fees_paid / transaction_count_out ELSE 0 END as avg_fee_per_tx
+FROM balance_transfers_address_daily_internal
+ORDER BY address, asset, date DESC;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_address_weekly_internal
+ENGINE = SummingMergeTree((
+    volume_in,
+    volume_out,
+    transaction_count_in,
+    transaction_count_out,
+    fees_paid
+))
+PARTITION BY toYYYYMM(week_start)
+ORDER BY (address, asset, week_start)
+SETTINGS index_granularity = 8192
+AS
+SELECT
+    arrayJoin([from_address, to_address]) as address,
+    asset,
+    toStartOfWeek(toDateTime(intDiv(block_timestamp, 1000))) as week_start,
+    multiIf(address = to_address, amount, 0) as volume_in,
+    multiIf(address = from_address, amount, 0) as volume_out,
+    multiIf(address = to_address, 1, 0) as transaction_count_in,
+    multiIf(address = from_address, 1, 0) as transaction_count_out,
+    multiIf(address = from_address, fee, 0) as fees_paid
+FROM balance_transfers;
+
+CREATE VIEW IF NOT EXISTS balance_transfers_address_weekly_view AS
+SELECT
+    address,
+    asset,
+    week_start,
+    volume_in,
+    volume_out,
+    volume_in + volume_out as total_volume,
+    volume_out - volume_in as net_volume,
+    transaction_count_in,
+    transaction_count_out,
+    transaction_count_in + transaction_count_out as total_transactions,
+    fees_paid,
+    CASE WHEN transaction_count_out > 0 THEN fees_paid / transaction_count_out ELSE 0 END as avg_fee_per_tx
+FROM balance_transfers_address_weekly_internal
+ORDER BY address, asset, week_start DESC;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_address_monthly_internal
+ENGINE = SummingMergeTree((
+    volume_in,
+    volume_out,
+    transaction_count_in,
+    transaction_count_out,
+    fees_paid
+))
+PARTITION BY toYYYYMM(month_start)
+ORDER BY (address, asset, month_start)
+SETTINGS index_granularity = 8192
+AS
+SELECT
+    arrayJoin([from_address, to_address]) as address,
+    asset,
+    toStartOfMonth(toDateTime(intDiv(block_timestamp, 1000))) as month_start,
+    multiIf(address = to_address, amount, 0) as volume_in,
+    multiIf(address = from_address, amount, 0) as volume_out,
+    multiIf(address = to_address, 1, 0) as transaction_count_in,
+    multiIf(address = from_address, 1, 0) as transaction_count_out,
+    multiIf(address = from_address, fee, 0) as fees_paid
+FROM balance_transfers;
+
+CREATE VIEW IF NOT EXISTS balance_transfers_address_monthly_view AS
+SELECT
+    address,
+    asset,
+    month_start,
+    volume_in,
+    volume_out,
+    volume_in + volume_out as total_volume,
+    volume_out - volume_in as net_volume,
+    transaction_count_in,
+    transaction_count_out,
+    transaction_count_in + transaction_count_out as total_transactions,
+    fees_paid,
+    CASE WHEN transaction_count_out > 0 THEN fees_paid / transaction_count_out ELSE 0 END as avg_fee_per_tx
+FROM balance_transfers_address_monthly_internal
+ORDER BY address, asset, month_start DESC;
