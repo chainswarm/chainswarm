@@ -822,25 +822,24 @@ class BalanceTransferService:
         
         results = {}
         
-        # 24 hours - use daily view with last 1 day
+        # 24 hours - use daily view with last 1 day (single day, simple select)
         query_24h = f"""
                     SELECT address, asset,
-                           sum(volume_in) as volume_in,
-                           sum(volume_out) as volume_out,
-                           sum(volume_out) - sum(volume_in) as net_volume
+                           volume_in,
+                           volume_out,
+                           net_volume
                     FROM balance_transfers_address_daily_view
                     WHERE {address_filter}{asset_filter}
                     AND date >= today() - 1
-                    GROUP BY address, asset
                     ORDER BY address, asset
                     """
         
-        # 7 days - use daily view with last 7 days
+        # 7 days - sum across multiple days from daily view
         query_7d = f"""
                    SELECT address, asset,
                           sum(volume_in) as volume_in,
                           sum(volume_out) as volume_out,
-                          sum(volume_out) - sum(volume_in) as net_volume
+                          sum(net_volume) as net_volume
                    FROM balance_transfers_address_daily_view
                    WHERE {address_filter}{asset_filter}
                    AND date >= today() - 7
@@ -848,12 +847,12 @@ class BalanceTransferService:
                    ORDER BY address, asset
                    """
         
-        # 30 days - use daily view with last 30 days
+        # 30 days - sum across multiple days from daily view
         query_30d = f"""
                     SELECT address, asset,
                            sum(volume_in) as volume_in,
                            sum(volume_out) as volume_out,
-                           sum(volume_out) - sum(volume_in) as net_volume
+                           sum(net_volume) as net_volume
                     FROM balance_transfers_address_daily_view
                     WHERE {address_filter}{asset_filter}
                     AND date >= today() - 30
@@ -861,12 +860,12 @@ class BalanceTransferService:
                     ORDER BY address, asset
                     """
         
-        # 60 days - use weekly view with last ~9 weeks
+        # 60 days - sum across multiple weeks from weekly view
         query_60d = f"""
                     SELECT address, asset,
                            sum(volume_in) as volume_in,
                            sum(volume_out) as volume_out,
-                           sum(volume_out) - sum(volume_in) as net_volume
+                           sum(net_volume) as net_volume
                     FROM balance_transfers_address_weekly_view
                     WHERE {address_filter}{asset_filter}
                     AND week_start >= toStartOfWeek(today() - 60)
@@ -874,12 +873,12 @@ class BalanceTransferService:
                     ORDER BY address, asset
                     """
         
-        # 90 days - use weekly view with last ~13 weeks
+        # 90 days - sum across multiple weeks from weekly view
         query_90d = f"""
                     SELECT address, asset,
                            sum(volume_in) as volume_in,
                            sum(volume_out) as volume_out,
-                           sum(volume_out) - sum(volume_in) as net_volume
+                           sum(net_volume) as net_volume
                     FROM balance_transfers_address_weekly_view
                     WHERE {address_filter}{asset_filter}
                     AND week_start >= toStartOfWeek(today() - 90)
