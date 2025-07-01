@@ -485,14 +485,11 @@ class BaseMoneyFlowIndexer:
                 sender.last_activity_timestamp = $timestamp,
                 sender.first_activity_block_height = $block_height,
                 sender.last_activity_block_height = $block_height,
-                sender.transfer_count = 1,
-                sender.volume_out = $amount,
-                sender.volume_in = 0
+                sender.transfer_count = 1
               SET 
                 sender.last_activity_timestamp = $timestamp, 
                 sender.last_activity_block_height = $block_height,
-                sender.transfer_count = coalesce(sender.transfer_count, 0) + 1,
-                sender.volume_out = coalesce(sender.volume_out, 0) + $amount
+                sender.transfer_count = coalesce(sender.transfer_count, 0) + 1
 
             MERGE (receiver:Address { address: $to })
               ON CREATE SET
@@ -500,14 +497,11 @@ class BaseMoneyFlowIndexer:
                 receiver.last_activity_timestamp = $timestamp,
                 receiver.first_activity_block_height = $block_height,
                 receiver.last_activity_block_height = $block_height,
-                receiver.transfer_count = 1,
-                receiver.volume_in = $amount,
-                receiver.volume_out = 0
+                receiver.transfer_count = 1
               SET
                 receiver.last_activity_timestamp = $timestamp,
                 receiver.last_activity_block_height = $block_height,
-                receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1,
-                receiver.volume_in = coalesce(receiver.volume_in, 0) + $amount
+                receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1
 
             MERGE (sender)-[r:TO { id: $to_id, asset: $asset }]->(receiver)
               ON CREATE SET

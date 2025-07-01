@@ -58,8 +58,6 @@ def test_similarity_search_query(uri, username, password, network="torus"):
             print(f"Result {i+1}:")
             print(f"  Address: {result.get('address')}")
             print(f"  Similarity Score: {result.get('similarity_score')}")
-            print(f"  Volume In: {result.get('volume_in')}")
-            print(f"  Volume Out: {result.get('volume_out')}")
             print(f"  Transfer Count: {result.get('transfer_count')}")
             print()
     
