@@ -252,7 +252,7 @@ class BalanceTransferService:
                                 avg_transfer_amount,
                                 max_transfer_amount,
                                 min_transfer_amount,
-                                median_transfer_amount,
+                                -- median_transfer_amount, -- REMOVED: This column does not exist in balance_transfers_volume_series_view
                                 network_density,
                                 period_start_block,
                                 period_end_block,
@@ -283,7 +283,8 @@ class BalanceTransferService:
                 "period_start", "period_end", "asset", "transaction_count", "unique_senders",
                 "unique_receivers", "active_addresses", "total_volume", "total_fees",
                 "avg_transfer_amount", "max_transfer_amount", "min_transfer_amount",
-                "median_transfer_amount", "network_density", "period_start_block",
+                # "median_transfer_amount", -- REMOVED: This column does not exist in balance_transfers_volume_series_view
+                "network_density", "period_start_block",
                 "period_end_block", "blocks_in_period", "tx_count_lt_01", "tx_count_01_to_1",
                 "tx_count_1_to_10", "tx_count_10_to_100", "tx_count_100_to_1k",
                 "tx_count_1k_to_10k", "tx_count_gte_10k", "volume_lt_01", "volume_01_to_1",
