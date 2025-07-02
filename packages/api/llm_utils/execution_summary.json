@@ -1,0 +1,119 @@
+{
+  "execution_summary": {
+    "total_endpoints": 20,
+    "successful": 18,
+    "failed": 2,
+    "success_rate": 90.0
+  },
+  "successful_endpoints": [
+    {
+      "endpoint": "GET /substrate/{network}/money-flow/path/shortest",
+      "file": "money_flow_money_flow_path_shortest.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/money-flow/path/explore/address",
+      "file": "money_flow_money_flow_path_explore_address.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/money-flow/path/explore/transaction",
+      "file": "money_flow_money_flow_path_explore_transaction.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/money-flow/path/explore/block",
+      "file": "money_flow_money_flow_path_explore_block.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-series/address/{address}/history",
+      "file": "balance_series_balance_series_address_history_address_5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-series/address/{address}/current",
+      "file": "balance_series_balance_series_address_current_address_5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-series/address/{address}/changes",
+      "file": "balance_series_balance_series_address_changes_address_5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-series/aggregations/{period}",
+      "file": "balance_series_balance_series_aggregations_period_daily.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-series/volume-series",
+      "file": "balance_series_balance_series_volume_series.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/address/{address}",
+      "file": "balance_transfers_balance_transfers_address_address_5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/network-analytics/{period}",
+      "file": "balance_transfers_balance_transfers_network_analytics_period_daily.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/address-analytics",
+      "file": "balance_transfers_balance_transfers_address_analytics.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/volume-aggregations/{period}",
+      "file": "balance_transfers_balance_transfers_volume_aggregations_period_daily.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/volume-trends",
+      "file": "balance_transfers_balance_transfers_volume_trends.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/addresses/analytics",
+      "file": "balance_transfers_balance_transfers_addresses_analytics.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/known-addresses",
+      "file": "known_addresses_known_addresses.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /metrics",
+      "file": "metrics_get.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /health",
+      "file": "health_get.json",
+      "status": 200
+    }
+  ],
+  "failed_endpoints": [
+    {
+      "endpoint": "POST /substrate/{network}/similarity-search",
+      "file": "similarity_search_similarity_search.json",
+      "status": 422,
+      "error": "{\"detail\":[{\"type\":\"float_parsing\",\"loc\":[\"query\",\"min_similarity_score\"],\"msg\":\"Input should be a valid number, unable to parse string as a number\",\"input\":\"default_string\"}]}"
+    },
+    {
+      "endpoint": "GET /substrate/{network}/balance-transfers/volume-series",
+      "file": "balance_transfers_balance_transfers_volume_series.json",
+      "status": 500,
+      "error": "{\"detail\":\"Internal server error: HTTPDriver for http://localhost:8123 received ClickHouse error code 47\\n Code: 47. DB::Exception: Unknown expression identifier `median_transfer_amount` in scope SELE"
+    }
+  ],
+  "configuration": {
+    "base_url": "http://localhost:8000",
+    "openapi_file": "C:\\work8\\chainswarm\\packages\\api\\llm_utils\\openapi.json",
+    "output_directory": "C:\\work8\\chainswarm\\packages\\api\\llm_utils"
+  }
+}

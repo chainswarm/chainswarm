@@ -1,0 +1,41 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/known-addresses",
+    "method": "GET",
+    "path": "/substrate/{network}/known-addresses",
+    "operation_id": "get_known_addresses_substrate__network__known_addresses_get",
+    "summary": "Get known addresses",
+    "tags": [
+      "known-addresses"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "addresses": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+      "page": 1,
+      "page_size": 1
+    },
+    "path_params": {
+      "network": "torus"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 09:03:41 GMT",
+      "server": "uvicorn",
+      "content-length": "67",
+      "content-type": "application/json",
+      "x-correlation-id": "req_a7278ecc1c9a"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 0,
+      "total_items": 0
+    }
+  }
+}

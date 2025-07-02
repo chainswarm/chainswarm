@@ -44,12 +44,12 @@ async def get_address_balance_history(
         start_timestamp: Optional[int] = Query(
             None,
             description="Start timestamp in milliseconds (Unix timestamp)",
-            example=1640995200000
+            example=1742815440000
         ),
         end_timestamp: Optional[int] = Query(
             None,
             description="End timestamp in milliseconds (Unix timestamp)",
-            example=1641081600000
+            example=1842815440000
         )
 ):
     # Handle assets parameter - default to network's native asset if not provided
@@ -185,12 +185,12 @@ async def get_balance_aggregations(
         start_date: Optional[str] = Query(
             None,
             description="Start date in YYYY-MM-DD format",
-            example="2024-01-01"
+            example="2025-01-01"
         ),
         end_date: Optional[str] = Query(
             None,
             description="End date in YYYY-MM-DD format",
-            example="2024-01-31"
+            example="2026-01-31"
         )
 ):
     # Handle assets parameter - default to network's native asset if not provided
@@ -240,12 +240,12 @@ async def get_balance_volume_series(
         start_timestamp: Optional[int] = Query(
             None,
             description="Start timestamp in milliseconds (Unix timestamp)",
-            example=1640995200000
+            example=1742815440000
         ),
         end_timestamp: Optional[int] = Query(
             None,
             description="End timestamp in milliseconds (Unix timestamp)",
-            example=1641081600000
+            example=1842815440000
         )
 ):
     # Handle assets parameter - default to network's native asset if not provided

@@ -1,0 +1,56 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-series/volume-series",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-series/volume-series",
+    "operation_id": "get_balance_volume_series_substrate__network__balance_series_volume_series_get",
+    "summary": "Get Balance Volume Series",
+    "tags": [
+      "balance-series"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_timestamp": 1742815440000,
+      "end_timestamp": 1842815440000
+    },
+    "path_params": {
+      "network": "torus"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 09:03:37 GMT",
+      "server": "uvicorn",
+      "content-length": "367",
+      "content-type": "application/json",
+      "x-correlation-id": "req_294a63ebff9c"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [
+        {
+          "period_start_timestamp": 1751385600000,
+          "period_end_timestamp": 1751400000000,
+          "asset": "TOR",
+          "active_addresses_count": 336,
+          "total_balance_changes": 2026.6362447707397,
+          "total_free_balance_changes": 506.6966083337432,
+          "total_reserved_balance_changes": 0.0,
+          "total_staked_balance_changes": 1519.939636436997
+        }
+      ],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 597,
+      "total_items": 597
+    }
+  }
+}

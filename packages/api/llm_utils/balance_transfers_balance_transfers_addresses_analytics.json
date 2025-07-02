@@ -1,0 +1,108 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-transfers/addresses/analytics",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-transfers/addresses/analytics",
+    "operation_id": "get_addresses_analytics_substrate__network__balance_transfers_addresses_analytics_get",
+    "summary": "Get Analytics for Multiple Addresses",
+    "tags": [
+      "balance-transfers"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "addresses": [
+        "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+        "5FZdduraHpWTVFBehbH4yqsfi7LabXFQkmqc2vKqbQTaspwM"
+      ],
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "return_all": false
+    },
+    "path_params": {
+      "network": "torus"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 09:03:41 GMT",
+      "server": "uvicorn",
+      "content-length": "1194",
+      "content-type": "application/json",
+      "x-correlation-id": "req_a29dfa9574cf"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [
+        {
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "total_transactions": 15,
+          "outgoing_count": 12,
+          "incoming_count": 3,
+          "total_sent": 45999.1,
+          "total_received": 45999.3,
+          "total_volume": 91998.4,
+          "unique_recipients": 6,
+          "unique_senders": 2,
+          "first_activity": 1736185704000,
+          "last_activity": 1742821424000,
+          "activity_span_seconds": 6635720000,
+          "total_fees_paid": 0.004234699131813,
+          "avg_fee_paid": 0.00035289159431775,
+          "night_transactions": 1,
+          "morning_transactions": 1,
+          "afternoon_transactions": 6,
+          "evening_transactions": 4,
+          "tx_count_lt_01": 0,
+          "tx_count_01_to_1": 1,
+          "tx_count_1_to_10": 2,
+          "tx_count_10_to_100": 0,
+          "tx_count_100_to_1k": 2,
+          "tx_count_1k_to_10k": 6,
+          "tx_count_gte_10k": 1,
+          "sent_amount_variance": 35358913.13409722,
+          "received_amount_variance": 150206578.62,
+          "active_days": 7,
+          "address_type": "Regular User",
+          "volume_metrics": {
+            "last_24h": {
+              "volume_in": "0",
+              "volume_out": "0",
+              "net_volume": "0"
+            },
+            "last_7d": {
+              "volume_in": "0",
+              "volume_out": "0",
+              "net_volume": "0"
+            },
+            "last_30d": {
+              "volume_in": "0",
+              "volume_out": "0",
+              "net_volume": "0"
+            },
+            "last_60d": {
+              "volume_in": "0",
+              "volume_out": "0",
+              "net_volume": "0"
+            },
+            "last_90d": {
+              "volume_in": "0",
+              "volume_out": "0",
+              "net_volume": "0"
+            }
+          }
+        }
+      ],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 2,
+      "total_items": 2
+    }
+  }
+}

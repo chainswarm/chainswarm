@@ -1,0 +1,45 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-transfers/volume-trends",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-transfers/volume-trends",
+    "operation_id": "get_volume_trends_substrate__network__balance_transfers_volume_trends_get",
+    "summary": "Get Volume Trends",
+    "tags": [
+      "balance-transfers"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_timestamp": 1640995200000,
+      "end_timestamp": 1641081600000
+    },
+    "path_params": {
+      "network": "torus"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 09:03:41 GMT",
+      "server": "uvicorn",
+      "content-length": "67",
+      "content-type": "application/json",
+      "x-correlation-id": "req_78757bb44842"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 0,
+      "total_items": 0
+    }
+  }
+}

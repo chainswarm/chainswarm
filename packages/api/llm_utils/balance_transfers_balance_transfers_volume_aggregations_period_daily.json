@@ -1,0 +1,46 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-transfers/volume-aggregations/daily",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-transfers/volume-aggregations/{period}",
+    "operation_id": "get_volume_aggregations_substrate__network__balance_transfers_volume_aggregations__period__get",
+    "summary": "Get Volume Aggregations",
+    "tags": [
+      "balance-transfers"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_date": "2024-01-01",
+      "end_date": "2024-01-31"
+    },
+    "path_params": {
+      "network": "torus",
+      "period": "daily"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 09:03:41 GMT",
+      "server": "uvicorn",
+      "content-length": "67",
+      "content-type": "application/json",
+      "x-correlation-id": "req_4d1803522f22"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 0,
+      "total_items": 0
+    }
+  }
+}
