@@ -388,12 +388,12 @@ async def get_volume_trends(
         start_timestamp: Optional[int] = Query(
             None,
             description="Start timestamp in milliseconds (Unix timestamp)",
-            example=1640995200000
+            example=1740995200000
         ),
         end_timestamp: Optional[int] = Query(
             None,
             description="End timestamp in milliseconds (Unix timestamp)",
-            example=1641081600000
+            example=1840995200000
         )
 ):
     # Handle assets parameter - default to network's native asset if not provided
