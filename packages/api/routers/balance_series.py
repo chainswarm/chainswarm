@@ -59,7 +59,7 @@ async def get_address_balance_history(
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
         result = balance_service.get_address_balance_series(
-            address, page, page_size, assets, start_timestamp, end_timestamp
+            address, page, page_size, assets, start_timestamp, end_timestamp, network
         )
         balance_service.close()
         return result
@@ -98,7 +98,7 @@ async def get_address_current_balance(
 
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
-        result = balance_service.get_current_balances([address], assets)
+        result = balance_service.get_current_balances([address], assets, network)
         balance_service.close()
         return result
     except Exception as e:
@@ -145,7 +145,7 @@ async def get_address_balance_changes(
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
         result = balance_service.get_balance_changes(
-            address, page, page_size, assets, min_change_threshold
+            address, page, page_size, assets, min_change_threshold, network
         )
         balance_service.close()
         return result
@@ -204,7 +204,7 @@ async def get_balance_aggregations(
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
         result = balance_service.get_balance_aggregations(
-            period, addresses, assets, start_date, end_date
+            period, addresses, assets, start_date, end_date, network
         )
         balance_service.close()
         return result
@@ -255,7 +255,7 @@ async def get_balance_volume_series(
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
         result = balance_service.get_balance_volume_series(
-            page, page_size, assets, start_timestamp, end_timestamp
+            page, page_size, assets, start_timestamp, end_timestamp, network
         )
         balance_service.close()
         return result

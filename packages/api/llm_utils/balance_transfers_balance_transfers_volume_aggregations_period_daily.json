@@ -1,0 +1,79 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-transfers/volume-aggregations/daily",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-transfers/volume-aggregations/{period}",
+    "operation_id": "get_volume_aggregations_substrate__network__balance_transfers_volume_aggregations__period__get",
+    "summary": "Get Volume Aggregations",
+    "tags": [
+      "balance-transfers"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_date": "2025-01-01",
+      "end_date": "2026-01-31"
+    },
+    "path_params": {
+      "network": "torus",
+      "period": "daily"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "server": "uvicorn",
+      "content-length": "1055",
+      "content-type": "application/json",
+      "x-correlation-id": "req_ad2c5acb4301"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [
+        {
+          "date": "2025-07-01",
+          "asset": "TOR",
+          "daily_transaction_count": 21,
+          "max_unique_senders": 7,
+          "max_unique_receivers": 7,
+          "daily_total_volume": 6037.918734184138,
+          "daily_total_fees": 0.0053127818174826,
+          "daily_avg_transfer_amount": 287.51993972305416,
+          "daily_max_transfer_amount": 1650.0,
+          "daily_min_transfer_amount": 0.6681954082613875,
+          "max_daily_active_addresses": 14,
+          "avg_daily_network_density": 0.07692307692307693,
+          "avg_daily_amount_std_dev": 565.354909861442,
+          "avg_daily_median_amount": 0.6681954082613873,
+          "daily_tx_count_lt_01": 0,
+          "daily_tx_count_01_to_1": 12,
+          "daily_tx_count_1_to_10": 0,
+          "daily_tx_count_10_to_100": 3,
+          "daily_tx_count_100_to_1k": 3,
+          "daily_tx_count_1k_to_10k": 3,
+          "daily_tx_count_gte_10k": 0,
+          "daily_volume_lt_01": 0.0,
+          "daily_volume_01_to_1": 8.018344899136649,
+          "daily_volume_1_to_10": 0.0,
+          "daily_volume_10_to_100": 179.9668297616672,
+          "daily_volume_100_to_1k": 899.9668297616671,
+          "daily_volume_1k_to_10k": 4949.966729761667,
+          "daily_volume_gte_10k": 0.0,
+          "daily_start_block": 1922836,
+          "daily_end_block": 1923120
+        }
+      ],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 154,
+      "total_items": 154
+    }
+  }
+}

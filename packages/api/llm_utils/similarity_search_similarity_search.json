@@ -1,0 +1,50 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/similarity-search",
+    "method": "POST",
+    "path": "/substrate/{network}/similarity-search",
+    "operation_id": "find_similar_addresses_substrate__network__similarity_search_post",
+    "summary": "Find addresses with similar patterns using vector similarity search",
+    "tags": [
+      "similarity-search"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "embedding_type": "network",
+      "query_type": "by_address",
+      "reference_address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+      "limit": 10,
+      "similarity_metric": "cosine",
+      "min_similarity_score": "default_string"
+    },
+    "path_params": {
+      "network": "torus"
+    },
+    "body": {}
+  },
+  "response": {
+    "status_code": 422,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 19:48:30 GMT",
+      "server": "uvicorn",
+      "content-length": "176",
+      "content-type": "application/json",
+      "x-correlation-id": "req_ac8f0984450b"
+    },
+    "content_type": "application/json",
+    "data": {
+      "detail": [
+        {
+          "type": "float_parsing",
+          "loc": [
+            "query",
+            "min_similarity_score"
+          ],
+          "msg": "Input should be a valid number, unable to parse string as a number",
+          "input": "default_string"
+        }
+      ]
+    }
+  }
+}

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS balance_series (
 
     -- Address and balance information
     address String,
-    asset String,
+    asset String, -- TODO: Consider renaming to asset_symbol for clarity
+    asset_contract String DEFAULT 'native',
     free_balance Decimal128(18),
     reserved_balance Decimal128(18),
     staked_balance Decimal128(18),
@@ -109,75 +110,99 @@ GROUP BY month_start, address, asset;
 -- View for latest balance for each address and asset
 CREATE VIEW IF NOT EXISTS balance_series_latest_view AS
 SELECT
-    address,
-    asset,
-    argMax(period_start_timestamp, period_start_timestamp) as latest_period_start,
-    argMax(period_end_timestamp, period_start_timestamp) as latest_period_end,
-    argMax(block_height, period_start_timestamp) as latest_block_height,
-    argMax(free_balance, period_start_timestamp) as free_balance,
-    argMax(reserved_balance, period_start_timestamp) as reserved_balance,
-    argMax(staked_balance, period_start_timestamp) as staked_balance,
-    argMax(total_balance, period_start_timestamp) as total_balance
-FROM balance_series
-GROUP BY address, asset;
+    bs.address,
+    bs.asset,
+    bs.asset_contract,
+    a.asset_verified,
+    a.asset_name,
+    argMax(bs.period_start_timestamp, bs.period_start_timestamp) as latest_period_start,
+    argMax(bs.period_end_timestamp, bs.period_start_timestamp) as latest_period_end,
+    argMax(bs.block_height, bs.period_start_timestamp) as latest_block_height,
+    argMax(bs.free_balance, bs.period_start_timestamp) as free_balance,
+    argMax(bs.reserved_balance, bs.period_start_timestamp) as reserved_balance,
+    argMax(bs.staked_balance, bs.period_start_timestamp) as staked_balance,
+    argMax(bs.total_balance, bs.period_start_timestamp) as total_balance
+FROM balance_series bs
+LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
+GROUP BY bs.address, bs.asset, bs.asset_contract, a.asset_verified, a.asset_name;
 
 -- View for daily aggregation (computed on-the-fly for accuracy)
 CREATE VIEW IF NOT EXISTS balance_series_daily_view AS
 SELECT
-    toDate(fromUnixTimestamp64Milli(period_start_timestamp)) as date,
-    address,
-    asset,
+    toDate(fromUnixTimestamp64Milli(bs.period_start_timestamp)) as date,
+    bs.address,
+    bs.asset,
+    bs.asset_contract,
+    a.asset_verified,
+    a.asset_name,
     -- Take the last period of each day
-    argMax(free_balance, period_start_timestamp) as end_of_day_free_balance,
-    argMax(reserved_balance, period_start_timestamp) as end_of_day_reserved_balance,
-    argMax(staked_balance, period_start_timestamp) as end_of_day_staked_balance,
-    argMax(total_balance, period_start_timestamp) as end_of_day_total_balance,
+    argMax(bs.free_balance, bs.period_start_timestamp) as end_of_day_free_balance,
+    argMax(bs.reserved_balance, bs.period_start_timestamp) as end_of_day_reserved_balance,
+    argMax(bs.staked_balance, bs.period_start_timestamp) as end_of_day_staked_balance,
+    argMax(bs.total_balance, bs.period_start_timestamp) as end_of_day_total_balance,
     -- Calculate daily change
-    sum(free_balance_change) as daily_free_balance_change,
-    sum(reserved_balance_change) as daily_reserved_balance_change,
-    sum(staked_balance_change) as daily_staked_balance_change,
-    sum(total_balance_change) as daily_total_balance_change
-FROM balance_series
-GROUP BY date, address, asset
-ORDER BY date DESC, asset, address;
+    sum(bs.free_balance_change) as daily_free_balance_change,
+    sum(bs.reserved_balance_change) as daily_reserved_balance_change,
+    sum(bs.staked_balance_change) as daily_staked_balance_change,
+    sum(bs.total_balance_change) as daily_total_balance_change
+FROM balance_series bs
+LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
+GROUP BY date, bs.address, bs.asset, bs.asset_contract, a.asset_verified, a.asset_name
+ORDER BY date DESC, bs.asset, bs.address;
 
 -- Public view for weekly balance statistics (wraps internal materialized view)
 CREATE VIEW IF NOT EXISTS balance_series_weekly_view AS
 SELECT
-    week_start,
-    address,
-    asset,
-    argMax(latest_free_balance, week_start) as end_of_week_free_balance,
-    argMax(latest_reserved_balance, week_start) as end_of_week_reserved_balance,
-    argMax(latest_staked_balance, week_start) as end_of_week_staked_balance,
-    argMax(latest_total_balance, week_start) as end_of_week_total_balance,
-    sum(weekly_free_balance_change) as weekly_free_balance_change,
-    sum(weekly_reserved_balance_change) as weekly_reserved_balance_change,
-    sum(weekly_staked_balance_change) as weekly_staked_balance_change,
-    sum(weekly_total_balance_change) as weekly_total_balance_change,
-    argMax(last_block_of_week, week_start) as last_block_of_week
-FROM balance_series_weekly_mv_internal
-GROUP BY week_start, address, asset
-ORDER BY week_start DESC, asset, address;
+    mv.week_start,
+    mv.address,
+    mv.asset,
+    bs.asset_contract,
+    a.asset_verified,
+    a.asset_name,
+    argMax(mv.latest_free_balance, mv.week_start) as end_of_week_free_balance,
+    argMax(mv.latest_reserved_balance, mv.week_start) as end_of_week_reserved_balance,
+    argMax(mv.latest_staked_balance, mv.week_start) as end_of_week_staked_balance,
+    argMax(mv.latest_total_balance, mv.week_start) as end_of_week_total_balance,
+    sum(mv.weekly_free_balance_change) as weekly_free_balance_change,
+    sum(mv.weekly_reserved_balance_change) as weekly_reserved_balance_change,
+    sum(mv.weekly_staked_balance_change) as weekly_staked_balance_change,
+    sum(mv.weekly_total_balance_change) as weekly_total_balance_change,
+    argMax(mv.last_block_of_week, mv.week_start) as last_block_of_week
+FROM balance_series_weekly_mv_internal mv
+LEFT JOIN (
+    SELECT DISTINCT asset, asset_contract
+    FROM balance_series
+) bs ON mv.asset = bs.asset
+LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
+GROUP BY mv.week_start, mv.address, mv.asset, bs.asset_contract, a.asset_verified, a.asset_name
+ORDER BY mv.week_start DESC, mv.asset, mv.address;
 
 -- Public view for monthly balance statistics (wraps internal materialized view)
 CREATE VIEW IF NOT EXISTS balance_series_monthly_view AS
 SELECT
-    month_start,
-    address,
-    asset,
-    argMax(latest_free_balance, month_start) as end_of_month_free_balance,
-    argMax(latest_reserved_balance, month_start) as end_of_month_reserved_balance,
-    argMax(latest_staked_balance, month_start) as end_of_month_staked_balance,
-    argMax(latest_total_balance, month_start) as end_of_month_total_balance,
-    sum(monthly_free_balance_change) as monthly_free_balance_change,
-    sum(monthly_reserved_balance_change) as monthly_reserved_balance_change,
-    sum(monthly_staked_balance_change) as monthly_staked_balance_change,
-    sum(monthly_total_balance_change) as monthly_total_balance_change,
-    argMax(last_block_of_month, month_start) as last_block_of_month
-FROM balance_series_monthly_mv_internal
-GROUP BY month_start, address, asset
-ORDER BY month_start DESC, asset, address;
+    mv.month_start,
+    mv.address,
+    mv.asset,
+    bs.asset_contract,
+    a.asset_verified,
+    a.asset_name,
+    argMax(mv.latest_free_balance, mv.month_start) as end_of_month_free_balance,
+    argMax(mv.latest_reserved_balance, mv.month_start) as end_of_month_reserved_balance,
+    argMax(mv.latest_staked_balance, mv.month_start) as end_of_month_staked_balance,
+    argMax(mv.latest_total_balance, mv.month_start) as end_of_month_total_balance,
+    sum(mv.monthly_free_balance_change) as monthly_free_balance_change,
+    sum(mv.monthly_reserved_balance_change) as monthly_reserved_balance_change,
+    sum(mv.monthly_staked_balance_change) as monthly_staked_balance_change,
+    sum(mv.monthly_total_balance_change) as monthly_total_balance_change,
+    argMax(mv.last_block_of_month, mv.month_start) as last_block_of_month
+FROM balance_series_monthly_mv_internal mv
+LEFT JOIN (
+    SELECT DISTINCT asset, asset_contract
+    FROM balance_series
+) bs ON mv.asset = bs.asset
+LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
+GROUP BY mv.month_start, mv.address, mv.asset, bs.asset_contract, a.asset_verified, a.asset_name
+ORDER BY mv.month_start DESC, mv.asset, mv.address;
 
 -- =============================================================================
 -- INDEXES FOR EFFICIENT QUERYING

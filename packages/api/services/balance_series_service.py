@@ -78,8 +78,9 @@ class BalanceSeriesService:
         if hasattr(self, 'client'):
             self.client.close()
 
-    def get_address_balance_series(self, address: str, page: int, page_size: int, assets: List[str] = None, 
-                                 start_timestamp: Optional[int] = None, end_timestamp: Optional[int] = None):
+    def get_address_balance_series(self, address: str, page: int, page_size: int, assets: List[str] = None,
+                                 start_timestamp: Optional[int] = None, end_timestamp: Optional[int] = None,
+                                 network: str = None):
         """
         Returns historical balance snapshots for a specific address with pagination
 
@@ -113,12 +114,20 @@ class BalanceSeriesService:
                       WHERE address = {{address:String}}{asset_filter}{timestamp_filter}
                       """
         
+        # Build JOIN clause for assets table if network is provided
+        join_clause = ""
+        if network:
+            join_clause = f" LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'"
+        
         data_query = f"""
                      SELECT bs.period_start_timestamp,
                             bs.period_end_timestamp,
                             bs.block_height,
                             bs.address,
                             bs.asset,
+                            bs.asset_contract,
+                            COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                            COALESCE(a.asset_name, bs.asset) as asset_name,
                             bs.free_balance,
                             bs.reserved_balance,
                             bs.staked_balance,
@@ -129,6 +138,7 @@ class BalanceSeriesService:
                             bs.total_balance_change,
                             bs.total_balance_percent_change
                      FROM (SELECT * FROM balance_series FINAL) AS bs
+                     {join_clause}
                      WHERE bs.address = {{address:String}}{asset_filter}{timestamp_filter}
                      ORDER BY bs.period_start_timestamp DESC
                      LIMIT {{limit:Int}} OFFSET {{offset:Int}}
@@ -148,10 +158,13 @@ class BalanceSeriesService:
         # Define the column names in the order they appear in the SELECT clause
         columns = [
             "period_start_timestamp",
-            "period_end_timestamp", 
+            "period_end_timestamp",
             "block_height",
             "address",
             "asset",
+            "asset_contract",
+            "asset_verified",
+            "asset_name",
             "free_balance",
             "reserved_balance",
             "staked_balance",
@@ -174,7 +187,7 @@ class BalanceSeriesService:
             total_items=total_count
         )
 
-    def get_current_balances(self, addresses: List[str], assets: List[str] = None):
+    def get_current_balances(self, addresses: List[str], assets: List[str] = None, network: str = None):
         """
         Returns latest balance for addresses using balance_series_latest_view
 
@@ -195,9 +208,17 @@ class BalanceSeriesService:
         address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
         address_filter = f"({address_conditions})"
 
+        # Build JOIN clause for assets table if network is provided
+        join_clause = ""
+        if network:
+            join_clause = f" LEFT JOIN assets a ON bslv.asset_contract = a.asset_contract AND a.network = '{network}'"
+
         query = f"""
                 SELECT bslv.address,
                        bslv.asset,
+                       bslv.asset_contract,
+                       COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                       COALESCE(a.asset_name, bslv.asset) as asset_name,
                        bslv.latest_period_start,
                        bslv.latest_period_end,
                        bslv.latest_block_height,
@@ -206,6 +227,7 @@ class BalanceSeriesService:
                        bslv.staked_balance,
                        bslv.total_balance
                 FROM balance_series_latest_view bslv
+                {join_clause}
                 WHERE {address_filter}{asset_filter}
                 ORDER BY bslv.address, bslv.asset
                 """
@@ -217,6 +239,9 @@ class BalanceSeriesService:
         columns = [
             "address",
             "asset",
+            "asset_contract",
+            "asset_verified",
+            "asset_name",
             "latest_period_start",
             "latest_period_end",
             "latest_block_height",
@@ -234,8 +259,8 @@ class BalanceSeriesService:
             "total_items": len(current_balances)
         }
 
-    def get_balance_changes(self, address: str, page: int, page_size: int, assets: List[str] = None, 
-                          min_change_threshold: Optional[float] = None):
+    def get_balance_changes(self, address: str, page: int, page_size: int, assets: List[str] = None,
+                          min_change_threshold: Optional[float] = None, network: str = None):
         """
         Returns balance changes analysis for a specific address
 
@@ -267,12 +292,20 @@ class BalanceSeriesService:
                         AND total_balance_change != 0{asset_filter}{threshold_filter}
                       """
         
+        # Build JOIN clause for assets table if network is provided
+        join_clause = ""
+        if network:
+            join_clause = f" LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'"
+        
         data_query = f"""
                      SELECT bs.period_start_timestamp,
                             bs.period_end_timestamp,
                             bs.block_height,
                             bs.address,
                             bs.asset,
+                            bs.asset_contract,
+                            COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                            COALESCE(a.asset_name, bs.asset) as asset_name,
                             bs.total_balance,
                             bs.free_balance_change,
                             bs.reserved_balance_change,
@@ -280,7 +313,8 @@ class BalanceSeriesService:
                             bs.total_balance_change,
                             bs.total_balance_percent_change
                      FROM (SELECT * FROM balance_series FINAL) AS bs
-                     WHERE bs.address = {{address:String}} 
+                     {join_clause}
+                     WHERE bs.address = {{address:String}}
                        AND bs.total_balance_change != 0{asset_filter}{threshold_filter}
                      ORDER BY abs(bs.total_balance_change) DESC, bs.period_start_timestamp DESC
                      LIMIT {{limit:Int}} OFFSET {{offset:Int}}
@@ -304,6 +338,9 @@ class BalanceSeriesService:
             "block_height",
             "address",
             "asset",
+            "asset_contract",
+            "asset_verified",
+            "asset_name",
             "total_balance",
             "free_balance_change",
             "reserved_balance_change",
@@ -323,8 +360,9 @@ class BalanceSeriesService:
             total_items=total_count
         )
 
-    def get_balance_aggregations(self, period: str, addresses: List[str] = None, assets: List[str] = None, 
-                               start_date: Optional[str] = None, end_date: Optional[str] = None):
+    def get_balance_aggregations(self, period: str, addresses: List[str] = None, assets: List[str] = None,
+                               start_date: Optional[str] = None, end_date: Optional[str] = None,
+                               network: str = None):
         """
         Returns daily/weekly/monthly balance aggregations
 
@@ -370,51 +408,64 @@ class BalanceSeriesService:
 
         where_clause = " WHERE " + " AND ".join(filters) if filters else ""
 
+        # Build JOIN clause for assets table if network is provided
+        join_clause = ""
+        if network:
+            join_clause = f" LEFT JOIN assets a ON {table}.asset_contract = a.asset_contract AND a.network = '{network}'"
+
         # Build the query based on period
         if period == "daily":
             query = f"""
-                    SELECT date,
-                           address,
-                           asset,
-                           end_of_day_free_balance,
-                           end_of_day_reserved_balance,
-                           end_of_day_staked_balance,
-                           end_of_day_total_balance,
-                           daily_free_balance_change,
-                           daily_reserved_balance_change,
-                           daily_staked_balance_change,
-                           daily_total_balance_change
+                    SELECT {table}.date,
+                           {table}.address,
+                           {table}.asset,
+                           {table}.asset_contract,
+                           COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                           COALESCE(a.asset_name, {table}.asset) as asset_name,
+                           {table}.end_of_day_free_balance,
+                           {table}.end_of_day_reserved_balance,
+                           {table}.end_of_day_staked_balance,
+                           {table}.end_of_day_total_balance,
+                           {table}.daily_free_balance_change,
+                           {table}.daily_reserved_balance_change,
+                           {table}.daily_staked_balance_change,
+                           {table}.daily_total_balance_change
                     FROM {table}
+                    {join_clause}
                     {where_clause}
-                    ORDER BY date DESC, address, asset
+                    ORDER BY {table}.date DESC, {table}.address, {table}.asset
                     """
             columns = [
-                "date", "address", "asset",
-                "end_of_day_free_balance", "end_of_day_reserved_balance", 
+                "date", "address", "asset", "asset_contract", "asset_verified", "asset_name",
+                "end_of_day_free_balance", "end_of_day_reserved_balance",
                 "end_of_day_staked_balance", "end_of_day_total_balance",
                 "daily_free_balance_change", "daily_reserved_balance_change",
                 "daily_staked_balance_change", "daily_total_balance_change"
             ]
         elif period == "weekly":
             query = f"""
-                    SELECT week_start,
-                           address,
-                           asset,
-                           end_of_week_free_balance,
-                           end_of_week_reserved_balance,
-                           end_of_week_staked_balance,
-                           end_of_week_total_balance,
-                           weekly_free_balance_change,
-                           weekly_reserved_balance_change,
-                           weekly_staked_balance_change,
-                           weekly_total_balance_change,
-                           last_block_of_week
+                    SELECT {table}.week_start,
+                           {table}.address,
+                           {table}.asset,
+                           {table}.asset_contract,
+                           COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                           COALESCE(a.asset_name, {table}.asset) as asset_name,
+                           {table}.end_of_week_free_balance,
+                           {table}.end_of_week_reserved_balance,
+                           {table}.end_of_week_staked_balance,
+                           {table}.end_of_week_total_balance,
+                           {table}.weekly_free_balance_change,
+                           {table}.weekly_reserved_balance_change,
+                           {table}.weekly_staked_balance_change,
+                           {table}.weekly_total_balance_change,
+                           {table}.last_block_of_week
                     FROM {table}
+                    {join_clause}
                     {where_clause}
-                    ORDER BY week_start DESC, address, asset
+                    ORDER BY {table}.week_start DESC, {table}.address, {table}.asset
                     """
             columns = [
-                "week_start", "address", "asset",
+                "week_start", "address", "asset", "asset_contract", "asset_verified", "asset_name",
                 "end_of_week_free_balance", "end_of_week_reserved_balance",
                 "end_of_week_staked_balance", "end_of_week_total_balance",
                 "weekly_free_balance_change", "weekly_reserved_balance_change",
@@ -423,24 +474,28 @@ class BalanceSeriesService:
             ]
         else:  # monthly
             query = f"""
-                    SELECT month_start,
-                           address,
-                           asset,
-                           end_of_month_free_balance,
-                           end_of_month_reserved_balance,
-                           end_of_month_staked_balance,
-                           end_of_month_total_balance,
-                           monthly_free_balance_change,
-                           monthly_reserved_balance_change,
-                           monthly_staked_balance_change,
-                           monthly_total_balance_change,
-                           last_block_of_month
+                    SELECT {table}.month_start,
+                           {table}.address,
+                           {table}.asset,
+                           {table}.asset_contract,
+                           COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                           COALESCE(a.asset_name, {table}.asset) as asset_name,
+                           {table}.end_of_month_free_balance,
+                           {table}.end_of_month_reserved_balance,
+                           {table}.end_of_month_staked_balance,
+                           {table}.end_of_month_total_balance,
+                           {table}.monthly_free_balance_change,
+                           {table}.monthly_reserved_balance_change,
+                           {table}.monthly_staked_balance_change,
+                           {table}.monthly_total_balance_change,
+                           {table}.last_block_of_month
                     FROM {table}
+                    {join_clause}
                     {where_clause}
-                    ORDER BY month_start DESC, address, asset
+                    ORDER BY {table}.month_start DESC, {table}.address, {table}.asset
                     """
             columns = [
-                "month_start", "address", "asset",
+                "month_start", "address", "asset", "asset_contract", "asset_verified", "asset_name",
                 "end_of_month_free_balance", "end_of_month_reserved_balance",
                 "end_of_month_staked_balance", "end_of_month_total_balance",
                 "monthly_free_balance_change", "monthly_reserved_balance_change",

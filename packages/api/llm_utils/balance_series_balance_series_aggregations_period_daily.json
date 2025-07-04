@@ -1,0 +1,137 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-series/aggregations/daily",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-series/aggregations/{period}",
+    "operation_id": "get_balance_aggregations_substrate__network__balance_series_aggregations__period__get",
+    "summary": "Get Balance Aggregations",
+    "tags": [
+      "balance-series"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "addresses": [
+        "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f"
+      ],
+      "assets": [
+        "TOR"
+      ],
+      "start_date": "2025-01-01",
+      "end_date": "2026-01-31"
+    },
+    "path_params": {
+      "network": "torus",
+      "period": "daily"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "server": "uvicorn",
+      "content-length": "2965",
+      "content-type": "application/json",
+      "x-correlation-id": "req_085d89006dc2"
+    },
+    "content_type": "application/json",
+    "data": {
+      "period": "daily",
+      "items": [
+        {
+          "date": "2025-03-24",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 0.195765300868187,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 0.195765300868187,
+          "daily_free_balance_change": -1.0003527915875,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": -1.0003527915875
+        },
+        {
+          "date": "2025-01-11",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 1.196118092455687,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 1.196118092455687,
+          "daily_free_balance_change": -7942.000352991601,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": -7942.000352991601
+        },
+        {
+          "date": "2025-01-10",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 7943.196471084057,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 7943.196471084057,
+          "daily_free_balance_change": -4000.0007057831886,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": -4000.0007057831886
+        },
+        {
+          "date": "2025-01-09",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 11943.197176867245,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 11943.197176867245,
+          "daily_free_balance_change": -22000.000352991603,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": -22000.000352991603
+        },
+        {
+          "date": "2025-01-08",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 33943.197529858844,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 33943.197529858844,
+          "daily_free_balance_change": 29499.39929431682,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": 29499.39929431682
+        },
+        {
+          "date": "2025-01-07",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 4443.798235542028,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 4443.798235542028,
+          "daily_free_balance_change": -5556.001058674783,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": -5556.001058674783
+        },
+        {
+          "date": "2025-01-06",
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "end_of_day_free_balance": 9999.799294216811,
+          "end_of_day_reserved_balance": 0.0,
+          "end_of_day_staked_balance": 0.0,
+          "end_of_day_total_balance": 9999.799294216811,
+          "daily_free_balance_change": -6000.000705783189,
+          "daily_reserved_balance_change": 0.0,
+          "daily_staked_balance_change": 0.0,
+          "daily_total_balance_change": -6000.000705783189
+        }
+      ],
+      "total_items": 7
+    }
+  }
+}

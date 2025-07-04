@@ -360,6 +360,7 @@ WITH outgoing_metrics AS (
     SELECT
         from_address as address,
         asset,
+        asset_contract,
         count() as outgoing_count,
         sum(amount) as total_sent,
         sum(fee) as total_fees_paid,
@@ -380,22 +381,26 @@ WITH outgoing_metrics AS (
         countIf(amount >= 10000) as tx_count_gte_10k,
         varPop(amount) as sent_amount_variance
     FROM balance_transfers
-    GROUP BY from_address, asset
+    GROUP BY from_address, asset, asset_contract
 ),
 incoming_metrics AS (
     SELECT
         to_address as address,
         asset,
+        asset_contract,
         count() as incoming_count,
         sum(amount) as total_received,
         uniq(from_address) as unique_senders,
         varPop(amount) as received_amount_variance
     FROM balance_transfers
-    GROUP BY to_address, asset
+    GROUP BY to_address, asset, asset_contract
 )
 SELECT
     COALESCE(out.address, inc.address) as address,
     COALESCE(out.asset, inc.asset) as asset,
+    COALESCE(out.asset_contract, inc.asset_contract) as asset_contract,
+    a.asset_verified,
+    a.asset_name,
     COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) as total_transactions,
     COALESCE(out.outgoing_count, 0) as outgoing_count,
     COALESCE(inc.incoming_count, 0) as incoming_count,
@@ -434,7 +439,8 @@ SELECT
         ELSE 'Regular User'
     END as address_type
 FROM outgoing_metrics out
-FULL OUTER JOIN incoming_metrics inc ON out.address = inc.address AND out.asset = inc.asset
+FULL OUTER JOIN incoming_metrics inc ON out.address = inc.address AND out.asset = inc.asset AND out.asset_contract = inc.asset_contract
+LEFT JOIN assets a ON COALESCE(out.asset_contract, inc.asset_contract) = a.asset_contract AND a.network = '{network}'
 WHERE COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) > 0;
 
 -- CHUNK 9: Volume Trends View

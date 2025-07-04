@@ -83,7 +83,7 @@ class BalanceTransferService:
         if hasattr(self, 'client'):
             self.client.close()
 
-    def get_address_transactions(self, address, target_address: Optional[str], page, page_size, assets: List[str] = None):
+    def get_address_transactions(self, address, target_address: Optional[str], page, page_size, assets: List[str] = None, network: str = None):
         """
         Returns transaction history for a specific address with pagination
 
@@ -102,6 +102,11 @@ class BalanceTransferService:
             asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
             asset_filter = f" AND ({asset_conditions})"
         
+        # Build JOIN clause for assets table if network is provided
+        join_clause = ""
+        if network:
+            join_clause = f" LEFT JOIN assets a ON bt.asset_contract = a.asset_contract AND a.network = '{network}'"
+        
         if target_address:
             count_query = f"""
                           SELECT COUNT(*) AS total
@@ -117,8 +122,12 @@ class BalanceTransferService:
                                 bt.amount,
                                 bt.fee,
                                 bt.block_timestamp,
-                                bt.asset
+                                bt.asset,
+                                bt.asset_contract,
+                                COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                                COALESCE(a.asset_name, bt.asset) as asset_name
                          FROM (SELECT * FROM balance_transfers FINAL) AS bt
+                         {join_clause}
                          WHERE bt.from_address = {{address:String}} AND bt.to_address = {{target_address:String}}{asset_filter}
                          ORDER BY bt.block_height DESC
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
@@ -141,8 +150,12 @@ class BalanceTransferService:
                                 bt.amount,
                                 bt.fee,
                                 bt.block_timestamp,
-                                bt.asset
+                                bt.asset,
+                                bt.asset_contract,
+                                COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                                COALESCE(a.asset_name, bt.asset) as asset_name
                          FROM (SELECT * FROM balance_transfers FINAL) AS bt
+                         {join_clause}
                          WHERE (bt.from_address = {{address:String}} OR bt.to_address = {{address:String}}){asset_filter}
                          ORDER BY bt.block_height DESC
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
@@ -168,7 +181,10 @@ class BalanceTransferService:
             "amount",
             "fee",
             "block_timestamp",
-            "asset"
+            "asset",
+            "asset_contract",
+            "asset_verified",
+            "asset_name"
         ]
 
         # Map each row (a list of values) into a dictionary using the column names.
@@ -202,7 +218,7 @@ class BalanceTransferService:
 
     def get_balance_volume_series(self, page: int = 1, page_size: int = 20, assets: List[str] = None,
                                 start_timestamp: Optional[int] = None, end_timestamp: Optional[int] = None,
-                                period_type: str = "4hour"):
+                                period_type: str = "4hour", network: str = None):
         """
         Returns balance transfers volume series data providing network-wide transfer activity metrics
         
@@ -233,6 +249,11 @@ class BalanceTransferService:
             if end_timestamp:
                 timestamp_filter += f" AND period_end <= toDateTime({end_timestamp}/1000)"
                 
+            # Build JOIN clause for assets table if network is provided
+            join_clause = ""
+            if network:
+                join_clause = f" LEFT JOIN assets a ON {table}.asset_contract = a.asset_contract AND a.network = '{network}'"
+                
             count_query = f"""
                           SELECT COUNT(*) AS total
                           FROM {table}
@@ -240,47 +261,52 @@ class BalanceTransferService:
                           """
             
             data_query = f"""
-                         SELECT period_start,
-                                period_end,
-                                asset,
-                                transaction_count,
-                                unique_senders,
-                                unique_receivers,
-                                active_addresses,
-                                total_volume,
-                                total_fees,
-                                avg_transfer_amount,
-                                max_transfer_amount,
-                                min_transfer_amount,
+                         SELECT {table}.period_start,
+                                {table}.period_end,
+                                {table}.asset,
+                                {table}.asset_contract,
+                                COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                {table}.transaction_count,
+                                {table}.unique_senders,
+                                {table}.unique_receivers,
+                                {table}.active_addresses,
+                                {table}.total_volume,
+                                {table}.total_fees,
+                                {table}.avg_transfer_amount,
+                                {table}.max_transfer_amount,
+                                {table}.min_transfer_amount,
                                 -- median_transfer_amount, -- REMOVED: This column does not exist in balance_transfers_volume_series_view
-                                network_density,
-                                period_start_block,
-                                period_end_block,
-                                blocks_in_period,
+                                {table}.network_density,
+                                {table}.period_start_block,
+                                {table}.period_end_block,
+                                {table}.blocks_in_period,
                                 -- Histogram bins
-                                tx_count_lt_01,
-                                tx_count_01_to_1,
-                                tx_count_1_to_10,
-                                tx_count_10_to_100,
-                                tx_count_100_to_1k,
-                                tx_count_1k_to_10k,
-                                tx_count_gte_10k,
+                                {table}.tx_count_lt_01,
+                                {table}.tx_count_01_to_1,
+                                {table}.tx_count_1_to_10,
+                                {table}.tx_count_10_to_100,
+                                {table}.tx_count_100_to_1k,
+                                {table}.tx_count_1k_to_10k,
+                                {table}.tx_count_gte_10k,
                                 -- Volume bins
-                                volume_lt_01,
-                                volume_01_to_1,
-                                volume_1_to_10,
-                                volume_10_to_100,
-                                volume_100_to_1k,
-                                volume_1k_to_10k,
-                                volume_gte_10k
+                                {table}.volume_lt_01,
+                                {table}.volume_01_to_1,
+                                {table}.volume_1_to_10,
+                                {table}.volume_10_to_100,
+                                {table}.volume_100_to_1k,
+                                {table}.volume_1k_to_10k,
+                                {table}.volume_gte_10k
                          FROM {table}
+                         {join_clause}
                          WHERE 1=1{asset_filter}{timestamp_filter}
-                         ORDER BY period_start DESC
+                         ORDER BY {table}.period_start DESC
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
                          """
             
             columns = [
-                "period_start", "period_end", "asset", "transaction_count", "unique_senders",
+                "period_start", "period_end", "asset", "asset_contract", "asset_verified", "asset_name",
+                "transaction_count", "unique_senders",
                 "unique_receivers", "active_addresses", "total_volume", "total_fees",
                 "avg_transfer_amount", "max_transfer_amount", "min_transfer_amount",
                 # "median_transfer_amount", -- REMOVED: This column does not exist in balance_transfers_volume_series_view
@@ -299,6 +325,11 @@ class BalanceTransferService:
             if end_timestamp:
                 timestamp_filter += f" AND period <= toDate(toDateTime({end_timestamp}/1000))"
                 
+            # Build JOIN clause for assets table if network is provided
+            join_clause = ""
+            if network:
+                join_clause = f" LEFT JOIN assets a ON {table}.asset_contract = a.asset_contract AND a.network = '{network}'"
+                
             count_query = f"""
                           SELECT COUNT(*) AS total
                           FROM {table}
@@ -306,38 +337,43 @@ class BalanceTransferService:
                           """
             
             data_query = f"""
-                         SELECT period,
-                                asset,
-                                transaction_count,
-                                total_volume,
-                                max_unique_senders,
-                                max_unique_receivers,
-                                unique_addresses,
-                                avg_network_density,
-                                total_fees,
-                                avg_transaction_size,
-                                max_transaction_size,
-                                min_transaction_size,
-                                avg_fee,
-                                max_fee,
-                                min_fee,
-                                median_transaction_size,
+                         SELECT {table}.period,
+                                {table}.asset,
+                                {table}.asset_contract,
+                                COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                {table}.transaction_count,
+                                {table}.total_volume,
+                                {table}.max_unique_senders,
+                                {table}.max_unique_receivers,
+                                {table}.unique_addresses,
+                                {table}.avg_network_density,
+                                {table}.total_fees,
+                                {table}.avg_transaction_size,
+                                {table}.max_transaction_size,
+                                {table}.min_transaction_size,
+                                {table}.avg_fee,
+                                {table}.max_fee,
+                                {table}.min_fee,
+                                {table}.median_transaction_size,
                                 -- Histogram bins
-                                tx_count_lt_01,
-                                tx_count_01_to_1,
-                                tx_count_1_to_10,
-                                tx_count_10_to_100,
-                                tx_count_100_to_1k,
-                                tx_count_1k_to_10k,
-                                tx_count_gte_10k
+                                {table}.tx_count_lt_01,
+                                {table}.tx_count_01_to_1,
+                                {table}.tx_count_1_to_10,
+                                {table}.tx_count_10_to_100,
+                                {table}.tx_count_100_to_1k,
+                                {table}.tx_count_1k_to_10k,
+                                {table}.tx_count_gte_10k
                          FROM {table}
+                         {join_clause}
                          WHERE 1=1{asset_filter}{timestamp_filter}
-                         ORDER BY period DESC
+                         ORDER BY {table}.period DESC
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
                          """
             
             columns = [
-                "period", "asset", "transaction_count", "total_volume", "max_unique_senders",
+                "period", "asset", "asset_contract", "asset_verified", "asset_name",
+                "transaction_count", "total_volume", "max_unique_senders",
                 "max_unique_receivers", "unique_addresses", "avg_network_density", "total_fees",
                 "avg_transaction_size", "max_transaction_size", "min_transaction_size",
                 "avg_fee", "max_fee", "min_fee", "median_transaction_size",
@@ -352,6 +388,11 @@ class BalanceTransferService:
             if end_timestamp:
                 timestamp_filter += f" AND period <= toStartOfWeek(toDateTime({end_timestamp}/1000))"
                 
+            # Build JOIN clause for assets table if network is provided
+            join_clause = ""
+            if network:
+                join_clause = f" LEFT JOIN assets a ON {table}.asset_contract = a.asset_contract AND a.network = '{network}'"
+                
             count_query = f"""
                           SELECT COUNT(*) AS total
                           FROM {table}
@@ -359,38 +400,43 @@ class BalanceTransferService:
                           """
             
             data_query = f"""
-                         SELECT period,
-                                asset,
-                                transaction_count,
-                                total_volume,
-                                max_unique_senders,
-                                max_unique_receivers,
-                                unique_addresses,
-                                avg_network_density,
-                                total_fees,
-                                avg_transaction_size,
-                                max_transaction_size,
-                                min_transaction_size,
-                                avg_fee,
-                                max_fee,
-                                min_fee,
-                                median_transaction_size,
+                         SELECT {table}.period,
+                                {table}.asset,
+                                {table}.asset_contract,
+                                COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                {table}.transaction_count,
+                                {table}.total_volume,
+                                {table}.max_unique_senders,
+                                {table}.max_unique_receivers,
+                                {table}.unique_addresses,
+                                {table}.avg_network_density,
+                                {table}.total_fees,
+                                {table}.avg_transaction_size,
+                                {table}.max_transaction_size,
+                                {table}.min_transaction_size,
+                                {table}.avg_fee,
+                                {table}.max_fee,
+                                {table}.min_fee,
+                                {table}.median_transaction_size,
                                 -- Histogram bins
-                                tx_count_lt_01,
-                                tx_count_01_to_1,
-                                tx_count_1_to_10,
-                                tx_count_10_to_100,
-                                tx_count_100_to_1k,
-                                tx_count_1k_to_10k,
-                                tx_count_gte_10k
+                                {table}.tx_count_lt_01,
+                                {table}.tx_count_01_to_1,
+                                {table}.tx_count_1_to_10,
+                                {table}.tx_count_10_to_100,
+                                {table}.tx_count_100_to_1k,
+                                {table}.tx_count_1k_to_10k,
+                                {table}.tx_count_gte_10k
                          FROM {table}
+                         {join_clause}
                          WHERE 1=1{asset_filter}{timestamp_filter}
-                         ORDER BY period DESC
+                         ORDER BY {table}.period DESC
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
                          """
             
             columns = [
-                "period", "asset", "transaction_count", "total_volume", "max_unique_senders",
+                "period", "asset", "asset_contract", "asset_verified", "asset_name",
+                "transaction_count", "total_volume", "max_unique_senders",
                 "max_unique_receivers", "unique_addresses", "avg_network_density", "total_fees",
                 "avg_transaction_size", "max_transaction_size", "min_transaction_size",
                 "avg_fee", "max_fee", "min_fee", "median_transaction_size",
@@ -405,6 +451,11 @@ class BalanceTransferService:
             if end_timestamp:
                 timestamp_filter += f" AND period <= toStartOfMonth(toDateTime({end_timestamp}/1000))"
                 
+            # Build JOIN clause for assets table if network is provided
+            join_clause = ""
+            if network:
+                join_clause = f" LEFT JOIN assets a ON {table}.asset_contract = a.asset_contract AND a.network = '{network}'"
+                
             count_query = f"""
                           SELECT COUNT(*) AS total
                           FROM {table}
@@ -412,41 +463,46 @@ class BalanceTransferService:
                           """
             
             data_query = f"""
-                         SELECT period,
-                                asset,
-                                transaction_count,
-                                total_volume,
-                                max_unique_senders,
-                                max_unique_receivers,
-                                unique_addresses,
-                                avg_network_density,
-                                total_fees,
-                                avg_transaction_size,
-                                max_transaction_size,
-                                min_transaction_size,
-                                avg_fee,
-                                max_fee,
-                                min_fee,
-                                median_transaction_size,
-                                period_start_block,
-                                period_end_block,
-                                blocks_in_period,
+                         SELECT {table}.period,
+                                {table}.asset,
+                                {table}.asset_contract,
+                                COALESCE(a.asset_verified, 'unknown') as asset_verified,
+                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                {table}.transaction_count,
+                                {table}.total_volume,
+                                {table}.max_unique_senders,
+                                {table}.max_unique_receivers,
+                                {table}.unique_addresses,
+                                {table}.avg_network_density,
+                                {table}.total_fees,
+                                {table}.avg_transaction_size,
+                                {table}.max_transaction_size,
+                                {table}.min_transaction_size,
+                                {table}.avg_fee,
+                                {table}.max_fee,
+                                {table}.min_fee,
+                                {table}.median_transaction_size,
+                                {table}.period_start_block,
+                                {table}.period_end_block,
+                                {table}.blocks_in_period,
                                 -- Histogram bins
-                                tx_count_lt_01,
-                                tx_count_01_to_1,
-                                tx_count_1_to_10,
-                                tx_count_10_to_100,
-                                tx_count_100_to_1k,
-                                tx_count_1k_to_10k,
-                                tx_count_gte_10k
+                                {table}.tx_count_lt_01,
+                                {table}.tx_count_01_to_1,
+                                {table}.tx_count_1_to_10,
+                                {table}.tx_count_10_to_100,
+                                {table}.tx_count_100_to_1k,
+                                {table}.tx_count_1k_to_10k,
+                                {table}.tx_count_gte_10k
                          FROM {table}
+                         {join_clause}
                          WHERE 1=1{asset_filter}{timestamp_filter}
-                         ORDER BY period DESC
+                         ORDER BY {table}.period DESC
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
                          """
             
             columns = [
-                "period", "asset", "transaction_count", "total_volume", "max_unique_senders",
+                "period", "asset", "asset_contract", "asset_verified", "asset_name",
+                "transaction_count", "total_volume", "max_unique_senders",
                 "max_unique_receivers", "unique_addresses", "avg_network_density", "total_fees",
                 "avg_transaction_size", "max_transaction_size", "min_transaction_size",
                 "avg_fee", "max_fee", "min_fee", "median_transaction_size",

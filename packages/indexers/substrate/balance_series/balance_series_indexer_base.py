@@ -8,6 +8,7 @@ from loguru import logger
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
 from packages.indexers.base.metrics import IndexerMetrics
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BalanceSeriesIndexerBase:
@@ -40,6 +41,9 @@ class BalanceSeriesIndexerBase:
                 'max_query_size': 100000
             }
         )
+        
+        # Initialize AssetManager
+        self.asset_manager = AssetManager(connection_params)
         
         self._init_tables()
 
@@ -116,6 +120,14 @@ class BalanceSeriesIndexerBase:
         start_time = time.time()
 
         try:
+            # Ensure native asset exists in the assets table
+            self.asset_manager.ensure_asset_exists(
+                asset_symbol=self.asset,
+                asset_contract='native',  # Native assets use 'native' as contract
+                decimals=self.asset_manager._get_network_decimals(self.network),
+                network=self.network
+            )
+            
             # Prepare data for insertion
             balance_data = []
             for address, balances in address_balances.items():
@@ -164,6 +176,7 @@ class BalanceSeriesIndexerBase:
                     block_height,
                     address,
                     self.asset,
+                    'native',  # Add asset_contract value for native assets
                     free_balance,
                     reserved_balance,
                     staked_balance,
@@ -180,7 +193,7 @@ class BalanceSeriesIndexerBase:
             if balance_data:
                 self.client.insert('balance_series', balance_data, column_names=[
                     'period_start_timestamp', 'period_end_timestamp', 'block_height',
-                    'address', 'asset', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
+                    'address', 'asset', 'asset_contract', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])
@@ -229,8 +242,9 @@ class BalanceSeriesIndexerBase:
                     staked_balance,
                     total_balance
                 FROM balance_series
-                WHERE address = '{address}' 
-                  AND asset = '{self.asset}' 
+                WHERE address = '{address}'
+                  AND asset = '{self.asset}'
+                  AND asset_contract = 'native'
                   AND period_start_timestamp < {current_period_start}
                 ORDER BY period_start_timestamp DESC
                 LIMIT 1
@@ -263,6 +277,7 @@ class BalanceSeriesIndexerBase:
                 SELECT period_end_timestamp, block_height
                 FROM balance_series
                 WHERE asset = '{self.asset}'
+                  AND asset_contract = 'native'
                 ORDER BY period_end_timestamp DESC
                 LIMIT 1
             ''')
@@ -348,3 +363,5 @@ class BalanceSeriesIndexerBase:
         """Close the ClickHouse connection"""
         if hasattr(self, 'client'):
             self.client.close()
+        if hasattr(self, 'asset_manager'):
+            self.asset_manager.close()

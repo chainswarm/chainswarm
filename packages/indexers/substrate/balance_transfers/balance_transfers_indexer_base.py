@@ -10,6 +10,7 @@ from packages.indexers.substrate.block_range_partitioner import BlockRangePartit
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
 from packages.indexers.base import IndexerMetrics
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BalanceTransfersIndexerBase:
@@ -39,6 +40,9 @@ class BalanceTransfersIndexerBase:
                 'wait_for_async_insert': 1
             }
         )
+        
+        # Initialize AssetManager
+        self.asset_manager = AssetManager(connection_params)
         
         self._init_tables()
 
@@ -224,6 +228,7 @@ class BalanceTransfersIndexerBase:
                     from_account,
                     to_account,
                     self.asset,
+                    'native',  # Add asset_contract value for native assets
                     amount,
                     fee_amount,
                     block_version
@@ -241,6 +246,14 @@ class BalanceTransfersIndexerBase:
             min_height = min(int(b['block_height']) for b in blocks)
             max_height = max(int(b['block_height']) for b in blocks)
             partition_id = self.partitioner(min_height)
+
+            # Ensure native asset exists in the assets table
+            self.asset_manager.ensure_asset_exists(
+                asset_symbol=self.asset,
+                asset_contract='native',  # Native assets use 'native' as contract
+                decimals=self.asset_manager._get_network_decimals(self.network),
+                network=self.network
+            )
 
             # Aggregation containers
             all_balance_transfers = []
@@ -279,9 +292,10 @@ class BalanceTransfersIndexerBase:
                         transfer[3],   # from_address
                         transfer[4],   # to_address
                         transfer[5],   # asset
-                        transfer[6],   # amount
-                        transfer[7],   # fee
-                        transfer[8]    # version
+                        transfer[6],   # asset_contract
+                        transfer[7],   # amount
+                        transfer[8],   # fee
+                        transfer[9]    # version
                     )
                     updated_balance_transfers.append(updated_transfer)
 
@@ -299,7 +313,7 @@ class BalanceTransfersIndexerBase:
                 self.client.insert('balance_transfers',
                                   all_balance_transfers,
                                   column_names=['extrinsic_id', 'event_idx', 'block_height', 'block_timestamp',
-                                               'from_address', 'to_address', 'asset', 'amount', 'fee', '_version'])
+                                               'from_address', 'to_address', 'asset', 'asset_contract', 'amount', 'fee', '_version'])
 
                 # Record database insert metrics
                 insert_duration = time.time() - insert_start_time
@@ -343,7 +357,7 @@ class BalanceTransfersIndexerBase:
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, asset_contract, amount, fee_amount, version)
         """
         # Base implementation does nothing
         return []
@@ -352,3 +366,5 @@ class BalanceTransfersIndexerBase:
         """Close the ClickHouse connection"""
         if hasattr(self, 'client'):
             self.client.close()
+        if hasattr(self, 'asset_manager'):
+            self.asset_manager.close()

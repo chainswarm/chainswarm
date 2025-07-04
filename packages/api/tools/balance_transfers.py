@@ -108,7 +108,7 @@ class BalanceTransfersTool:
 
             # Add descriptions for tables and views
             if "balance_transfers" in schema:
-                schema["balance_transfers"]["description"] = "Stores individual transfer transactions between addresses"
+                schema["balance_transfers"]["description"] = "Stores individual transfer transactions between addresses with asset verification information"
                 
                 # Add column descriptions for balance_transfers table
                 if "extrinsic_id" in schema["balance_transfers"]["columns"]:
@@ -132,6 +132,15 @@ class BalanceTransfersTool:
                 if "asset" in schema["balance_transfers"]["columns"]:
                     schema["balance_transfers"]["columns"]["asset"]["description"] = "Token or currency being transferred"
                 
+                if "asset_contract" in schema["balance_transfers"]["columns"]:
+                    schema["balance_transfers"]["columns"]["asset_contract"]["description"] = "Contract address for tokens, 'native' for native blockchain assets"
+                
+                if "asset_verified" in schema["balance_transfers"]["columns"]:
+                    schema["balance_transfers"]["columns"]["asset_verified"]["description"] = "Verification status: verified, unknown, or malicious"
+                
+                if "asset_name" in schema["balance_transfers"]["columns"]:
+                    schema["balance_transfers"]["columns"]["asset_name"]["description"] = "Human-readable name of the asset"
+                
                 if "amount" in schema["balance_transfers"]["columns"]:
                     schema["balance_transfers"]["columns"]["amount"]["description"] = "Amount of the asset transferred"
                 
@@ -143,7 +152,7 @@ class BalanceTransfersTool:
                 
             # Add descriptions for volume series materialized view
             if "balance_transfers_volume_series_view" in schema:
-                schema["balance_transfers_volume_series_view"]["description"] = "Base 4-hour interval materialized view for transfer volume analysis - asset agnostic with client-defined categorization"
+                schema["balance_transfers_volume_series_view"]["description"] = "Base 4-hour interval materialized view for transfer volume analysis - asset agnostic with client-defined categorization, includes asset verification status"
                 
                 # Add column descriptions for key metrics
                 if "period_start" in schema["balance_transfers_volume_series_view"]["columns"]:
@@ -169,17 +178,17 @@ class BalanceTransfersTool:
                 
             # Add descriptions for network analytics views
             if "balance_transfers_network_daily_view" in schema:
-                schema["balance_transfers_network_daily_view"]["description"] = "Daily network analytics with transaction counts, volumes, participant metrics, and fee statistics"
+                schema["balance_transfers_network_daily_view"]["description"] = "Daily network analytics with transaction counts, volumes, participant metrics, fee statistics, and asset verification information"
                 
             if "balance_transfers_network_weekly_view" in schema:
-                schema["balance_transfers_network_weekly_view"]["description"] = "Weekly network analytics with transaction counts, volumes, participant metrics, and fee statistics"
+                schema["balance_transfers_network_weekly_view"]["description"] = "Weekly network analytics with transaction counts, volumes, participant metrics, fee statistics, and asset verification information"
                 
             if "balance_transfers_network_monthly_view" in schema:
-                schema["balance_transfers_network_monthly_view"]["description"] = "Monthly network analytics with transaction counts, volumes, participant metrics, and fee statistics"
+                schema["balance_transfers_network_monthly_view"]["description"] = "Monthly network analytics with transaction counts, volumes, participant metrics, fee statistics, and asset verification information"
                 
             # Add descriptions for address analytics view
             if "balance_transfers_address_analytics_view" in schema:
-                schema["balance_transfers_address_analytics_view"]["description"] = "Comprehensive address analytics with transaction counts, volumes, temporal patterns, and behavioral classification"
+                schema["balance_transfers_address_analytics_view"]["description"] = "Comprehensive address analytics with transaction counts, volumes, temporal patterns, behavioral classification, and asset verification status"
                 
                 # Add column descriptions for key metrics
                 if "address_type" in schema["balance_transfers_address_analytics_view"]["columns"]:
@@ -208,7 +217,7 @@ class BalanceTransfersTool:
                 
             # Add descriptions for address time-series views
             if "balance_transfers_address_daily_view" in schema:
-                schema["balance_transfers_address_daily_view"]["description"] = "Daily address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset"
+                schema["balance_transfers_address_daily_view"]["description"] = "Daily address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset with verification status"
                 
                 # Add column descriptions for key metrics
                 if "volume_in" in schema["balance_transfers_address_daily_view"]["columns"]:
@@ -227,7 +236,7 @@ class BalanceTransfersTool:
                     schema["balance_transfers_address_daily_view"]["columns"]["fees_paid"]["description"] = "Total fees paid by this address on this date"
                 
             if "balance_transfers_address_weekly_view" in schema:
-                schema["balance_transfers_address_weekly_view"]["description"] = "Weekly address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset"
+                schema["balance_transfers_address_weekly_view"]["description"] = "Weekly address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset with verification status"
                 
                 # Add column descriptions for key metrics
                 if "week_start" in schema["balance_transfers_address_weekly_view"]["columns"]:
@@ -240,7 +249,7 @@ class BalanceTransfersTool:
                     schema["balance_transfers_address_weekly_view"]["columns"]["volume_out"]["description"] = "Total amount sent from this address during this week"
                 
             if "balance_transfers_address_monthly_view" in schema:
-                schema["balance_transfers_address_monthly_view"]["description"] = "Monthly address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset"
+                schema["balance_transfers_address_monthly_view"]["description"] = "Monthly address-level volume metrics showing volume in/out, transaction counts, and fees paid for each address and asset with verification status"
                 
                 # Add column descriptions for key metrics
                 if "month_start" in schema["balance_transfers_address_monthly_view"]["columns"]:
@@ -254,17 +263,17 @@ class BalanceTransfersTool:
                 
             # Add descriptions for volume aggregation views
             if "balance_transfers_volume_daily_view" in schema:
-                schema["balance_transfers_volume_daily_view"]["description"] = "Daily volume aggregation with transaction counts, volumes, and histogram bins"
+                schema["balance_transfers_volume_daily_view"]["description"] = "Daily volume aggregation with transaction counts, volumes, histogram bins, and asset verification information"
                 
             if "balance_transfers_volume_weekly_view" in schema:
-                schema["balance_transfers_volume_weekly_view"]["description"] = "Weekly volume aggregation with transaction counts, volumes, and histogram bins"
+                schema["balance_transfers_volume_weekly_view"]["description"] = "Weekly volume aggregation with transaction counts, volumes, histogram bins, and asset verification information"
                 
             if "balance_transfers_volume_monthly_view" in schema:
-                schema["balance_transfers_volume_monthly_view"]["description"] = "Monthly volume aggregation with transaction counts, volumes, and histogram bins"
+                schema["balance_transfers_volume_monthly_view"]["description"] = "Monthly volume aggregation with transaction counts, volumes, histogram bins, and asset verification information"
                 
             # Add descriptions for analysis views
             if "balance_transfers_volume_trends_view" in schema:
-                schema["balance_transfers_volume_trends_view"]["description"] = "Volume trends with rolling averages (7-period and 30-period) for trend analysis"
+                schema["balance_transfers_volume_trends_view"]["description"] = "Volume trends with rolling averages (7-period and 30-period) for trend analysis, includes asset verification status"
                 
             # Add descriptions for context tables
             if "known_addresses" in schema:
@@ -291,7 +300,7 @@ class BalanceTransfersTool:
 
             return {
                 "name": "Balance Transfers Schema",
-                "description": "Schema for balance transfers data in ClickHouse - tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators",
+                "description": "Schema for balance transfers data in ClickHouse - tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators. Now includes asset verification information to help identify verified, unknown, or potentially malicious assets.",
                 "tables": schema,
                 "key_features": [
                     "Asset-agnostic design with universal histogram bins for consistent analysis",

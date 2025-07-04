@@ -1,0 +1,55 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-transfers/volume-trends",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-transfers/volume-trends",
+    "operation_id": "get_volume_trends_substrate__network__balance_transfers_volume_trends_get",
+    "summary": "Get Volume Trends",
+    "tags": [
+      "balance-transfers"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_timestamp": 1740995200000,
+      "end_timestamp": 1840995200000
+    },
+    "path_params": {
+      "network": "torus"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "server": "uvicorn",
+      "content-length": "326",
+      "content-type": "application/json",
+      "x-correlation-id": "req_2b040e35d67c"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [
+        {
+          "period_start": "2025-07-01T00:00:00",
+          "asset": "TOR",
+          "total_volume": 6037.918734184138,
+          "transaction_count": 21,
+          "rolling_7_period_avg_volume": 231112.445378104,
+          "rolling_7_period_avg_tx_count": 9.857142857142858,
+          "rolling_30_period_avg_volume": 108469.64363051741
+        }
+      ],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 217,
+      "total_items": 217
+    }
+  }
+}

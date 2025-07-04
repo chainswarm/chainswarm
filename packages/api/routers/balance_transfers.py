@@ -54,7 +54,7 @@ async def get_address_transactions(
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
-        result = balance_service.get_address_transactions(address, target_address, page, page_size, assets)
+        result = balance_service.get_address_transactions(address, target_address, page, page_size, assets, network)
 
         # No need to convert amounts as they're already in human-readable format
 
@@ -132,7 +132,7 @@ async def get_balance_transfers_volume_series(
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
         result = balance_service.get_balance_volume_series(
-            page, page_size, assets, start_timestamp, end_timestamp, period_type
+            page, page_size, assets, start_timestamp, end_timestamp, period_type, network
         )
         balance_service.close()
         return result
@@ -203,7 +203,7 @@ async def get_network_analytics(
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
         result = balance_service.get_network_analytics(
-            period, page, page_size, assets, start_date, end_date
+            period, page, page_size, assets, start_date, end_date, network
         )
         balance_service.close()
         return result
@@ -268,7 +268,7 @@ async def get_address_analytics(
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
         result = balance_service.get_address_analytics(
-            page, page_size, assets, address_type, min_volume
+            page, page_size, assets, address_type, min_volume, network
         )
         balance_service.close()
         return result
@@ -338,7 +338,7 @@ async def get_volume_aggregations(
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
         result = balance_service.get_volume_aggregations(
-            period, page, page_size, assets, start_date, end_date
+            period, page, page_size, assets, start_date, end_date, network
         )
         balance_service.close()
         return result
@@ -403,7 +403,7 @@ async def get_volume_trends(
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
         result = balance_service.get_volume_trends(
-            page, page_size, assets, start_timestamp, end_timestamp
+            page, page_size, assets, start_timestamp, end_timestamp, network
         )
         balance_service.close()
         return result
@@ -473,7 +473,7 @@ async def get_addresses_analytics(
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
-        result = balance_service.get_addresses_analytics(addresses, page, page_size, assets, return_all)
+        result = balance_service.get_addresses_analytics(addresses, page, page_size, assets, return_all, network)
         balance_service.close()
         return result
     except ValueError as ve:

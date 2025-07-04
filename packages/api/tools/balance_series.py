@@ -94,7 +94,7 @@ class BalanceSeriesAnalyticsTool:
 
             # Add descriptions for balance series tables and views
             if "balance_series" in schema:
-                schema["balance_series"]["description"] = "Main table storing balance snapshots at fixed 4-hour intervals with free, reserved, staked, and total balances for each address and asset"
+                schema["balance_series"]["description"] = "Main table storing balance snapshots at fixed 4-hour intervals with free, reserved, staked, and total balances for each address and asset. Now includes asset verification information for enhanced security and transparency."
                 
                 # Add column descriptions for balance_series table
                 if "period_start_timestamp" in schema["balance_series"]["columns"]:
@@ -111,6 +111,15 @@ class BalanceSeriesAnalyticsTool:
                 
                 if "asset" in schema["balance_series"]["columns"]:
                     schema["balance_series"]["columns"]["asset"]["description"] = "Token or currency being tracked"
+                
+                if "asset_contract" in schema["balance_series"]["columns"]:
+                    schema["balance_series"]["columns"]["asset_contract"]["description"] = "Contract address for tokens, 'native' for native blockchain assets"
+                
+                if "asset_verified" in schema["balance_series"]["columns"]:
+                    schema["balance_series"]["columns"]["asset_verified"]["description"] = "Verification status: verified, unknown, or malicious"
+                
+                if "asset_name" in schema["balance_series"]["columns"]:
+                    schema["balance_series"]["columns"]["asset_name"]["description"] = "Human-readable name of the asset"
                 
                 if "free_balance" in schema["balance_series"]["columns"]:
                     schema["balance_series"]["columns"]["free_balance"]["description"] = "Freely available balance that can be transferred"
@@ -143,7 +152,7 @@ class BalanceSeriesAnalyticsTool:
                     schema["balance_series"]["columns"]["_version"]["description"] = "Version number for ReplacingMergeTree engine"
                 
             if "balance_series_latest_view" in schema:
-                schema["balance_series_latest_view"]["description"] = "Latest balance snapshot for each address and asset, showing current balance state"
+                schema["balance_series_latest_view"]["description"] = "Latest balance snapshot for each address and asset, showing current balance state with asset verification information"
                 
                 # Add column descriptions for balance_series_latest_view
                 if "latest_period_start" in schema["balance_series_latest_view"]["columns"]:
@@ -156,7 +165,7 @@ class BalanceSeriesAnalyticsTool:
                     schema["balance_series_latest_view"]["columns"]["latest_block_height"]["description"] = "Block height of the most recent snapshot"
                 
             if "balance_series_daily_view" in schema:
-                schema["balance_series_daily_view"]["description"] = "Daily balance aggregations showing end-of-day balances and daily balance changes for each address and asset"
+                schema["balance_series_daily_view"]["description"] = "Daily balance aggregations showing end-of-day balances and daily balance changes for each address and asset with asset verification information"
                 
                 # Add column descriptions for balance_series_daily_view
                 if "date" in schema["balance_series_daily_view"]["columns"]:
@@ -187,7 +196,7 @@ class BalanceSeriesAnalyticsTool:
                     schema["balance_series_daily_view"]["columns"]["daily_total_balance_change"]["description"] = "Cumulative change in total balance over the day"
                 
             if "balance_series_weekly_view" in schema:
-                schema["balance_series_weekly_view"]["description"] = "Weekly balance statistics materialized view with end-of-week balances and weekly balance changes"
+                schema["balance_series_weekly_view"]["description"] = "Weekly balance statistics materialized view with end-of-week balances and weekly balance changes, including asset verification status"
                 
                 # Add column descriptions for balance_series_weekly_view
                 if "week_start" in schema["balance_series_weekly_view"]["columns"]:
@@ -209,7 +218,7 @@ class BalanceSeriesAnalyticsTool:
                     schema["balance_series_weekly_view"]["columns"]["last_block_of_week"]["description"] = "Last block height processed in the week"
                 
             if "balance_series_monthly_view" in schema:
-                schema["balance_series_monthly_view"]["description"] = "Monthly balance statistics materialized view with end-of-month balances and monthly balance changes"
+                schema["balance_series_monthly_view"]["description"] = "Monthly balance statistics materialized view with end-of-month balances and monthly balance changes, including asset verification status"
                 
                 # Add column descriptions for balance_series_monthly_view
                 if "month_start" in schema["balance_series_monthly_view"]["columns"]:
@@ -248,7 +257,7 @@ class BalanceSeriesAnalyticsTool:
 
             return {
                 "name": "Balance Series Schema",
-                "description": "Schema for balance snapshot time-series data in ClickHouse - tracks balance changes over time at fixed 4-hour intervals with support for multiple balance types (free, reserved, staked, total) and multi-level time aggregation (daily, weekly, monthly)",
+                "description": "Schema for balance snapshot time-series data in ClickHouse - tracks balance changes over time at fixed 4-hour intervals with support for multiple balance types (free, reserved, staked, total) and multi-level time aggregation (daily, weekly, monthly). Now includes asset verification information to help identify verified, unknown, or potentially malicious assets.",
                 "tables": schema,
                 "key_features": [
                     "Time-series tracking with fixed 4-hour interval snapshots",

@@ -1,0 +1,63 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-series/address/5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f/history",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-series/address/{address}/history",
+    "operation_id": "get_address_balance_history_substrate__network__balance_series_address__address__history_get",
+    "summary": "Get Address Balance History",
+    "tags": [
+      "balance-series"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_timestamp": 1742815440000,
+      "end_timestamp": 1842815440000
+    },
+    "path_params": {
+      "network": "torus",
+      "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 19:48:30 GMT",
+      "server": "uvicorn",
+      "content-length": "531",
+      "content-type": "application/json",
+      "x-correlation-id": "req_d433f0c1ec7a"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [
+        {
+          "period_start_timestamp": 1742815440000,
+          "period_end_timestamp": 1742829840000,
+          "block_height": 860306,
+          "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
+          "asset": "TOR",
+          "free_balance": 0.195765300868187,
+          "reserved_balance": 0.0,
+          "staked_balance": 0.0,
+          "total_balance": 0.195765300868187,
+          "free_balance_change": -1.0003527915875,
+          "reserved_balance_change": 0.0,
+          "staked_balance_change": 0.0,
+          "total_balance_change": -1.0003527915875,
+          "total_balance_percent_change": -83.633279
+        }
+      ],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 1,
+      "total_items": 1
+    }
+  }
+}

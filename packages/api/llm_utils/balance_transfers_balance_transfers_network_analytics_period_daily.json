@@ -1,0 +1,74 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/balance-transfers/network-analytics/daily",
+    "method": "GET",
+    "path": "/substrate/{network}/balance-transfers/network-analytics/{period}",
+    "operation_id": "get_network_analytics_substrate__network__balance_transfers_network_analytics__period__get",
+    "summary": "Get Network Analytics",
+    "tags": [
+      "balance-transfers"
+    ]
+  },
+  "request": {
+    "query_params": {
+      "page": 1,
+      "page_size": 1,
+      "assets": [
+        "TOR"
+      ],
+      "start_date": "2025-01-01",
+      "end_date": "2026-01-31"
+    },
+    "path_params": {
+      "network": "torus",
+      "period": "daily"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "server": "uvicorn",
+      "content-length": "753",
+      "content-type": "application/json",
+      "x-correlation-id": "req_c5fba0ee84f6"
+    },
+    "content_type": "application/json",
+    "data": {
+      "items": [
+        {
+          "period_type": "daily",
+          "period": "2025-07-01",
+          "asset": "TOR",
+          "transaction_count": 21,
+          "total_volume": 6037.918734184138,
+          "max_unique_senders": 7,
+          "max_unique_receivers": 7,
+          "unique_addresses": 14,
+          "tx_count_lt_01": 0,
+          "tx_count_01_to_1": 12,
+          "tx_count_1_to_10": 0,
+          "tx_count_10_to_100": 3,
+          "tx_count_100_to_1k": 3,
+          "tx_count_1k_to_10k": 3,
+          "tx_count_gte_10k": 0,
+          "avg_network_density": 0.07692307692307693,
+          "total_fees": 0.0053127818174826,
+          "avg_transaction_size": 287.51993972305416,
+          "max_transaction_size": 1650.0,
+          "min_transaction_size": 0.6681954082613875,
+          "avg_fee": 0.000252989610356314,
+          "max_fee": 0.0006237804503424,
+          "min_fee": 0.0,
+          "median_transaction_size": 0.6681954082613873,
+          "avg_amount_std_dev": 565.354909861442
+        }
+      ],
+      "page": 1,
+      "page_size": 1,
+      "total_pages": 154,
+      "total_items": 154
+    }
+  }
+}
