@@ -11,6 +11,7 @@ from packages.api.tools.balance_series import BalanceSeriesAnalyticsTool
 from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
+from packages.api.tools.assets import AssetsTool
 from packages.indexers.base import (
     get_clickhouse_connection_string, setup_metrics, get_metrics_registry,
     setup_enhanced_logger, ErrorContextManager, log_service_start, log_service_stop, classify_error
@@ -218,6 +219,7 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - **Balance Series**: Historical balance tracking with 4-hour interval snapshots
     - **Balance Transfers**: Detailed transaction analysis and address behavior profiling
     - **Known Addresses**: Database of labeled addresses (exchanges, treasuries, bridges, etc.)
+    - **Assets Dictionary**: Complete information about all assets on the network
     
     
     ## 🌊 Money Flow Analysis
@@ -354,6 +356,23 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     - "Analyze transaction patterns for [ADDRESS]" (Behavioral analysis)
     - "Find addresses similar to [ADDRESS]" (Pattern matching)
     
+    ## 📋 Assets Dictionary
+    
+    **What it does**: Provides comprehensive information about all assets on the blockchain, including native tokens and other tokens.
+    
+    **You can ask about**:
+    - All available assets on the network
+    - Asset verification status and metadata
+    - Native vs token assets
+    - Asset details by symbol or contract
+    
+    **Example questions**:
+    - "Show me all assets on the network"
+    - "What verified assets are available?"
+    - "Get details for the TOR asset"
+    - "List all native assets across networks"
+    - "Which tokens have been added recently?"
+    
     Just ask your questions in natural language - the assistant will use the appropriate tools and data sources to provide comprehensive blockchain insights!
     `
     """
@@ -386,6 +405,9 @@ async def get_instructions():
     
     balance_transfers_tool = BalanceTransfersTool(get_clickhouse_connection_string(network))
     balance_transfers_schema = await balance_transfers_tool.schema()
+    
+    assets_tool = AssetsTool(get_clickhouse_connection_string(network))
+    assets_schema = assets_tool.schema()
 
     return f"""
 # {network.upper()} Blockchain Analytics Assistant Instructions
@@ -765,6 +787,50 @@ A successful analysis should:
 - Use standardized transaction size bins for consistent analysis
 - Consider address classifications for behavioral analysis
 
+### 📋 Assets Dictionary
+
+**Assets Query**
+- Tool: `assets_query`
+- Purpose: Query the assets dictionary table for asset information
+- **Database**: ClickHouse
+- **Schema**: {assets_schema}
+
+**Core Table**:
+- `assets`: Stores comprehensive information about all assets (native and tokens) across networks
+
+**Example Queries**:
+```sql
+-- Get all assets for a specific network
+SELECT * FROM assets
+WHERE network = 'torus'
+ORDER BY asset_symbol;
+
+-- Get all verified assets
+SELECT * FROM assets
+WHERE asset_verified = 'verified'
+ORDER BY network, asset_symbol;
+
+-- Get native assets across all networks
+SELECT * FROM assets
+WHERE asset_type = 'native'
+ORDER BY network;
+
+-- Find asset by symbol
+SELECT * FROM assets
+WHERE network = 'torus' AND asset_symbol = 'TOR';
+
+-- Count assets by type and network
+SELECT network, asset_type, count(*) as asset_count
+FROM assets
+GROUP BY network, asset_type
+ORDER BY network, asset_type;
+
+-- Get recently added assets
+SELECT * FROM assets
+WHERE first_seen_timestamp >= today() - 30
+ORDER BY first_seen_timestamp DESC;
+```
+
 Remember: The schema information provided is authoritative - use it as your ground truth for database structure.
 """
 
@@ -1076,6 +1142,62 @@ async def execute_balance_transfers_query(query: Annotated[str, Field(
         duration = time.time() - start_time
         mcp_metrics.record_tool_call(tool_name, duration, True)
         mcp_metrics.record_database_operation("clickhouse", "balance_transfers_query", duration)
+        
+        return result
+        
+    except Exception as e:
+        # Record failed tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, False, "query_error")
+        
+        # ENHANCED: Error logging with context
+        error_ctx.log_error(
+            f"MCP tool query failed: {tool_name}",
+            error=e,
+            operation="mcp_tool_query",
+            tool_name=tool_name,
+            query_preview=query[:200] if len(query) > 200 else query,
+            duration=duration,
+            error_category=classify_error(e)
+        )
+        raise
+
+
+@session_rate_limit
+@mcp.tool(
+    name="assets_query",
+    description="Execute a query against the assets dictionary table.",
+    tags={"assets", "asset dictionary", "tokens", "native assets", "asset metadata"},
+    annotations={
+        "title": "Executes ClickHouse dialect SQL query against assets dictionary table",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False
+    }
+)
+async def execute_assets_query(query: Annotated[str, Field(
+    description="The ClickHouse dialect SQL query to execute against the assets table.")]) -> dict:
+    """
+    Execute an assets query to get information about available assets.
+
+    Args:
+        query (str): The SQL query to execute against the assets table.
+
+    Returns:
+        dict: The result of the assets query.
+    """
+
+    start_time = time.time()
+    tool_name = "assets_query"
+    
+    try:
+        assets_tool = AssetsTool(get_clickhouse_connection_string(network))
+        result = await assets_tool.assets_query(query)
+        
+        # Record successful tool call
+        duration = time.time() - start_time
+        mcp_metrics.record_tool_call(tool_name, duration, True)
+        mcp_metrics.record_database_operation("clickhouse", "assets_query", duration)
         
         return result
         

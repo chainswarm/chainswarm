@@ -5,7 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST
-from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers
+from packages.api.routers import money_flow, balance_series, known_addresses, similarity_search, balance_transfers, assets
 from packages.indexers.base import setup_metrics, setup_logger
 from packages.api.middleware.rate_limiting import rate_limit_middleware
 from packages.api.middleware.prometheus_middleware import PrometheusMiddleware, create_metrics_endpoint
@@ -48,6 +48,7 @@ app.include_router(similarity_search.router)
 app.include_router(balance_series.router)
 app.include_router(balance_transfers.router)
 app.include_router(known_addresses.router)
+app.include_router(assets.router)
 
 # Add metrics endpoint that aggregates all service metrics
 def create_aggregated_metrics_endpoint():
