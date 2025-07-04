@@ -22,16 +22,18 @@ from packages.indexers.substrate.money_flow.money_flow_indexer_torus import Toru
 from packages.indexers.substrate.money_flow.money_flow_indexer_bittensor import BittensorMoneyFlowIndexer
 from packages.indexers.substrate.money_flow.money_flow_indexer_polkadot import PolkadotMoneyFlowIndexer
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
-def get_money_flow_indexer(network: str, graph_database, indexer_metrics: IndexerMetrics = None):
+def get_money_flow_indexer(network: str, graph_database, indexer_metrics: IndexerMetrics, asset_manager: AssetManager):
     """
     Factory function to get the appropriate indexer based on network.
     
     Args:
         network: Network identifier (torus, bittensor, polkadot)
         graph_database: Neo4j driver instance
-        indexer_metrics: Optional IndexerMetrics instance for recording metrics
+        indexer_metrics: IndexerMetrics instance for recording metrics
+        asset_manager: AssetManager instance for managing assets
         
     Returns:
         BaseMoneyFlowIndexer: Appropriate indexer instance for the network
@@ -40,11 +42,11 @@ def get_money_flow_indexer(network: str, graph_database, indexer_metrics: Indexe
         ValueError: If network is invalid
     """
     if network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
-        return TorusMoneyFlowIndexer(graph_database, network, indexer_metrics)
+        return TorusMoneyFlowIndexer(graph_database, network, indexer_metrics, asset_manager)
     elif network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
-        return BittensorMoneyFlowIndexer(graph_database, network, indexer_metrics)
+        return BittensorMoneyFlowIndexer(graph_database, network, indexer_metrics, asset_manager)
     elif network == Network.POLKADOT.value:
-        return PolkadotMoneyFlowIndexer(graph_database, network, indexer_metrics)
+        return PolkadotMoneyFlowIndexer(graph_database, network, indexer_metrics, asset_manager)
     else:
         raise ValueError(f"Unsupported network: {network}")
 
@@ -409,8 +411,13 @@ if __name__ == "__main__":
         connection_acquisition_timeout=60
     )
     
+    # Create AssetManager and initialize native assets
+    asset_manager = AssetManager(args.network, clickhouse_params)
+    asset_manager.init_tables()
+    logger.info(f"Initialized AssetManager and native assets for {args.network}")
+    
     # Create the appropriate indexer for the network
-    money_flow_indexer = get_money_flow_indexer(args.network, graph_database, indexer_metrics)
+    money_flow_indexer = get_money_flow_indexer(args.network, graph_database, indexer_metrics, asset_manager)
     money_flow_indexer.create_indexes()
     
     block_stream_manager = BlockStreamManager(block_stream_indexer, substrate_node, partitioner, clickhouse_params, args.network, terminate_event)

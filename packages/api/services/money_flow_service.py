@@ -76,7 +76,7 @@ class MoneyFlowService:
 
                 // Build the TO edge objects with updated properties
                 WITH address_nodes, COLLECT(DISTINCT {{
-                    id: from_id + '-' + to_id,
+                    id: from_id + '-' + to_id + '-' + edge_data.asset + '-' + edge_data.asset_contract,
                     type: 'edge',
                     from_id: from_id,
                     to_id: to_id,
@@ -85,7 +85,9 @@ class MoneyFlowService:
                     first_activity_block_height: edge_data.first_activity_block_height,
                     first_activity_timestamp: edge_data.first_activity_timestamp,
                     last_activity_block_height: edge_data.last_activity_block_height,
-                    last_activity_timestamp: edge_data.last_activity_timestamp
+                    last_activity_timestamp: edge_data.last_activity_timestamp,
+                    asset: edge_data.asset,
+                    asset_contract: edge_data.asset_contract
                 }}) AS transfer_edges
 
                 // Unwind the combined list to produce a flat list of elements
@@ -182,7 +184,7 @@ class MoneyFlowService:
 
             // Build the TO edge objects with updated properties
             WITH address_nodes, COLLECT(DISTINCT {{
-                id: from_id + '-' + to_id,
+                id: from_id + '-' + to_id + '-' + edge_data.asset + '-' + edge_data.asset_contract,
                 type: 'edge',
                 from_id: from_id,
                 to_id: to_id,
@@ -191,7 +193,9 @@ class MoneyFlowService:
                 first_activity: edge_data.first_activity_block_height,
                 first_activity_timestamp: edge_data.first_activity_timestamp,
                 last_activity_block_height: edge_data.last_activity_block_height,
-                last_activity_timestamp: edge_data.last_activity_timestamp
+                last_activity_timestamp: edge_data.last_activity_timestamp,
+                asset: edge_data.asset,
+                asset_contract: edge_data.asset_contract
             }}) AS transfer_edges
 
             // Unwind the combined list to produce a flat list of elements

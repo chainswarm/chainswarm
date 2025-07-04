@@ -255,7 +255,7 @@ async def get_balance_volume_series(
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
         result = balance_service.get_balance_volume_series(
-            page, page_size, assets, start_timestamp, end_timestamp, network
+            page, page_size, assets, start_timestamp, end_timestamp
         )
         balance_service.close()
         return result

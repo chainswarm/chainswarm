@@ -97,7 +97,7 @@ class BalanceSeriesService:
             Dictionary with paginated balance history
         """
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_series")
         
         # Build timestamp filter
         timestamp_filter = ""
@@ -122,10 +122,10 @@ class BalanceSeriesService:
                             bs.period_end_timestamp,
                             bs.block_height,
                             bs.address,
-                            bs.asset,
+                            bs.asset_symbol as asset,
                             bs.asset_contract,
                             COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                            COALESCE(a.asset_name, bs.asset) as asset_name,
+                            COALESCE(a.asset_name, bs.asset_symbol) as asset_name,
                             bs.free_balance,
                             bs.reserved_balance,
                             bs.staked_balance,
@@ -196,8 +196,14 @@ class BalanceSeriesService:
         Returns:
             List of current balance records
         """
+        from loguru import logger
+        
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_series")
+        
+        # Log the asset filter for debugging
+        logger.debug(f"Asset filter generated: {asset_filter}")
+        logger.debug(f"Assets requested: {assets}")
         
         # Build address filter
         address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
@@ -210,10 +216,10 @@ class BalanceSeriesService:
 
         query = f"""
                 SELECT bslv.address,
-                       bslv.asset,
+                       bslv.asset_symbol as asset,
                        bslv.asset_contract,
                        COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                       COALESCE(a.asset_name, bslv.asset) as asset_name,
+                       COALESCE(a.asset_name, bslv.asset_symbol) as asset_name,
                        bslv.latest_period_start,
                        bslv.latest_period_end,
                        bslv.latest_block_height,
@@ -224,8 +230,11 @@ class BalanceSeriesService:
                 FROM balance_series_latest_view bslv
                 {join_clause}
                 WHERE {address_filter}{asset_filter}
-                ORDER BY bslv.address, bslv.asset
+                ORDER BY bslv.address, bslv.asset_symbol
                 """
+
+        # Log the full query for debugging
+        logger.debug(f"Balance series query: {query}")
 
         query_result = self.client.query(query)
         rows = query_result.result_rows
@@ -270,7 +279,7 @@ class BalanceSeriesService:
             Dictionary with paginated balance changes
         """
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_series")
         
         # Build change threshold filter
         threshold_filter = ""
@@ -294,10 +303,10 @@ class BalanceSeriesService:
                             bs.period_end_timestamp,
                             bs.block_height,
                             bs.address,
-                            bs.asset,
+                            bs.asset_symbol as asset,
                             bs.asset_contract,
                             COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                            COALESCE(a.asset_name, bs.asset) as asset_name,
+                            COALESCE(a.asset_name, bs.asset_symbol) as asset_name,
                             bs.total_balance,
                             bs.free_balance_change,
                             bs.reserved_balance_change,
@@ -388,7 +397,7 @@ class BalanceSeriesService:
             address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
             filters.append(f"({address_conditions})")
         
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_series")
         if asset_filter:
             # Remove the leading " AND " from the filter
             filters.append(asset_filter[5:])
@@ -411,10 +420,10 @@ class BalanceSeriesService:
             query = f"""
                     SELECT {table}.date,
                            {table}.address,
-                           {table}.asset,
+                           {table}.asset_symbol as asset,
                            {table}.asset_contract,
                            COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                           COALESCE(a.asset_name, {table}.asset) as asset_name,
+                           COALESCE(a.asset_name, {table}.asset_symbol) as asset_name,
                            {table}.end_of_day_free_balance,
                            {table}.end_of_day_reserved_balance,
                            {table}.end_of_day_staked_balance,
@@ -426,7 +435,7 @@ class BalanceSeriesService:
                     FROM {table}
                     {join_clause}
                     {where_clause}
-                    ORDER BY {table}.date DESC, {table}.address, {table}.asset
+                    ORDER BY {table}.date DESC, {table}.address, {table}.asset_symbol
                     """
             columns = [
                 "date", "address", "asset", "asset_contract", "asset_verified", "asset_name",
@@ -439,10 +448,10 @@ class BalanceSeriesService:
             query = f"""
                     SELECT {table}.week_start,
                            {table}.address,
-                           {table}.asset,
+                           {table}.asset_symbol as asset,
                            {table}.asset_contract,
                            COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                           COALESCE(a.asset_name, {table}.asset) as asset_name,
+                           COALESCE(a.asset_name, {table}.asset_symbol) as asset_name,
                            {table}.end_of_week_free_balance,
                            {table}.end_of_week_reserved_balance,
                            {table}.end_of_week_staked_balance,
@@ -455,7 +464,7 @@ class BalanceSeriesService:
                     FROM {table}
                     {join_clause}
                     {where_clause}
-                    ORDER BY {table}.week_start DESC, {table}.address, {table}.asset
+                    ORDER BY {table}.week_start DESC, {table}.address, {table}.asset_symbol
                     """
             columns = [
                 "week_start", "address", "asset", "asset_contract", "asset_verified", "asset_name",
@@ -469,7 +478,7 @@ class BalanceSeriesService:
             query = f"""
                     SELECT {table}.month_start,
                            {table}.address,
-                           {table}.asset,
+                           {table}.asset_symbol as asset,
                            {table}.asset_contract,
                            COALESCE(a.asset_verified, 'unknown') as asset_verified,
                            COALESCE(a.asset_name, {table}.asset) as asset_name,
@@ -485,7 +494,7 @@ class BalanceSeriesService:
                     FROM {table}
                     {join_clause}
                     {where_clause}
-                    ORDER BY {table}.month_start DESC, {table}.address, {table}.asset
+                    ORDER BY {table}.month_start DESC, {table}.address, {table}.asset_symbol
                     """
             columns = [
                 "month_start", "address", "asset", "asset_contract", "asset_verified", "asset_name",
@@ -524,7 +533,7 @@ class BalanceSeriesService:
             Dictionary with paginated balance volume series data
         """
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_series")
         
         # Build timestamp filter
         timestamp_filter = ""
@@ -535,7 +544,7 @@ class BalanceSeriesService:
 
         # Count query for pagination
         count_query = f"""
-                      SELECT COUNT(DISTINCT period_start_timestamp, asset) AS total
+                      SELECT COUNT(DISTINCT period_start_timestamp, asset_symbol) AS total
                       FROM balance_series FINAL
                       WHERE 1=1{asset_filter}{timestamp_filter}
                       """
@@ -545,7 +554,7 @@ class BalanceSeriesService:
                      SELECT
                          period_start_timestamp,
                          period_end_timestamp,
-                         asset,
+                         asset_symbol as asset,
                          COUNT(DISTINCT address) as active_addresses_count,
                          SUM(ABS(total_balance_change)) as total_balance_changes,
                          SUM(ABS(free_balance_change)) as total_free_balance_changes,
@@ -553,8 +562,8 @@ class BalanceSeriesService:
                          SUM(ABS(staked_balance_change)) as total_staked_balance_changes
                      FROM (SELECT * FROM balance_series FINAL) AS bs
                      WHERE 1=1{asset_filter}{timestamp_filter}
-                     GROUP BY period_start_timestamp, period_end_timestamp, asset
-                     ORDER BY period_start_timestamp DESC, asset
+                     GROUP BY period_start_timestamp, period_end_timestamp, asset_symbol
+                     ORDER BY period_start_timestamp DESC, asset_symbol
                      LIMIT {{limit:Int}} OFFSET {{offset:Int}}
                      """
 

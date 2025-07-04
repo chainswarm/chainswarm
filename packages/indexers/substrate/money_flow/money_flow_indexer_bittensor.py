@@ -4,6 +4,7 @@ from neo4j import Driver
 
 from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.money_flow.money_flow_indexer import BaseMoneyFlowIndexer
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
@@ -13,7 +14,7 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
     to enhance address labeling in the graph database.
     """
     
-    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics, asset_manager: AssetManager):
         """
         Initialize the BittensorMoneyFlowIndexer.
         
@@ -21,8 +22,9 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'bittensor', 'bittensor_testnet')
             indexer_metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
-        super().__init__(graph_database, network, indexer_metrics)
+        super().__init__(graph_database, network, indexer_metrics, asset_manager)
         logger.info(f"Initialized Bittensor money flow indexer for network: {network}")
     
     def _process_network_specific_events(self, transaction, timestamp, events_by_type):
@@ -101,8 +103,7 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
                 'owner_address': owner_address,
                 'network_id': str(network_id),
                 'neuron_id': str(neuron_id),
-                'timestamp': timestamp,
-                'asset': self.asset
+                'timestamp': timestamp
             })
             
             # Create or update the neuron node
@@ -213,8 +214,7 @@ class BittensorMoneyFlowIndexer(BaseMoneyFlowIndexer):
                 transaction.run(query, {
                     'creator_address': creator_address,
                     'network_id': str(network_id),
-                    'timestamp': timestamp,
-                    'asset': self.asset
+                    'timestamp': timestamp
                 })
                 
                 # Create relationship between creator and subnet

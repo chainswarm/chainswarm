@@ -65,7 +65,7 @@ def enrich_nodes_with_balances(balance_service: BalanceSeriesService, result: Li
 
     # Query balances for each batch and add to nodes
     for batch in address_batches:
-        balances = balance_service.get_current_balances(batch, assets)
+        balances_response = balance_service.get_current_balances(batch, assets, network)
         
         # First ensure all nodes have a balance property initialized to 0
         for address in addresses:
@@ -73,15 +73,19 @@ def enrich_nodes_with_balances(balance_service: BalanceSeriesService, result: Li
                 address_to_node[address]['balance'] = 0
                 address_to_node[address]['balance_timestamp'] = 0
         
-        # Add balance to each node that has data
-        for address, balance_data in balances.items():
-            if address in address_to_node:
-                # Use balance directly as it's already in human-readable format
-                balance = balance_data.get('balance', 0)
-                timestamp = balance_data.get('timestamp', 0)
-                
-                # Add balance to node
-                address_to_node[address]['balance'] = balance
-                address_to_node[address]['balance_timestamp'] = timestamp
+        # Process the balance items from the response
+        if balances_response and 'items' in balances_response:
+            for balance_item in balances_response['items']:
+                address = balance_item.get('address')
+                if address in address_to_node:
+                    # Sum up total balance for the address across all assets
+                    total_balance = float(balance_item.get('total_balance', 0))
+                    timestamp = balance_item.get('latest_period_end', 0)
+                    
+                    # Add to existing balance (in case of multiple assets)
+                    if 'balance' not in address_to_node[address]:
+                        address_to_node[address]['balance'] = 0
+                    address_to_node[address]['balance'] += total_balance
+                    address_to_node[address]['balance_timestamp'] = timestamp
     
     return result

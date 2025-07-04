@@ -99,7 +99,7 @@ class BalanceTransferService:
             Dictionary with paginated transaction history
         """
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         
         # Build JOIN clause for assets table if network is provided
         join_clause = ""
@@ -121,10 +121,10 @@ class BalanceTransferService:
                                 bt.amount,
                                 bt.fee,
                                 bt.block_timestamp,
-                                bt.asset,
+                                bt.asset_symbol as asset,
                                 bt.asset_contract,
                                 COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                                COALESCE(a.asset_name, bt.asset) as asset_name
+                                COALESCE(a.asset_name, bt.asset_symbol) as asset_name
                          FROM (SELECT * FROM balance_transfers FINAL) AS bt
                          {join_clause}
                          WHERE bt.from_address = {{address:String}} AND bt.to_address = {{target_address:String}}{asset_filter}
@@ -149,10 +149,10 @@ class BalanceTransferService:
                                 bt.amount,
                                 bt.fee,
                                 bt.block_timestamp,
-                                bt.asset,
+                                bt.asset_symbol as asset,
                                 bt.asset_contract,
                                 COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                                COALESCE(a.asset_name, bt.asset) as asset_name
+                                COALESCE(a.asset_name, bt.asset_symbol) as asset_name
                          FROM (SELECT * FROM balance_transfers FINAL) AS bt
                          {join_clause}
                          WHERE (bt.from_address = {{address:String}} OR bt.to_address = {{address:String}}){asset_filter}
@@ -199,7 +199,7 @@ class BalanceTransferService:
 
     def get_addresses_from_transaction_id(self, transaction_id: str, assets: List[str] = None):
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         
         count_query = f"""
                       SELECT DISTINCT address
@@ -230,7 +230,7 @@ class BalanceTransferService:
             Dictionary with paginated balance volume series data
         """
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         
         # Build timestamp filter based on period type
         timestamp_filter = ""
@@ -256,10 +256,10 @@ class BalanceTransferService:
             data_query = f"""
                          SELECT {table}.period_start,
                                 {table}.period_end,
-                                {table}.asset,
+                                {table}.asset_symbol as asset,
                                 {table}.asset_contract,
                                 COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                COALESCE(a.asset_name, {table}.asset_symbol) as asset_name,
                                 {table}.transaction_count,
                                 {table}.unique_senders,
                                 {table}.unique_receivers,
@@ -331,10 +331,10 @@ class BalanceTransferService:
             
             data_query = f"""
                          SELECT {table}.period,
-                                {table}.asset,
+                                {table}.asset_symbol as asset,
                                 {table}.asset_contract,
                                 COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                COALESCE(a.asset_name, {table}.asset_symbol) as asset_name,
                                 {table}.transaction_count,
                                 {table}.total_volume,
                                 {table}.max_unique_senders,
@@ -394,10 +394,10 @@ class BalanceTransferService:
             
             data_query = f"""
                          SELECT {table}.period,
-                                {table}.asset,
+                                {table}.asset_symbol as asset,
                                 {table}.asset_contract,
                                 COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                COALESCE(a.asset_name, {table}.asset_symbol) as asset_name,
                                 {table}.transaction_count,
                                 {table}.total_volume,
                                 {table}.max_unique_senders,
@@ -457,10 +457,10 @@ class BalanceTransferService:
             
             data_query = f"""
                          SELECT {table}.period,
-                                {table}.asset,
+                                {table}.asset_symbol as asset,
                                 {table}.asset_contract,
                                 COALESCE(a.asset_verified, 'unknown') as asset_verified,
-                                COALESCE(a.asset_name, {table}.asset) as asset_name,
+                                COALESCE(a.asset_name, {table}.asset_symbol) as asset_name,
                                 {table}.transaction_count,
                                 {table}.total_volume,
                                 {table}.max_unique_senders,
@@ -561,7 +561,7 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         if asset_filter:
             # Remove the leading " AND " from the filter
             filters.append(asset_filter[5:])
@@ -630,7 +630,7 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         if asset_filter:
             # Remove the leading " AND " from the filter
             filters.append(asset_filter[5:])
@@ -713,7 +713,7 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         if asset_filter:
             # Remove the leading " AND " from the filter
             filters.append(asset_filter[5:])
@@ -782,7 +782,7 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         if asset_filter:
             # Remove the leading " AND " from the filter
             filters.append(asset_filter[5:])
@@ -834,7 +834,7 @@ class BalanceTransferService:
         )
     def get_addresses_from_block_height(self, block_height: int, assets: List[str] = None):
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         
         count_query = f"""
                       SELECT DISTINCT address
@@ -866,13 +866,13 @@ class BalanceTransferService:
         address_filter = f"({address_conditions})"
         
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         
         results = {}
         
         # 24 hours - use daily view with last 1 day (single day, simple select)
         query_24h = f"""
-                    SELECT address, asset,
+                    SELECT address, asset_symbol as asset,
                            volume_in,
                            volume_out,
                            net_volume
@@ -884,7 +884,7 @@ class BalanceTransferService:
         
         # 7 days - sum across multiple days from daily view
         query_7d = f"""
-                   SELECT address, asset,
+                   SELECT address, asset_symbol as asset,
                           sum(volume_in) as volume_in,
                           sum(volume_out) as volume_out,
                           sum(net_volume) as net_volume
@@ -897,7 +897,7 @@ class BalanceTransferService:
         
         # 30 days - sum across multiple days from daily view
         query_30d = f"""
-                    SELECT address, asset,
+                    SELECT address, asset_symbol as asset,
                            sum(volume_in) as volume_in,
                            sum(volume_out) as volume_out,
                            sum(net_volume) as net_volume
@@ -910,7 +910,7 @@ class BalanceTransferService:
         
         # 60 days - sum across multiple weeks from weekly view
         query_60d = f"""
-                    SELECT address, asset,
+                    SELECT address, asset_symbol as asset,
                            sum(volume_in) as volume_in,
                            sum(volume_out) as volume_out,
                            sum(net_volume) as net_volume
@@ -923,7 +923,7 @@ class BalanceTransferService:
         
         # 90 days - sum across multiple weeks from weekly view
         query_90d = f"""
-                    SELECT address, asset,
+                    SELECT address, asset_symbol as asset,
                            sum(volume_in) as volume_in,
                            sum(volume_out) as volume_out,
                            sum(net_volume) as net_volume
@@ -986,7 +986,7 @@ class BalanceTransferService:
         address_filter = f"({address_conditions})"
         
         # Build asset filter using shared utility
-        asset_filter = build_asset_filter(assets)
+        asset_filter = build_asset_filter(assets, table_type="balance_transfers")
         
         # Always get total count for consistent pagination format
         count_query = f"""
@@ -1004,7 +1004,7 @@ class BalanceTransferService:
                          SELECT *
                          FROM balance_transfers_address_analytics_view
                          WHERE {address_filter}{asset_filter}
-                         ORDER BY address, asset
+                         ORDER BY address, asset_symbol
                          """
             
             query_result = self.client.query(data_query)
@@ -1022,7 +1022,7 @@ class BalanceTransferService:
             # Merge time metrics with analytics
             for item in analytics:
                 address = item['address']
-                asset = item['asset']
+                asset = item.get('asset_symbol', item.get('asset', ''))
                 if address in time_metrics and asset in time_metrics[address]:
                     item['volume_metrics'] = time_metrics[address][asset]
                 else:
@@ -1048,7 +1048,7 @@ class BalanceTransferService:
                          SELECT *
                          FROM balance_transfers_address_analytics_view
                          WHERE {address_filter}{asset_filter}
-                         ORDER BY address, asset
+                         ORDER BY address, asset_symbol
                          LIMIT {{limit:Int}} OFFSET {{offset:Int}}
                          """
             
@@ -1073,7 +1073,7 @@ class BalanceTransferService:
             # Merge time metrics with analytics
             for item in analytics:
                 address = item['address']
-                asset = item['asset']
+                asset = item.get('asset_symbol', item.get('asset', ''))
                 if address in time_metrics and asset in time_metrics[address]:
                     item['volume_metrics'] = time_metrics[address][asset]
                 else:

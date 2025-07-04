@@ -222,58 +222,64 @@ RETURN EXACT TEXT BELOW  WITHOUT CHANGES:
     
     ## 🌊 Money Flow Analysis
     
-    **What it does**: Maps the network of transactions between addresses, showing how money flows through the blockchain.
+    **What it does**: Maps the aggregated network of transactions between addresses, showing how money flows through the blockchain. Tracks multiple assets including native tokens and other assets. Each relationship includes asset type and contract information.
     
     **You can ask about**:
-    - Address connections and relationships
+    - Address connections and relationships (filtered by specific assets)
     - Transaction paths between any two addresses
     - Network topology and influential nodes
-    - Volume flows and transaction patterns
+    - Volume flows and transaction patterns per asset
+    - Multi-asset transaction networks
     
     **Example questions**:
     - "Show me connections around address [ADDRESS]"
-    - "Find the path between [ADDRESS1] and [ADDRESS2]"
+    - "Find the path between [ADDRESS1] and [ADDRESS2] for DOT transfers"
     - "What addresses are most connected to [ADDRESS]?"
     - "Map the transaction network with 2 degrees of separation from [ADDRESS]"
+    - "Show me all token transfers (non-native) involving [ADDRESS]"
     
     ## 📊 Balance Series Analytics
     
-    **What it does**: Tracks account balance changes over time with fixed 4-hour interval snapshots, supporting multiple balance types (free, reserved, staked, total).
+    **What it does**: Tracks account balance changes over time with fixed 4-hour interval snapshots. Supports multiple balance types (free, reserved, staked, total) and tracks all assets including native tokens and other tokens.
     
     **You can ask about**:
-    - Historical balance snapshots at different time scales
-    - Balance change trends and volatility
+    - Historical balance snapshots at different time scales for any asset
+    - Balance change trends and volatility per asset
     - Multi-level time aggregation (daily, weekly, monthly)
-    - Balance composition (free, reserved, staked)
+    - Balance composition (free, reserved, staked) across different assets
+    - Multi-asset portfolio tracking
     
     **Example questions**:
     - "What's the current balance for [ADDRESS]?"
-    - "Show me the balance history for [ADDRESS] over the last month"
+    - "Show me the DOT balance history for [ADDRESS] over the last month"
     - "How has the staked balance for [ADDRESS] changed weekly?"
     - "What was the total balance for [ADDRESS] at the end of last month?"
-    - "Which addresses had the largest balance increases last week?"
-    - "Plot the balance trend for [ADDRESS] over the past quarter"
+    - "Which addresses had the largest balance increases last week for TAO?"
+    - "Plot the balance trend for [ADDRESS] across all assets"
+    - "Show me token balances (non-native) for [ADDRESS]"
     
     ## 💸 Balance Transfers Analysis
     
-    **What it does**: Tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators.
+    **What it does**: Tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators. Analyzes all assets including native tokens and other tokens with asset-specific metrics.
     
     **You can ask about**:
-    - Transaction history with detailed records
-    - Address behavior patterns and classifications
-    - Network activity metrics and trends
-    - Transaction size distribution and patterns
+    - Transaction history with detailed records per asset
+    - Address behavior patterns and classifications by asset type
+    - Network activity metrics and trends for specific assets
+    - Transaction size distribution and patterns per asset
     - Economic indicators like token velocity
     - Temporal patterns in transaction activity
+    - Cross-asset transaction analysis
     
     **Example questions**:
     - "Show me all transactions for [ADDRESS]"
-    - "What's the transaction volume trend for [ASSET] over the last quarter?"
-    - "Identify addresses with high transaction frequency but low volume"
-    - "What's the distribution of transaction sizes for [ASSET]?"
-    - "Show me addresses classified as 'whales' for [ASSET]"
+    - "What's the transaction volume trend for DOT over the last quarter?"
+    - "Identify addresses with high transaction frequency but low volume for TAO"
+    - "What's the distribution of transaction sizes for token transfers?"
+    - "Show me addresses classified as 'whales' for DOT"
     - "Analyze the transaction relationship between [ADDRESS1] and [ADDRESS2]"
-    - "What's the token velocity for [ASSET] over time?"
+    - "What's the token velocity for each asset over time?"
+    - "Show me all non-native token transfers in the last week"
     
     ## 🏷️ Known Addresses
     
@@ -390,17 +396,18 @@ Your task is to help users analyze blockchain data using the available tools.
 **Connection Exploration**
 - Tool: `money_flow_explore_address_connections`
 - Purpose: Discover address relationships and transaction networks
-- Usage: Specify addresses, depth (1-5 hops), and direction (in/out/all)
+- Usage: Specify addresses, depth (1-5 hops), direction (in/out/all), and optionally filter by specific assets
 
 **Path Finding**
 - Tool: `money_flow_shortest_path`
 - Purpose: Find transaction paths between two specific addresses
-- Usage: Provide source and target addresses, optionally filter by assets
+- Usage: Provide source and target addresses, optionally filter by specific assets
 
 **Advanced Graph Queries**
 - Tool: `money_flow_query`
 - **Database**: MEMGRAPH (NOT Neo4j)
 - **Schema**: {money_flow_schema}
+- **Properties**: All relationships include `asset` and `asset_contract` properties
 
 **MEMGRAPH CYPHER SYNTAX REQUIREMENTS:**
 ```cypher
@@ -429,6 +436,31 @@ RETURN size(addr_list) as count, addr_list[0..3] as top_items
 - Directions: `['TO']` (both), `['TO>']` (outgoing), `['<TO']` (incoming)
 - Path functions: `relationships(path)`, `nodes(path)`
 - Collection operations: Use separate queries instead of nested comprehensions
+- Asset filtering: All relationships have `asset` and `asset_contract` properties
+
+**Asset Filtering Examples:**
+```cypher
+// Find paths for specific asset
+MATCH path = (a:Address {{address: $addr1}})-[r:TO* {{asset: 'DOT'}}]-(b:Address {{address: $addr2}})
+RETURN path
+
+// Find connections for multiple assets
+MATCH (a:Address {{address: $addr}})-[r:TO]-(b:Address)
+WHERE r.asset IN ['DOT', 'TAO', 'TOR']
+RETURN a, r, b
+
+// Analyze flows by asset type
+MATCH (a:Address)-[r:TO]->(b:Address)
+WHERE r.asset_contract = 'native'  // Only native assets
+RETURN r.asset, sum(r.total_amount) as total_volume
+ORDER BY total_volume DESC
+
+// Find token transfers (non-native)
+MATCH (a:Address)-[r:TO]->(b:Address)
+WHERE r.asset_contract <> 'native'
+RETURN a.address, b.address, r.asset, r.total_amount
+LIMIT 100
+```
 
 **CRITICAL: For complex grouping, use multiple queries instead of nested list comprehensions:**
 ```cypher
@@ -758,10 +790,10 @@ async def instructions():
 @session_rate_limit
 @mcp.tool(
     name="money_flow_shortest_path",
-    description="Find shortest paths between two addresses with optional asset filtering.",
-    tags={"money flow", "shortest path", "path finding", "asset filtering"},
+    description="Find shortest paths between two addresses. Filter paths by specific assets using the optional assets parameter.",
+    tags={"money flow", "shortest path", "path finding", "asset filtering", "multi-asset"},
     annotations={
-        "title": "Find shortest paths between addresses",
+        "title": "Find shortest paths between addresses with asset filtering",
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False
@@ -770,18 +802,18 @@ async def instructions():
 async def money_flow_shortest_path(
     source_address: Annotated[str, Field(description="Source address to start the path from")],
     target_address: Annotated[str, Field(description="Target address to find path to")],
-    assets: Annotated[Optional[str], Field(description="Optional comma-separated list of assets to filter by. ")] = None
+    assets: Annotated[Optional[str], Field(description="Optional comma-separated list of assets to filter by (e.g., 'DOT', 'TAO,TOR', or 'all' for all assets)")] = None
 ) -> dict:
     """
-    Find shortest paths between two addresses with optional asset filtering.
+    Find shortest paths between two addresses.
     
     Args:
         source_address: Source address to start the path from
         target_address: Target address to find path to
-        assets: Optional list of assets to filter by
+        assets: Optional comma-separated list of assets to filter by (e.g., 'DOT', 'TAO,TOR')
         
     Returns:
-        dict: Path results containing nodes and edges
+        dict: Path results containing nodes and edges with asset information
     """
 
     start_time = time.time()
@@ -828,10 +860,10 @@ async def money_flow_shortest_path(
 @session_rate_limit
 @mcp.tool(
     name="money_flow_explore_address_connections",
-    description="Explore address connections with depth and direction control.",
-    tags={"money flow", "exploration", "depth traversal", "directional analysis"},
+    description="Explore address connections with depth and direction control. Filter by specific assets using the optional assets parameter.",
+    tags={"money flow", "exploration", "depth traversal", "directional analysis", "multi-asset"},
     annotations={
-        "title": "Explore address connections with depth and direction control",
+        "title": "Explore address connections with depth, direction, and asset filtering",
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False
@@ -841,7 +873,7 @@ async def money_flow_explore_address_connections(
     addresses: Annotated[List[str], Field(description="List of wallet addresses to start the exploration from")],
     depth_level: Annotated[int, Field(description="Number of hops to explore from the starting addresses", ge=1, le=5)],
     direction: Annotated[str, Field(description="Direction of relationships to follow: 'in', 'out', or 'all'")],
-    assets: Annotated[Optional[str], Field(description="Optional comma-separated list of assets to filter by. ")] = None
+    assets: Annotated[Optional[str], Field(description="Optional comma-separated list of assets to filter by (e.g., 'DOT', 'TAO,TOR', or 'all' for all assets)")] = None
 ) -> dict:
     """
     Explore address connections with depth and direction control.
@@ -850,10 +882,10 @@ async def money_flow_explore_address_connections(
         addresses: List of wallet addresses to start the exploration from
         depth_level: Number of hops to explore (1-5)
         direction: Direction of relationships ('in', 'out', or 'all')
-        assets: Optional list of assets to filter by
+        assets: Optional comma-separated list of assets to filter by (e.g., 'DOT', 'TAO,TOR')
         
     Returns:
-        dict: Exploration results containing nodes and edges
+        dict: Exploration results containing nodes and edges with asset information
     """
 
     assets = assets.split(",") if assets else ["all"]
@@ -875,22 +907,22 @@ async def money_flow_explore_address_connections(
 @session_rate_limit
 @mcp.tool(
     name="money_flow_query",
-    description="Execute a money flow query.",
-    tags={"money flow", "shortest path", "community detection", "pattern detection", "temporal analysis"},
+    description="Execute a money flow query. All relationships include 'asset' and 'asset_contract' properties for filtering.",
+    tags={"money flow", "shortest path", "community detection", "pattern detection", "temporal analysis", "multi-asset"},
     annotations={
-        "title": "Executes Memgraph Cypher query against money flow graph database",
+        "title": "Executes Memgraph Cypher query against money flow graph database with asset support",
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False
     }
 )
 def execute_money_flow_query(query: Annotated[
-    str, Field(description="The Cypher query to execute. Use asset properties to filter by specific assets.")]) -> dict:
+    str, Field(description="The Cypher query to execute. Relationships include 'asset' and 'asset_contract' properties. Example: MATCH (a)-[r:TO {asset: 'DOT'}]->(b) to filter by asset.")]) -> dict:
     """
-    Execute a money flow query on the specified blockchain network with asset support.
+    Execute a money flow query on the specified blockchain network.
 
     Args:
-        query (str): The Cypher query to execute. Use asset properties to filter by specific assets.
+        query (str): The Cypher query to execute. Use asset and asset_contract properties on relationships to filter by specific assets.
 
     Returns:
         dict: The result of the money flow query with asset information.

@@ -7,6 +7,7 @@ from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.money_flow.money_flow_indexer import BaseMoneyFlowIndexer
 from packages.indexers.substrate.money_flow import populate_genesis_balances
 from packages.indexers.substrate import data
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
@@ -15,7 +16,7 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
     Handles Torus-specific events like AgentRegistered.
     """
     
-    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics ):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics, asset_manager: AssetManager):
         """
         Initialize the TorusMoneyFlowIndexer.
         
@@ -23,8 +24,9 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'torus', 'torus_testnet')
             indexer_metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
-        super().__init__(graph_database, network, indexer_metrics)
+        super().__init__(graph_database, network, indexer_metrics, asset_manager)
         logger.info(f"Initialized Torus money flow indexer for network: {network}")
         
         # Initialize genesis balances for Torus networks
@@ -59,8 +61,7 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
                 agent.labels = coalesce(agent.labels, []) + ['agent']
             """
             transaction.run(query, {
-                'agent': agent,
-                'asset': self.asset
+                'agent': agent
             })
     
     def _init_genesis_balances(self):
@@ -74,7 +75,7 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
                 """)
                 record = result.single()
                 if record and record["genesis_count"] > 0:
-                    logger.info(f"Genesis address records already exist for asset {self.asset}, skipping genesis balance initialization")
+                    logger.info(f"Genesis address records already exist, skipping genesis balance initialization")
                     return
                     
             # Check if genesis balances file exists
@@ -85,7 +86,7 @@ class TorusMoneyFlowIndexer(BaseMoneyFlowIndexer):
             
             # Load and populate genesis balances
             logger.info(f"Loading genesis balances from {file_path}")
-            populate_genesis_balances.run(file_path, self.network)
+            populate_genesis_balances.run(file_path, self.network, self.asset_manager)
             logger.success(f"Genesis balances initialized for Torus network: {self.network}")
             
         except Exception as e:

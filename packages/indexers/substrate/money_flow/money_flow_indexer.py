@@ -9,6 +9,7 @@ from packages.indexers.base import terminate_event
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import get_network_asset
 from packages.indexers.base.metrics import IndexerMetrics
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 def infinite_retry_with_backoff(method):
@@ -65,7 +66,7 @@ class BaseMoneyFlowIndexer:
     _process_network_specific_events method.
     """
 
-    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics):
+    def __init__(self, graph_database: Driver, network: str, indexer_metrics: IndexerMetrics, asset_manager: AssetManager):
         """
         Initialize the BaseMoneyFlowIndexer.
 
@@ -73,11 +74,12 @@ class BaseMoneyFlowIndexer:
             graph_database: Neo4j driver instance
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
             indexer_metrics: Optional IndexerMetrics instance for recording metrics
+            asset_manager: AssetManager instance for managing assets
         """
         self.graph_database = graph_database
         self.terminate_event = terminate_event  # Store reference to global termination event
         self.network = network
-        self.asset = get_network_asset(network)  # Get the asset symbol for this network
+        self.asset_manager = asset_manager
         self.indexer_metrics = indexer_metrics
 
     def index_blocks(self, blocks):
@@ -123,6 +125,7 @@ class BaseMoneyFlowIndexer:
             edge_indexes = [
                 ("TO", "id"),
                 ("TO", "asset"),
+                ("TO", "asset_contract"),
                 ("TO", "volume"),
                 ("TO", "transfer_count"),
 
@@ -303,12 +306,12 @@ class BaseMoneyFlowIndexer:
 
             if addresses is not None:
                 query = base_query.replace("{address_filter}", "AND a.address IN $addresses")
-                params = {"addresses": addresses, "asset": self.asset}
+                params = {"addresses": addresses}
                 with self.graph_database.session() as session:
                     session.run(query, params)
             else:
                 query = base_query.replace("{address_filter}", "")
-                params = {"asset": self.asset}
+                params = {}
                 with self.graph_database.session() as session:
                     session.run(query, params)
 
@@ -400,7 +403,7 @@ class BaseMoneyFlowIndexer:
                 communities = [community_id[0] for community_id in result]
 
                 # Log summary before starting
-                logger.info(f"Starting PageRank for {len(communities)} communities (asset: {self.asset})")
+                logger.info(f"Starting PageRank for {len(communities)} communities")
                 start_time_total = time.time()
                 processed_count = 0
 
@@ -427,14 +430,13 @@ class BaseMoneyFlowIndexer:
                 total_duration = end_time_total - start_time_total
                 avg_duration = total_duration / processed_count if processed_count > 0 else 0
                 logger.success(
-                    f"Completed PageRank for {processed_count}/{len(communities)} communities in {total_duration:.2f} seconds (avg: {avg_duration:.2f}s per community) (asset: {self.asset})")
+                    f"Completed PageRank for {processed_count}/{len(communities)} communities in {total_duration:.2f} seconds (avg: {avg_duration:.2f}s per community)")
 
         except Exception as e:
             logger.error(
                 "Error running PageRank query",
                 error=e,
-                traceback=traceback.format_exc(),
-                extra={"asset": self.asset}
+                traceback=traceback.format_exc()
             )
             raise e
 
@@ -448,10 +450,61 @@ class BaseMoneyFlowIndexer:
             grouped[key].append(event)
         return grouped
 
+    def _extract_asset_info(self, event):
+        """Extract asset symbol and contract from event
+        
+        Args:
+            event: The blockchain event to extract asset info from
+            
+        Returns:
+            Tuple of (asset_symbol, asset_contract)
+        """
+        # For native transfers (Balances.Transfer)
+        if event['module_id'] == 'Balances' and event['event_id'] == 'Transfer':
+            return get_network_asset(self.network), 'native'
+        
+        # For native endowed events
+        if event['module_id'] == 'Balances' and event['event_id'] == 'Endowed':
+            return get_network_asset(self.network), 'native'
+        
+        # For token transfers - this needs to be implemented per network
+        # Example for Assets pallet (common in Substrate chains):
+        if event['module_id'] == 'Assets' and event['event_id'] == 'Transferred':
+            # Extract asset_id from event attributes
+            attrs = event.get('attributes', {})
+            asset_id = attrs.get('asset_id', '')
+            if asset_id:
+                # For now, use asset_id as both symbol and contract
+                # In production, might need to query chain for asset metadata
+                return f"TOKEN_{asset_id}", str(asset_id)
+        
+        # Default to native if unknown
+        return get_network_asset(self.network), 'native'
+
     def _process_endowed_events(self, transaction, timestamp, events):
         """Process Balances.Endowed events"""
         for event in events:
             attrs = event['attributes']
+            
+            # Extract asset information from event
+            asset_symbol, asset_contract = self._extract_asset_info(event)
+            
+            # Ensure asset exists in assets table
+            if asset_contract == 'native':
+                decimals = self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
+                asset_type = 'native'
+            else:
+                # For tokens, we'd need to get decimals from chain or default
+                decimals = 18  # Default for most tokens
+                asset_type = 'token'
+            
+            self.asset_manager.ensure_asset_exists(
+                asset_symbol=asset_symbol,
+                asset_contract=asset_contract,
+                asset_type=asset_type,
+                decimals=decimals
+            )
+            
             query = """
             MERGE (addr:Address { address: $account })
             ON CREATE SET
@@ -463,7 +516,6 @@ class BaseMoneyFlowIndexer:
                 'block_height': event['block_height'],
                 'timestamp': timestamp,
                 'account': attrs['account'],
-                'asset': self.asset,
                 'amount': float(convert_to_decimal_units(
                     attrs['free_balance'],
                     self.network
@@ -474,10 +526,34 @@ class BaseMoneyFlowIndexer:
         """Process Balances.Transfer events with consolidated relationship merge."""
         for event in events:
             attrs = event['attributes']
+            
+            # Extract asset information from event
+            asset_symbol, asset_contract = self._extract_asset_info(event)
+            
+            # Ensure asset exists in assets table
+            if asset_contract == 'native':
+                decimals = self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
+                asset_type = 'native'
+            else:
+                # For tokens, we'd need to get decimals from chain or default
+                decimals = 18  # Default for most tokens
+                asset_type = 'token'
+            
+            self.asset_manager.ensure_asset_exists(
+                asset_symbol=asset_symbol,
+                asset_contract=asset_contract,
+                asset_type=asset_type,
+                decimals=decimals
+            )
+            
             amount = float(convert_to_decimal_units(
                 attrs['amount'],
                 self.network
             ))
+            
+            # Update relationship ID to include asset_contract
+            to_id = f"from-{attrs['from']}-to-{attrs['to']}-{asset_symbol}-{asset_contract}"
+            
             query = """
             MERGE (sender:Address { address: $from })
               ON CREATE SET
@@ -486,8 +562,8 @@ class BaseMoneyFlowIndexer:
                 sender.first_activity_block_height = $block_height,
                 sender.last_activity_block_height = $block_height,
                 sender.transfer_count = 1
-              SET 
-                sender.last_activity_timestamp = $timestamp, 
+              SET
+                sender.last_activity_timestamp = $timestamp,
                 sender.last_activity_block_height = $block_height,
                 sender.transfer_count = coalesce(sender.transfer_count, 0) + 1
 
@@ -503,7 +579,7 @@ class BaseMoneyFlowIndexer:
                 receiver.last_activity_block_height = $block_height,
                 receiver.transfer_count = coalesce(receiver.transfer_count, 0) + 1
 
-            MERGE (sender)-[r:TO { id: $to_id, asset: $asset }]->(receiver)
+            MERGE (sender)-[r:TO { id: $to_id, asset: $asset_symbol, asset_contract: $asset_contract }]->(receiver)
               ON CREATE SET
                   r.volume = $amount,
                   r.transfer_count = 1,
@@ -532,8 +608,9 @@ class BaseMoneyFlowIndexer:
                 'from': attrs['from'],
                 'to': attrs['to'],
                 'amount': amount,
-                'asset': self.asset,
-                'to_id': f"from-{attrs['from']}-to-{attrs['to']}-{self.asset}",
+                'asset_symbol': asset_symbol,
+                'asset_contract': asset_contract,
+                'to_id': to_id,
             })
 
     def _process_network_specific_events(self, transaction, timestamp, events_by_type):
