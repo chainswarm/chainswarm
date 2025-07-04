@@ -19,9 +19,10 @@ from packages.indexers.substrate.block_range_partitioner import BlockRangePartit
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
-def get_balance_series_indexer(connection_params, network: str, period_hours: int, indexer_metrics: IndexerMetrics):
+def get_balance_series_indexer(connection_params, network: str, period_hours: int, indexer_metrics: IndexerMetrics, asset_manager: AssetManager):
     """
     Factory function to get the appropriate indexer based on network.
 
@@ -30,6 +31,7 @@ def get_balance_series_indexer(connection_params, network: str, period_hours: in
         network: Network identifier (torus, bittensor, polkadot)
         period_hours: Number of hours in each period
         indexer_metrics: IndexerMetrics instance for recording metrics (required)
+        asset_manager: AssetManager instance for managing assets
 
     Returns:
         BalanceSeriesIndexer: Appropriate indexer instance for the network
@@ -38,11 +40,11 @@ def get_balance_series_indexer(connection_params, network: str, period_hours: in
         ValueError: If network is invalid
     """
     if network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
-        return TorusBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics)
+        return TorusBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics, asset_manager)
     elif network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
-        return BittensorBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics)
+        return BittensorBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics, asset_manager)
     elif network == Network.POLKADOT.value:
-        return PolkadotBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics)
+        return PolkadotBalanceSeriesIndexer(connection_params, network, period_hours, indexer_metrics, asset_manager)
     else:
         raise ValueError(f"Unsupported network: {network}")
 
@@ -493,7 +495,12 @@ if __name__ == "__main__":
         metrics_registry = setup_metrics(service_name, start_server=True)
         indexer_metrics = IndexerMetrics(metrics_registry, args.network, 'balance_series')
         
-        balance_series_indexer = get_balance_series_indexer(clickhouse_params, args.network, args.period_hours, indexer_metrics)
+        # Create AssetManager and initialize native assets
+        asset_manager = AssetManager(args.network, clickhouse_params)
+        asset_manager.initialize_native_assets()
+        logger.info(f"Initialized AssetManager and native assets for {args.network}")
+        
+        balance_series_indexer = get_balance_series_indexer(clickhouse_params, args.network, args.period_hours, indexer_metrics, asset_manager)
         block_partioner = get_partitioner(args.network)
         block_stream_indexer = BlockStreamIndexer(block_partioner, indexer_metrics, clickhouse_params, args.network)
         substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)

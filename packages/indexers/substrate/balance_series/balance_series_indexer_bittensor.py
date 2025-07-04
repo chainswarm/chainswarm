@@ -4,6 +4,7 @@ from loguru import logger
 
 from packages.indexers.base import IndexerMetrics
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BittensorBalanceSeriesIndexer(BalanceSeriesIndexerBase):
@@ -12,7 +13,7 @@ class BittensorBalanceSeriesIndexer(BalanceSeriesIndexerBase):
     Handles Bittensor-specific balance series functionality.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int, metrics: IndexerMetrics):
+    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int, metrics: IndexerMetrics, asset_manager: AssetManager):
         """
         Initialize the BittensorBalanceSeriesIndexer.
         
@@ -21,8 +22,9 @@ class BittensorBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             network: Network identifier (e.g., 'bittensor', 'bittensor_testnet')
             period_hours: Number of hours in each period
             metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
-        super().__init__(connection_params, metrics, network, period_hours)
+        super().__init__(connection_params, metrics, network, asset_manager, period_hours)
         logger.info(f"Initialized Bittensor balance series indexer for network: {network}")
         
         # Initialize any Bittensor-specific configurations

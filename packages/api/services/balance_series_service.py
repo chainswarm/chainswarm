@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional, List
 import clickhouse_connect
 
 from packages.api.services.balance_utils import format_paginated_response
+from packages.api.services.asset_filter_utils import build_asset_filter
 
 
 def get_balance_series_tables() -> List[str]:
@@ -88,18 +89,15 @@ class BalanceSeriesService:
             address: The blockchain address to query
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             start_timestamp: Optional start timestamp in milliseconds
             end_timestamp: Optional end timestamp in milliseconds
 
         Returns:
             Dictionary with paginated balance history
         """
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Build timestamp filter
         timestamp_filter = ""
@@ -193,16 +191,13 @@ class BalanceSeriesService:
 
         Args:
             addresses: List of blockchain addresses to query
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
 
         Returns:
             List of current balance records
         """
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Build address filter
         address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
@@ -268,17 +263,14 @@ class BalanceSeriesService:
             address: The blockchain address to query
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             min_change_threshold: Minimum absolute change threshold to filter by
 
         Returns:
             Dictionary with paginated balance changes
         """
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Build change threshold filter
         threshold_filter = ""
@@ -369,7 +361,7 @@ class BalanceSeriesService:
         Args:
             period: Aggregation period ('daily', 'weekly', 'monthly')
             addresses: Optional list of addresses to filter by
-            assets: Optional list of assets to filter by
+            assets: Optional list of assets to filter by (can be symbols or contract addresses)
             start_date: Optional start date (YYYY-MM-DD format)
             end_date: Optional end date (YYYY-MM-DD format)
 
@@ -396,9 +388,10 @@ class BalanceSeriesService:
             address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
             filters.append(f"({address_conditions})")
         
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            filters.append(f"({asset_conditions})")
+        asset_filter = build_asset_filter(assets)
+        if asset_filter:
+            # Remove the leading " AND " from the filter
+            filters.append(asset_filter[5:])
         
         if start_date:
             filters.append(f"{date_column} >= '{start_date}'")
@@ -523,18 +516,15 @@ class BalanceSeriesService:
         Args:
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             start_timestamp: Optional start timestamp in milliseconds
             end_timestamp: Optional end timestamp in milliseconds
             
         Returns:
             Dictionary with paginated balance volume series data
         """
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Build timestamp filter
         timestamp_filter = ""

@@ -300,7 +300,7 @@ class BalanceTransfersTool:
 
             return {
                 "name": "Balance Transfers Schema",
-                "description": "Schema for balance transfers data in ClickHouse - tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators. Now includes asset verification information to help identify verified, unknown, or potentially malicious assets.",
+                "description": "Schema for balance transfers data in ClickHouse - tracks individual transfer transactions between addresses with comprehensive metrics for network activity, address behavior, and economic indicators. Includes asset verification information to help identify verified, unknown, or potentially malicious assets.",
                 "tables": schema,
                 "key_features": [
                     "Asset-agnostic design with universal histogram bins for consistent analysis",

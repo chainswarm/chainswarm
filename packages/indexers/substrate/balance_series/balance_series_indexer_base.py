@@ -12,13 +12,14 @@ from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BalanceSeriesIndexerBase:
-    def __init__(self, connection_params: Dict[str, Any], metrics: IndexerMetrics, network: str, period_hours: int = 4):
+    def __init__(self, connection_params: Dict[str, Any], metrics: IndexerMetrics, network: str, asset_manager: AssetManager, period_hours: int = 4):
         """Initialize the Balance Series Indexer with a database connection
         
         Args:
             connection_params: Dictionary with ClickHouse connection parameters
             metrics: IndexerMetrics instance for recording metrics (required)
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
+            asset_manager: AssetManager instance for managing assets
             period_hours: Number of hours in each period (default: 4)
         """
         self.network = network
@@ -27,6 +28,7 @@ class BalanceSeriesIndexerBase:
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.first_block_timestamp = None  # Will be set by the consumer if available
         self.metrics = metrics
+        self.asset_manager = asset_manager
         
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
@@ -41,9 +43,6 @@ class BalanceSeriesIndexerBase:
                 'max_query_size': 100000
             }
         )
-        
-        # Initialize AssetManager
-        self.asset_manager = AssetManager(connection_params)
         
         self._init_tables()
 
@@ -124,8 +123,8 @@ class BalanceSeriesIndexerBase:
             self.asset_manager.ensure_asset_exists(
                 asset_symbol=self.asset,
                 asset_contract='native',  # Native assets use 'native' as contract
-                decimals=self.asset_manager._get_network_decimals(self.network),
-                network=self.network
+                asset_type='native',
+                decimals=self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
             )
             
             # Prepare data for insertion
@@ -363,5 +362,3 @@ class BalanceSeriesIndexerBase:
         """Close the ClickHouse connection"""
         if hasattr(self, 'client'):
             self.client.close()
-        if hasattr(self, 'asset_manager'):
-            self.asset_manager.close()

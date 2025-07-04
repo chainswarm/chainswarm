@@ -3,10 +3,11 @@ from loguru import logger
 
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer_base import BalanceTransfersIndexerBase
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BalanceTransfersIndexer(BalanceTransfersIndexerBase):
-    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str, metrics):
+    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str, metrics, asset_manager: AssetManager):
         """Initialize the Balance Transfers Indexer with database connection
 
         Args:
@@ -14,9 +15,10 @@ class BalanceTransfersIndexer(BalanceTransfersIndexerBase):
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
             metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
         # Initialize the base class
-        super().__init__(connection_params, partitioner, network, metrics)
+        super().__init__(connection_params, partitioner, network, metrics, asset_manager)
 
     def _init_tables(self):
         """Initialize tables for balance transfers"""
@@ -55,7 +57,7 @@ class BalanceTransfersIndexer(BalanceTransfersIndexerBase):
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, asset_contract, amount, fee_amount, version)
         """
         # Base implementation does nothing
         return []

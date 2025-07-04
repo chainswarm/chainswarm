@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional, List
 import clickhouse_connect
 
 from packages.api.services.balance_utils import format_paginated_response
+from packages.api.services.asset_filter_utils import build_asset_filter
 
 
 def get_balance_transfers_tables() -> List[str]:
@@ -92,15 +93,13 @@ class BalanceTransferService:
             target_address: Optional target address to filter transactions
             page: Page number for pagination
             page_size: Number of items per page
+            assets: List of assets to filter by (can be symbols or contract addresses)
 
         Returns:
             Dictionary with paginated transaction history
         """
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Build JOIN clause for assets table if network is provided
         join_clause = ""
@@ -199,11 +198,8 @@ class BalanceTransferService:
         )
 
     def get_addresses_from_transaction_id(self, transaction_id: str, assets: List[str] = None):
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         count_query = f"""
                       SELECT DISTINCT address
@@ -225,7 +221,7 @@ class BalanceTransferService:
         Args:
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             start_timestamp: Optional start timestamp in milliseconds
             end_timestamp: Optional end timestamp in milliseconds
             period_type: Period type for aggregation ("4hour", "daily", "weekly", "monthly")
@@ -233,11 +229,8 @@ class BalanceTransferService:
         Returns:
             Dictionary with paginated balance volume series data
         """
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Build timestamp filter based on period type
         timestamp_filter = ""
@@ -545,7 +538,7 @@ class BalanceTransferService:
             period: Period type ('daily', 'weekly', 'monthly')
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             start_date: Optional start date filter
             end_date: Optional end date filter
             
@@ -568,9 +561,10 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            filters.append(f"({asset_conditions})")
+        asset_filter = build_asset_filter(assets)
+        if asset_filter:
+            # Remove the leading " AND " from the filter
+            filters.append(asset_filter[5:])
         
         if start_date:
             filters.append(f"{date_column} >= '{start_date}'")
@@ -626,7 +620,7 @@ class BalanceTransferService:
         Args:
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             address_type: Filter by address type classification
             min_volume: Minimum total volume filter
             
@@ -636,9 +630,10 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            filters.append(f"({asset_conditions})")
+        asset_filter = build_asset_filter(assets)
+        if asset_filter:
+            # Remove the leading " AND " from the filter
+            filters.append(asset_filter[5:])
         
         if address_type:
             filters.append(f"address_type = '{address_type}'")
@@ -695,7 +690,7 @@ class BalanceTransferService:
             period: Period type ('daily', 'weekly', 'monthly')
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             start_date: Optional start date filter
             end_date: Optional end date filter
             
@@ -718,9 +713,10 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            filters.append(f"({asset_conditions})")
+        asset_filter = build_asset_filter(assets)
+        if asset_filter:
+            # Remove the leading " AND " from the filter
+            filters.append(asset_filter[5:])
         
         if start_date:
             filters.append(f"{date_column} >= '{start_date}'")
@@ -776,7 +772,7 @@ class BalanceTransferService:
         Args:
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             start_timestamp: Optional start timestamp in milliseconds
             end_timestamp: Optional end timestamp in milliseconds
             
@@ -786,9 +782,10 @@ class BalanceTransferService:
         # Build filters
         filters = []
         
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            filters.append(f"({asset_conditions})")
+        asset_filter = build_asset_filter(assets)
+        if asset_filter:
+            # Remove the leading " AND " from the filter
+            filters.append(asset_filter[5:])
         
         if start_timestamp:
             filters.append(f"period_start >= toDateTime({start_timestamp}/1000)")
@@ -836,11 +833,8 @@ class BalanceTransferService:
             total_items=total_count
         )
     def get_addresses_from_block_height(self, block_height: int, assets: List[str] = None):
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         count_query = f"""
                       SELECT DISTINCT address
@@ -859,7 +853,7 @@ class BalanceTransferService:
         
         Args:
             addresses: List of blockchain addresses to query
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             
         Returns:
             Dictionary with time-based volume metrics per address and asset
@@ -871,11 +865,8 @@ class BalanceTransferService:
         address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
         address_filter = f"({address_conditions})"
         
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         results = {}
         
@@ -973,7 +964,7 @@ class BalanceTransferService:
         
         return results
 
-    def get_addresses_analytics(self, addresses: List[str], page: int = 1, page_size: int = 20, assets: List[str] = None, return_all: bool = False):
+    def get_addresses_analytics(self, addresses: List[str], page: int = 1, page_size: int = 20, assets: List[str] = None, return_all: bool = False, network: str = None):
         """
         Returns comprehensive analytics for a list of addresses from balance_transfers_address_analytics_view
         
@@ -981,7 +972,7 @@ class BalanceTransferService:
             addresses: List of blockchain addresses to query
             page: Page number for pagination
             page_size: Number of items per page
-            assets: List of assets to filter by
+            assets: List of assets to filter by (can be symbols or contract addresses)
             return_all: If True, returns all results without pagination
             
         Returns:
@@ -994,11 +985,8 @@ class BalanceTransferService:
         address_conditions = " OR ".join([f"address = '{addr}'" for addr in addresses])
         address_filter = f"({address_conditions})"
         
-        # Build asset filter
-        asset_filter = ""
-        if assets and assets != ["all"]:
-            asset_conditions = " OR ".join([f"asset = '{asset}'" for asset in assets])
-            asset_filter = f" AND ({asset_conditions})"
+        # Build asset filter using shared utility
+        asset_filter = build_asset_filter(assets)
         
         # Always get total count for consistent pagination format
         count_query = f"""

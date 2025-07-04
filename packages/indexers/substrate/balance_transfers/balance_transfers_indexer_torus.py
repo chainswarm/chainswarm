@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
@@ -12,7 +13,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
     Handles Torus-specific transfer events like staking and governance events.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str, metrics):
+    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str, metrics, asset_manager: AssetManager):
         """
         Initialize the TorusBalanceTransfersIndexer.
         
@@ -21,8 +22,9 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'torus', 'torus_testnet')
             metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
-        super().__init__(connection_params, partitioner, network, metrics)
+        super().__init__(connection_params, partitioner, network, metrics, asset_manager)
     
     def _process_network_specific_events(self, events: List[Dict]):
         """
@@ -33,7 +35,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, asset_contract, amount, fee_amount, version)
         """
         # Event tracking
         balance_transfers = []
@@ -62,6 +64,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
                         'system',  # From the system
                         stash_account,  # To the stash account
                         self.asset,  # Use network asset (TOR)
+                        'native',  # Native asset contract
                         reward_amount,
                         Decimal(0),  # No fee for rewards
                         str(event.get('block_height'))
@@ -84,6 +87,7 @@ class TorusBalanceTransfersIndexer(BalanceTransfersIndexer):
                         'treasury',  # From the treasury
                         recipient,  # To the recipient
                         self.asset,  # Use network asset (TOR)
+                        'native',  # Native asset contract
                         award_amount,
                         Decimal(0),  # No fee for treasury awards
                         str(event.get('block_height'))

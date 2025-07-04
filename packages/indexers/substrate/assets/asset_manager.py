@@ -9,7 +9,7 @@ and ensuring assets exist before they are referenced in other tables.
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
-from clickhouse_driver import Client
+import clickhouse_connect
 from packages.indexers.base.enhanced_logging import get_logger
 
 logger = get_logger(__name__)
@@ -18,17 +18,26 @@ logger = get_logger(__name__)
 class AssetManager:
     """Manages asset dictionary operations for a specific network."""
     
-    def __init__(self, network: str, clickhouse_client: Client):
+    def __init__(self, network: str, connection_params: Dict[str, Any]):
         """
         Initialize the AssetManager.
         
         Args:
             network: The blockchain network (e.g., 'torus', 'bittensor', 'polkadot')
-            clickhouse_client: ClickHouse client instance
+            connection_params: ClickHouse connection parameters
         """
         self.network = network
-        self.client = clickhouse_client
+        self.client = clickhouse_connect.get_client(
+            host=connection_params['host'],
+            port=int(connection_params['port']),
+            username=connection_params['user'],
+            password=connection_params['password'],
+            database=connection_params['database']
+        )
         self.logger = logger
+        
+        # Cache for asset lookups to avoid repeated database queries
+        self._asset_cache = {}
         
         # Native asset configurations
         self.NATIVE_ASSETS = {
@@ -40,7 +49,7 @@ class AssetManager:
             'bittensor': {
                 'symbol': 'TAO',
                 'name': 'Bittensor',
-                'decimals': 9
+                'decimals': 18  # Fixed from 9 to 18
             },
             'polkadot': {
                 'symbol': 'DOT',
@@ -147,13 +156,22 @@ class AssetManager:
             # For native assets, ensure contract is 'native'
             if asset_type == 'native' or not asset_contract:
                 asset_contract = 'native'
+            
+            # Check cache first
+            cache_key = f"{self.network}:{asset_contract}"
+            if cache_key in self._asset_cache:
+                self.logger.debug(
+                    f"Asset found in cache: {asset_symbol} "
+                    f"(contract: {asset_contract}, network: {self.network})"
+                )
+                return False
                 
-            # Check if asset already exists
+            # Check if asset already exists in database
             result = self.client.execute(
                 """
                 SELECT asset_symbol, asset_verified, last_updated
-                FROM assets 
-                WHERE network = %(network)s 
+                FROM assets
+                WHERE network = %(network)s
                   AND asset_contract = %(contract)s
                 LIMIT 1
                 """,
@@ -164,6 +182,12 @@ class AssetManager:
             )
             
             if result:
+                # Add to cache
+                self._asset_cache[cache_key] = {
+                    'symbol': result[0][0],
+                    'verified': result[0][1],
+                    'last_updated': result[0][2]
+                }
                 self.logger.debug(
                     f"Asset already exists: {asset_symbol} "
                     f"(contract: {asset_contract}, network: {self.network})"
@@ -199,6 +223,13 @@ class AssetManager:
                 asset_data
             )
             
+            # Add to cache after successful creation
+            self._asset_cache[cache_key] = {
+                'symbol': asset_symbol,
+                'verified': 'unknown',
+                'last_updated': datetime.now()
+            }
+            
             self.logger.info(
                 f"Created new asset: {asset_symbol} "
                 f"(contract: {asset_contract}, type: {asset_type}, network: {self.network})"
@@ -224,6 +255,12 @@ class AssetManager:
             Dict with asset information or None if not found
         """
         try:
+            # Check cache first
+            cache_key = f"{self.network}:{asset_contract}"
+            if cache_key in self._asset_cache:
+                self.logger.debug(f"Asset info found in cache for contract {asset_contract}")
+                # Return cached basic info, but still query for full details
+                
             result = self.client.execute(
                 """
                 SELECT 
@@ -250,7 +287,7 @@ class AssetManager:
             
             if result:
                 row = result[0]
-                return {
+                asset_info = {
                     'symbol': row[0],
                     'contract': row[1],
                     'verified': row[2],
@@ -262,6 +299,15 @@ class AssetManager:
                     'last_updated': row[8],
                     'notes': row[9]
                 }
+                
+                # Update cache with full info
+                self._asset_cache[cache_key] = {
+                    'symbol': asset_info['symbol'],
+                    'verified': asset_info['verified'],
+                    'last_updated': asset_info['last_updated']
+                }
+                
+                return asset_info
             return None
             
         except Exception as e:
@@ -325,6 +371,12 @@ class AssetManager:
             
             self.client.execute(query, update_data)
             
+            # Update cache if asset is cached
+            cache_key = f"{self.network}:{asset_contract}"
+            if cache_key in self._asset_cache:
+                self._asset_cache[cache_key]['verified'] = verification_status
+                self._asset_cache[cache_key]['last_updated'] = datetime.now()
+            
             self.logger.info(
                 f"Updated asset verification: {asset_contract} -> {verification_status} "
                 f"(network: {self.network}, by: {updated_by})"
@@ -337,3 +389,19 @@ class AssetManager:
                 exc_info=True
             )
             return False
+    
+    def get_native_asset_symbol(self) -> str:
+        """
+        Get the native asset symbol for the current network.
+        
+        Returns:
+            str: The native asset symbol (e.g., 'TOR', 'TAO', 'DOT')
+        """
+        if self.network in self.NATIVE_ASSETS:
+            return self.NATIVE_ASSETS[self.network]['symbol']
+        raise ValueError(f"No native asset configured for network: {self.network}")
+    
+    def clear_cache(self) -> None:
+        """Clear the asset cache."""
+        self._asset_cache.clear()
+        self.logger.info(f"Cleared asset cache for network: {self.network}")

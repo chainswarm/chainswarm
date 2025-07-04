@@ -14,7 +14,7 @@ from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class BalanceTransfersIndexerBase:
-    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str, metrics: IndexerMetrics):
+    def __init__(self, connection_params: Dict[str, Any], partitioner: BlockRangePartitioner, network: str, metrics: IndexerMetrics, asset_manager: AssetManager):
         """Initialize the Balance Transfers Indexer with a database connection
         
         Args:
@@ -22,11 +22,13 @@ class BalanceTransfersIndexerBase:
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'torus', 'bittensor', 'polkadot')
             metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
         self.network = network
         self.asset = get_network_asset(network)
         self.partitioner = partitioner
         self.metrics = metrics
+        self.asset_manager = asset_manager
         
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
@@ -40,9 +42,6 @@ class BalanceTransfersIndexerBase:
                 'wait_for_async_insert': 1
             }
         )
-        
-        # Initialize AssetManager
-        self.asset_manager = AssetManager(connection_params)
         
         self._init_tables()
 
@@ -251,8 +250,8 @@ class BalanceTransfersIndexerBase:
             self.asset_manager.ensure_asset_exists(
                 asset_symbol=self.asset,
                 asset_contract='native',  # Native assets use 'native' as contract
-                decimals=self.asset_manager._get_network_decimals(self.network),
-                network=self.network
+                asset_type='native',
+                decimals=self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
             )
 
             # Aggregation containers
@@ -366,5 +365,3 @@ class BalanceTransfersIndexerBase:
         """Close the ClickHouse connection"""
         if hasattr(self, 'client'):
             self.client.close()
-        if hasattr(self, 'asset_manager'):
-            self.asset_manager.close()

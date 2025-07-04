@@ -94,7 +94,7 @@ class BalanceSeriesAnalyticsTool:
 
             # Add descriptions for balance series tables and views
             if "balance_series" in schema:
-                schema["balance_series"]["description"] = "Main table storing balance snapshots at fixed 4-hour intervals with free, reserved, staked, and total balances for each address and asset. Now includes asset verification information for enhanced security and transparency."
+                schema["balance_series"]["description"] = "Main table storing balance snapshots at fixed 4-hour intervals with free, reserved, staked, and total balances for each address and asset. Includes asset verification information for enhanced security and transparency."
                 
                 # Add column descriptions for balance_series table
                 if "period_start_timestamp" in schema["balance_series"]["columns"]:
@@ -257,7 +257,7 @@ class BalanceSeriesAnalyticsTool:
 
             return {
                 "name": "Balance Series Schema",
-                "description": "Schema for balance snapshot time-series data in ClickHouse - tracks balance changes over time at fixed 4-hour intervals with support for multiple balance types (free, reserved, staked, total) and multi-level time aggregation (daily, weekly, monthly). Now includes asset verification information to help identify verified, unknown, or potentially malicious assets.",
+                "description": "Schema for balance snapshot time-series data in ClickHouse - tracks balance changes over time at fixed 4-hour intervals with support for multiple balance types (free, reserved, staked, total) and multi-level time aggregation (daily, weekly, monthly). Includes asset verification information to help identify verified, unknown, or potentially malicious assets.",
                 "tables": schema,
                 "key_features": [
                     "Time-series tracking with fixed 4-hour interval snapshots",

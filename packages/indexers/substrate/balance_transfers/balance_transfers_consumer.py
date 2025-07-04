@@ -16,17 +16,19 @@ from packages.indexers.substrate.block_range_partitioner import get_partitioner,
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
 from packages.indexers.substrate.node.substrate_node import SubstrateNode
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
-def get_balance_transfers_indexer( partitioner, indexer_metrics: IndexerMetrics, network: str, connection_params):
+def get_balance_transfers_indexer(partitioner, indexer_metrics: IndexerMetrics, network: str, connection_params, asset_manager: AssetManager):
     """
     Factory function to get the appropriate transfers indexer based on network.
     
     Args:
-        network: Network identifier (torus, bittensor, polkadot)
-        connection_params: ClickHouse connection parameters
         partitioner: BlockRangePartitioner instance
         indexer_metrics: IndexerMetrics instance for recording metrics (required)
+        network: Network identifier (torus, bittensor, polkadot)
+        connection_params: ClickHouse connection parameters
+        asset_manager: AssetManager instance for managing assets
         
     Returns:
         BalanceTransfersIndexer: Appropriate indexer instance for the network
@@ -35,11 +37,11 @@ def get_balance_transfers_indexer( partitioner, indexer_metrics: IndexerMetrics,
         ValueError: If network is invalid
     """
     if network == Network.TORUS.value or network == Network.TORUS_TESTNET.value:
-        return TorusBalanceTransfersIndexer(connection_params, partitioner, network, indexer_metrics)
+        return TorusBalanceTransfersIndexer(connection_params, partitioner, network, indexer_metrics, asset_manager)
     elif network == Network.BITTENSOR.value or network == Network.BITTENSOR_TESTNET.value:
-        return BittensorBalanceTransfersIndexer(connection_params, partitioner, network, indexer_metrics)
+        return BittensorBalanceTransfersIndexer(connection_params, partitioner, network, indexer_metrics, asset_manager)
     elif network == Network.POLKADOT.value:
-        return PolkadotBalanceTransfersIndexer(connection_params, partitioner, network, indexer_metrics)
+        return PolkadotBalanceTransfersIndexer(connection_params, partitioner, network, indexer_metrics, asset_manager)
     else:
         raise ValueError(f"Unsupported network: {network}")
 
@@ -344,10 +346,15 @@ if __name__ == "__main__":
     metrics_registry = setup_metrics(service_name, start_server=True)
     metrics = IndexerMetrics(metrics_registry, args.network, "balance_transfers")
 
+    # Create AssetManager and initialize native assets
+    asset_manager = AssetManager(args.network, connection_params)
+    asset_manager.initialize_native_assets()
+    logger.info(f"Initialized AssetManager and native assets for {args.network}")
+
     partitioner = get_partitioner(args.network)
     substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
     block_stream_indexer = BlockStreamIndexer(partitioner, metrics, connection_params, args.network)
-    balance_transfers_indexer = get_balance_transfers_indexer(partitioner, metrics, args.network, connection_params)
+    balance_transfers_indexer = get_balance_transfers_indexer(partitioner, metrics, args.network, connection_params, asset_manager)
 
     block_stream_manager = BlockStreamManager(block_stream_indexer, substrate_node, partitioner, connection_params, args.network, terminate_event)
 

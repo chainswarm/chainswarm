@@ -37,7 +37,7 @@ VALUES
     ('torus', 'TOR', 'native', 'verified', 'Torus', 'native', 18, 0, now()),
     
     -- Bittensor native asset
-    ('bittensor', 'TAO', 'native', 'verified', 'Bittensor', 'native', 9, 0, now()),
+    ('bittensor', 'TAO', 'native', 'verified', 'Bittensor', 'native', 18, 0, now()),
     
     -- Polkadot native asset
     ('polkadot', 'DOT', 'native', 'verified', 'Polkadot', 'native', 10, 0, now());

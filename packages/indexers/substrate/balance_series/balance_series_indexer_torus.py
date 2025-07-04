@@ -9,12 +9,13 @@ from packages.indexers.base import IndexerMetrics
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
 from packages.indexers.substrate import data
 from packages.indexers.substrate.balance_series.balance_series_indexer_base import BalanceSeriesIndexerBase
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
 
 
-    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int, metrics: IndexerMetrics):
+    def __init__(self, connection_params: Dict[str, Any], network: str, period_hours: int, metrics: IndexerMetrics, asset_manager: AssetManager):
         """
         Initialize the TorusBalanceSeriesIndexer.
         
@@ -23,8 +24,9 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
             network: Network identifier (e.g., 'torus', 'torus_testnet')
             period_hours: Number of hours in each period
             metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
-        super().__init__(connection_params, metrics, network, period_hours)
+        super().__init__(connection_params, metrics, network, asset_manager, period_hours)
         logger.info(f"Initialized Torus balance series indexer for network: {network}")
 
     def init_genesis_balances(self, first_block_info):
@@ -97,6 +99,7 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
                     block_height,
                     address,
                     self.asset,
+                    'native',  # Add asset_contract value for native assets
                     free_balance,
                     reserved_balance,
                     staked_balance,
@@ -115,7 +118,7 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
                 batch = balance_data[i:i + batch_size]
                 self.client.insert('balance_series', batch, column_names=[
                     'period_start_timestamp', 'period_end_timestamp', 'block_height',
-                    'address', 'asset', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
+                    'address', 'asset', 'asset_contract', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])

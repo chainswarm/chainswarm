@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from packages.indexers.substrate.balance_transfers.balance_transfers_indexer import BalanceTransfersIndexer
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
+from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
 class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
@@ -12,7 +13,7 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
     Handles Polkadot-specific transfer events like staking, crowdloans, and governance events.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str, metrics):
+    def __init__(self, connection_params: Dict[str, Any], partitioner, network: str, metrics, asset_manager: AssetManager):
         """
         Initialize the PolkadotBalanceTransfersIndexer.
         
@@ -21,8 +22,9 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
             partitioner: BlockRangePartitioner instance for table partitioning
             network: Network identifier (e.g., 'polkadot')
             metrics: IndexerMetrics instance for recording metrics (required)
+            asset_manager: AssetManager instance for managing assets
         """
-        super().__init__(connection_params, partitioner, network, metrics)
+        super().__init__(connection_params, partitioner, network, metrics, asset_manager)
     
     def _process_network_specific_events(self, events: List[Dict]):
         """
@@ -33,7 +35,7 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
             
         Returns:
             List of balance transfers in the format:
-            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, amount, fee_amount, version)
+            (extrinsic_id, event_idx, block_height, from_account, to_account, asset, asset_contract, amount, fee_amount, version)
         """
         # Event tracking
         balance_transfers = []
@@ -62,6 +64,7 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
                         'staking',  # From the staking system
                         stash_account,  # To the stash account
                         self.asset,  # Use network asset (DOT)
+                        'native',  # Native asset contract
                         reward_amount,
                         Decimal(0),  # No fee for rewards
                         str(event.get('block_height'))
@@ -84,6 +87,7 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
                         'treasury',  # From the treasury
                         recipient,  # To the recipient
                         self.asset,  # Use network asset (DOT)
+                        'native',  # Native asset contract
                         award_amount,
                         Decimal(0),  # No fee for treasury awards
                         str(event.get('block_height'))
@@ -108,6 +112,7 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
                         contributor,  # From the contributor
                         fund_address,  # To the crowdloan fund
                         self.asset,  # Use network asset (DOT)
+                        'native',  # Native asset contract
                         amount,
                         Decimal(0),  # No fee recorded for contributions
                         str(event.get('block_height'))
@@ -132,6 +137,7 @@ class PolkadotBalanceTransfersIndexer(BalanceTransfersIndexer):
                         bidder,  # From the bidder
                         auction_address,  # To the auction system
                         self.asset,  # Use network asset (DOT)
+                        'native',  # Native asset contract
                         amount,
                         Decimal(0),  # No fee recorded for bids
                         str(event.get('block_height'))
