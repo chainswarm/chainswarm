@@ -50,8 +50,6 @@ class BalanceSeriesIndexerBase:
         """Initialize tables for balance series from schema file"""
         start_time = time.time()
         logger.info("Creating balance series tables if not exists")
-        
-        # Read schema file
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
         
         try:
@@ -79,17 +77,30 @@ class BalanceSeriesIndexerBase:
                     current_statement = []
             
             # Execute each statement
-            for statement in statements:
+            for i, statement in enumerate(statements):
                 if statement:
                     try:
+                        # Log the statement being executed for debugging
+                        logger.debug(f"Executing statement {i+1}/{len(statements)}: {statement[:100]}...")
+                        
+                        # Replace {network} placeholder in views
+                        if '{network}' in statement:
+                            statement = statement.replace('{network}', self.network)
+                            logger.debug(f"Replaced {{network}} with '{self.network}' in statement")
+                        
                         self.client.command(statement)
+                        logger.debug(f"Successfully executed statement {i+1}")
                     except Exception as e:
                         # Skip errors for views and indexes that might already exist
                         if "already exists" in str(e).lower():
                             logger.debug(f"Object already exists, skipping: {statement[:50]}...")
                         else:
-                            logger.error(f"Error executing statement: {e}")
-                            logger.error(f"Statement: {statement[:100]}...")
+                            logger.error(f"Error executing statement {i+1}: {e}")
+                            logger.error(f"Full statement: {statement}")
+                            # Log specific details about the failing view
+                            if "balance_series_weekly_view" in statement:
+                                logger.error("Failed on balance_series_weekly_view - checking GROUP BY clause")
+                                logger.error("This view has a known issue with asset_contract column references")
                             raise
             
             logger.info(f"Balance series table initialization completed in {time.time() - start_time:.2f}s")
@@ -192,7 +203,7 @@ class BalanceSeriesIndexerBase:
             if balance_data:
                 self.client.insert('balance_series', balance_data, column_names=[
                     'period_start_timestamp', 'period_end_timestamp', 'block_height',
-                    'address', 'asset', 'asset_contract', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
+                    'address', 'asset_symbol', 'asset_contract', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])
@@ -242,7 +253,7 @@ class BalanceSeriesIndexerBase:
                     total_balance
                 FROM balance_series
                 WHERE address = '{address}'
-                  AND asset = '{self.asset}'
+                  AND asset_symbol = '{self.asset}'
                   AND asset_contract = 'native'
                   AND period_start_timestamp < {current_period_start}
                 ORDER BY period_start_timestamp DESC
@@ -275,7 +286,7 @@ class BalanceSeriesIndexerBase:
             result = self.client.query(f'''
                 SELECT period_end_timestamp, block_height
                 FROM balance_series
-                WHERE asset = '{self.asset}'
+                WHERE asset_symbol = '{self.asset}'
                   AND asset_contract = 'native'
                 ORDER BY period_end_timestamp DESC
                 LIMIT 1

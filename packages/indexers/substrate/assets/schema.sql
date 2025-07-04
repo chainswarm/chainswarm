@@ -3,31 +3,30 @@
 
 CREATE TABLE IF NOT EXISTS assets (
     network String,
-    asset_symbol String,  -- Symbol/ticker (e.g., USDT, TAO, TOR)
-    asset_contract String,  -- Contract address or 'native' for native assets
+    asset_symbol String,
+    asset_contract String,
     asset_verified String DEFAULT 'unknown',
-    asset_name String DEFAULT '',  -- Full display name
-    asset_type String DEFAULT 'token',  -- 'native' or 'token'
+    asset_name String DEFAULT '',
+    asset_type String DEFAULT 'token',
     decimals UInt8 DEFAULT 0,
     first_seen_block UInt32,
     first_seen_timestamp DateTime,
     last_updated DateTime DEFAULT now(),
     updated_by String DEFAULT 'system',
     notes String DEFAULT '',
-    PRIMARY KEY (network, asset_contract),
-    CONSTRAINT valid_asset_verified CHECK asset_verified IN ('verified', 'unknown', 'malicious'),
-    CONSTRAINT valid_asset_type CHECK asset_type IN ('native', 'token')
+    PRIMARY KEY (network, asset_contract)
 ) ENGINE = ReplacingMergeTree(last_updated)
 ORDER BY (network, asset_contract);
 
 -- Create index for efficient lookups by symbol
-CREATE INDEX IF NOT EXISTS idx_assets_symbol ON assets (network, asset_symbol);
+CREATE INDEX IF NOT EXISTS idx_assets_symbol ON assets (network, asset_symbol) TYPE minmax;
 
 -- Create index for filtering by asset type
-CREATE INDEX IF NOT EXISTS idx_assets_type ON assets (network, asset_type);
+CREATE INDEX IF NOT EXISTS idx_assets_type ON assets (network, asset_type) TYPE set(100);
 
 -- Create index for filtering by verification status
-CREATE INDEX IF NOT EXISTS idx_assets_verified ON assets (network, asset_verified);
+CREATE INDEX IF NOT EXISTS idx_assets_verified ON assets (network, asset_verified) TYPE set(10);
+
 
 -- Insert native assets for supported networks
 -- These are the primary native assets for each chain
@@ -41,6 +40,3 @@ VALUES
     
     -- Polkadot native asset
     ('polkadot', 'DOT', 'native', 'verified', 'Polkadot', 'native', 10, 0, now());
-
--- Note: Additional assets (tokens) will be added dynamically by the indexers
--- as they are discovered on-chain

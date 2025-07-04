@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS balance_series (
 
     -- Address and balance information
     address String,
-    asset String, -- TODO: Consider renaming to asset_symbol for clarity
     asset_contract String DEFAULT 'native',
+    asset_symbol String,
+
     free_balance Decimal128(18),
     reserved_balance Decimal128(18),
     staked_balance Decimal128(18),
@@ -43,7 +44,7 @@ CREATE TABLE IF NOT EXISTS balance_series (
 
 ) ENGINE = ReplacingMergeTree(_version)
 PARTITION BY toYYYYMM(fromUnixTimestamp64Milli(period_start_timestamp))
-ORDER BY (period_start_timestamp, asset, address)
+ORDER BY (period_start_timestamp, asset_contract, address)
 SETTINGS index_granularity = 8192
 COMMENT 'Stores balance snapshots at fixed 4-hour intervals';
 
@@ -59,12 +60,13 @@ ENGINE = SummingMergeTree((
     weekly_staked_balance_change,
     weekly_total_balance_change
 ))
-ORDER BY (week_start, asset, address)
+ORDER BY (week_start, asset_contract, address)
 AS
 SELECT
     toStartOfWeek(fromUnixTimestamp64Milli(period_start_timestamp)) as week_start,
     address,
-    asset,
+    asset_contract,
+    asset_symbol,
     sum(free_balance_change) as weekly_free_balance_change,
     sum(reserved_balance_change) as weekly_reserved_balance_change,
     sum(staked_balance_change) as weekly_staked_balance_change,
@@ -75,7 +77,7 @@ SELECT
     argMax(staked_balance, period_start_timestamp) as latest_staked_balance,
     argMax(total_balance, period_start_timestamp) as latest_total_balance
 FROM balance_series
-GROUP BY week_start, address, asset;
+GROUP BY week_start, address, asset_contract, asset_symbol;
 
 -- Internal materialized view for monthly aggregations using SummingMergeTree
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_series_monthly_mv_internal
@@ -85,12 +87,13 @@ ENGINE = SummingMergeTree((
     monthly_staked_balance_change,
     monthly_total_balance_change
 ))
-ORDER BY (month_start, asset, address)
+ORDER BY (month_start, asset_contract, address)
 AS
 SELECT
     toStartOfMonth(fromUnixTimestamp64Milli(period_start_timestamp)) as month_start,
     address,
-    asset,
+    asset_contract,
+    asset_symbol,
     sum(free_balance_change) as monthly_free_balance_change,
     sum(reserved_balance_change) as monthly_reserved_balance_change,
     sum(staked_balance_change) as monthly_staked_balance_change,
@@ -101,7 +104,7 @@ SELECT
     argMax(staked_balance, period_start_timestamp) as latest_staked_balance,
     argMax(total_balance, period_start_timestamp) as latest_total_balance
 FROM balance_series
-GROUP BY month_start, address, asset;
+GROUP BY month_start, address, asset_contract, asset_symbol;
 
 -- =============================================================================
 -- PUBLIC VIEWS (Exposed to MCP - Clean Querying Interface)
@@ -111,8 +114,8 @@ GROUP BY month_start, address, asset;
 CREATE VIEW IF NOT EXISTS balance_series_latest_view AS
 SELECT
     bs.address,
-    bs.asset,
     bs.asset_contract,
+    bs.asset_symbol,
     a.asset_verified,
     a.asset_name,
     argMax(bs.period_start_timestamp, bs.period_start_timestamp) as latest_period_start,
@@ -124,15 +127,15 @@ SELECT
     argMax(bs.total_balance, bs.period_start_timestamp) as total_balance
 FROM balance_series bs
 LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
-GROUP BY bs.address, bs.asset, bs.asset_contract, a.asset_verified, a.asset_name;
+GROUP BY bs.address, bs.asset_contract, bs.asset_symbol, a.asset_verified, a.asset_name;
 
 -- View for daily aggregation (computed on-the-fly for accuracy)
 CREATE VIEW IF NOT EXISTS balance_series_daily_view AS
 SELECT
     toDate(fromUnixTimestamp64Milli(bs.period_start_timestamp)) as date,
     bs.address,
-    bs.asset,
     bs.asset_contract,
+    bs.asset_symbol,
     a.asset_verified,
     a.asset_name,
     -- Take the last period of each day
@@ -147,16 +150,16 @@ SELECT
     sum(bs.total_balance_change) as daily_total_balance_change
 FROM balance_series bs
 LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
-GROUP BY date, bs.address, bs.asset, bs.asset_contract, a.asset_verified, a.asset_name
-ORDER BY date DESC, bs.asset, bs.address;
+GROUP BY date, bs.address, bs.asset_symbol, bs.asset_contract, a.asset_verified, a.asset_name
+ORDER BY date DESC, bs.asset_contract, bs.asset_symbol, bs.address;
 
 -- Public view for weekly balance statistics (wraps internal materialized view)
 CREATE VIEW IF NOT EXISTS balance_series_weekly_view AS
 SELECT
     mv.week_start,
     mv.address,
-    mv.asset,
-    bs.asset_contract,
+    mv.asset_contract,
+    mv.asset_symbol,
     a.asset_verified,
     a.asset_name,
     argMax(mv.latest_free_balance, mv.week_start) as end_of_week_free_balance,
@@ -169,21 +172,17 @@ SELECT
     sum(mv.weekly_total_balance_change) as weekly_total_balance_change,
     argMax(mv.last_block_of_week, mv.week_start) as last_block_of_week
 FROM balance_series_weekly_mv_internal mv
-LEFT JOIN (
-    SELECT DISTINCT asset, asset_contract
-    FROM balance_series
-) bs ON mv.asset = bs.asset
-LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
-GROUP BY mv.week_start, mv.address, mv.asset, bs.asset_contract, a.asset_verified, a.asset_name
-ORDER BY mv.week_start DESC, mv.asset, mv.address;
+LEFT JOIN assets a ON mv.asset_contract = a.asset_contract AND a.network = '{network}'
+GROUP BY mv.week_start, mv.address, mv.asset_contract, mv.asset_symbol, a.asset_verified, a.asset_name
+ORDER BY mv.week_start DESC, mv.asset_contract, mv.address;
 
 -- Public view for monthly balance statistics (wraps internal materialized view)
 CREATE VIEW IF NOT EXISTS balance_series_monthly_view AS
 SELECT
     mv.month_start,
     mv.address,
-    mv.asset,
-    bs.asset_contract,
+    mv.asset_contract,
+    mv.asset_symbol,
     a.asset_verified,
     a.asset_name,
     argMax(mv.latest_free_balance, mv.month_start) as end_of_month_free_balance,
@@ -196,13 +195,9 @@ SELECT
     sum(mv.monthly_total_balance_change) as monthly_total_balance_change,
     argMax(mv.last_block_of_month, mv.month_start) as last_block_of_month
 FROM balance_series_monthly_mv_internal mv
-LEFT JOIN (
-    SELECT DISTINCT asset, asset_contract
-    FROM balance_series
-) bs ON mv.asset = bs.asset
-LEFT JOIN assets a ON bs.asset_contract = a.asset_contract AND a.network = '{network}'
-GROUP BY mv.month_start, mv.address, mv.asset, bs.asset_contract, a.asset_verified, a.asset_name
-ORDER BY mv.month_start DESC, mv.asset, mv.address;
+LEFT JOIN assets a ON mv.asset_contract = a.asset_contract AND a.network = '{network}'
+GROUP BY mv.month_start, mv.address, mv.asset_contract, mv.asset_symbol, a.asset_verified, a.asset_name
+ORDER BY mv.month_start DESC, mv.asset_contract, mv.address;
 
 -- =============================================================================
 -- INDEXES FOR EFFICIENT QUERYING
@@ -212,7 +207,8 @@ ORDER BY mv.month_start DESC, mv.asset, mv.address;
 ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_address address TYPE bloom_filter(0.01) GRANULARITY 4;
 
 -- Index for efficient asset lookups
-ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_asset_symbol asset_symbol TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_asset_contract asset_contract TYPE bloom_filter(0.01) GRANULARITY 4;
 
 -- Index for period timestamp range queries
 ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_period_start period_start_timestamp TYPE minmax GRANULARITY 4;
@@ -222,7 +218,7 @@ ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_period_end period_end_tim
 ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
 
 -- Composite indexes for efficient asset-address queries
-ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_asset_address (asset, address) TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_asset_address (asset_contract, address) TYPE bloom_filter(0.01) GRANULARITY 4;
 
 -- Index for version filtering (to exclude corrupted data if needed)
 ALTER TABLE balance_series ADD INDEX IF NOT EXISTS idx_version _version TYPE minmax GRANULARITY 4;

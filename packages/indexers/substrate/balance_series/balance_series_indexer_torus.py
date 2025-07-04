@@ -118,7 +118,7 @@ class TorusBalanceSeriesIndexer(BalanceSeriesIndexerBase):
                 batch = balance_data[i:i + batch_size]
                 self.client.insert('balance_series', batch, column_names=[
                     'period_start_timestamp', 'period_end_timestamp', 'block_height',
-                    'address', 'asset', 'asset_contract', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
+                    'address', 'asset_symbol', 'asset_contract', 'free_balance', 'reserved_balance', 'staked_balance', 'total_balance',
                     'free_balance_change', 'reserved_balance_change', 'staked_balance_change', 'total_balance_change',
                     'total_balance_percent_change', '_version'
                 ])

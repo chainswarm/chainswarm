@@ -497,7 +497,7 @@ if __name__ == "__main__":
         
         # Create AssetManager and initialize native assets
         asset_manager = AssetManager(args.network, clickhouse_params)
-        asset_manager.initialize_native_assets()
+        asset_manager.init_tables()
         logger.info(f"Initialized AssetManager and native assets for {args.network}")
         
         balance_series_indexer = get_balance_series_indexer(clickhouse_params, args.network, args.period_hours, indexer_metrics, asset_manager)

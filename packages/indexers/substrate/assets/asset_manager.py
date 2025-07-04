@@ -5,14 +5,14 @@ This module provides functionality to manage assets (both native and tokens)
 in the assets dictionary table, including initialization, verification,
 and ensuring assets exist before they are referenced in other tables.
 """
-
-import logging
+import os
+import traceback
 from typing import Optional, Dict, Any
 from datetime import datetime
 import clickhouse_connect
-from packages.indexers.base.enhanced_logging import get_logger
+from loguru import logger
 
-logger = get_logger(__name__)
+from packages.indexers.base.clickhouse_schema import init_tables
 
 
 class AssetManager:
@@ -34,8 +34,7 @@ class AssetManager:
             password=connection_params['password'],
             database=connection_params['database']
         )
-        self.logger = logger
-        
+
         # Cache for asset lookups to avoid repeated database queries
         self._asset_cache = {}
         
@@ -49,7 +48,7 @@ class AssetManager:
             'bittensor': {
                 'symbol': 'TAO',
                 'name': 'Bittensor',
-                'decimals': 18  # Fixed from 9 to 18
+                'decimals': 18
             },
             'polkadot': {
                 'symbol': 'DOT',
@@ -58,68 +57,15 @@ class AssetManager:
             }
         }
         
-        self.logger.info(f"Initialized AssetManager for network: {network}")
+        logger.info(f"Initialized AssetManager for network: {network}")
         
-    def initialize_native_assets(self) -> None:
+    def init_tables(self) -> None:
         """
-        Initialize native assets for the network if they don't exist.
-        This ensures the native asset is always present in the assets table.
+        Initialize the assets table if it does not exist.
         """
-        if self.network not in self.NATIVE_ASSETS:
-            self.logger.warning(f"No native asset configuration for network: {self.network}")
-            return
-            
-        native_config = self.NATIVE_ASSETS[self.network]
-        
-        try:
-            # Check if native asset already exists
-            result = self.client.execute(
-                """
-                SELECT asset_symbol 
-                FROM assets 
-                WHERE network = %(network)s 
-                  AND asset_contract = 'native'
-                LIMIT 1
-                """,
-                {'network': self.network}
-            )
-            
-            if not result:
-                # Insert native asset
-                self.client.execute(
-                    """
-                    INSERT INTO assets (
-                        network, asset_symbol, asset_contract, asset_verified,
-                        asset_name, asset_type, decimals, first_seen_block,
-                        first_seen_timestamp, updated_by
-                    ) VALUES (
-                        %(network)s, %(symbol)s, 'native', 'verified',
-                        %(name)s, 'native', %(decimals)s, 0,
-                        %(timestamp)s, 'system'
-                    )
-                    """,
-                    {
-                        'network': self.network,
-                        'symbol': native_config['symbol'],
-                        'name': native_config['name'],
-                        'decimals': native_config['decimals'],
-                        'timestamp': datetime.now()
-                    }
-                )
-                self.logger.info(
-                    f"Initialized native asset {native_config['symbol']} for {self.network}"
-                )
-            else:
-                self.logger.debug(
-                    f"Native asset {native_config['symbol']} already exists for {self.network}"
-                )
-                
-        except Exception as e:
-            self.logger.error(
-                f"Failed to initialize native asset for {self.network}: {str(e)}",
-                exc_info=True
-            )
-            raise
+
+        init_tables(self.client, __file__)
+
             
     def ensure_asset_exists(
         self,
@@ -160,14 +106,10 @@ class AssetManager:
             # Check cache first
             cache_key = f"{self.network}:{asset_contract}"
             if cache_key in self._asset_cache:
-                self.logger.debug(
-                    f"Asset found in cache: {asset_symbol} "
-                    f"(contract: {asset_contract}, network: {self.network})"
-                )
                 return False
                 
             # Check if asset already exists in database
-            result = self.client.execute(
+            result = self.client.command(
                 """
                 SELECT asset_symbol, asset_verified, last_updated
                 FROM assets
@@ -188,10 +130,7 @@ class AssetManager:
                     'verified': result[0][1],
                     'last_updated': result[0][2]
                 }
-                self.logger.debug(
-                    f"Asset already exists: {asset_symbol} "
-                    f"(contract: {asset_contract}, network: {self.network})"
-                )
+
                 return False
                 
             # Prepare asset data
@@ -208,7 +147,7 @@ class AssetManager:
             }
             
             # Insert new asset
-            self.client.execute(
+            self.client.command(
                 """
                 INSERT INTO assets (
                     network, asset_symbol, asset_contract, asset_verified,
@@ -229,19 +168,11 @@ class AssetManager:
                 'verified': 'unknown',
                 'last_updated': datetime.now()
             }
-            
-            self.logger.info(
-                f"Created new asset: {asset_symbol} "
-                f"(contract: {asset_contract}, type: {asset_type}, network: {self.network})"
-            )
+
             return True
             
         except Exception as e:
-            self.logger.error(
-                f"Failed to ensure asset exists: {asset_symbol} "
-                f"(contract: {asset_contract}): {str(e)}",
-                exc_info=True
-            )
+            logger.error(f"Failed to ensure asset exists: {asset_symbol} (contract: {asset_contract})", error=e, traceback=traceback.format_exc())
             raise
             
     def get_asset_info(self, asset_contract: str) -> Optional[Dict[str, Any]]:
@@ -257,11 +188,7 @@ class AssetManager:
         try:
             # Check cache first
             cache_key = f"{self.network}:{asset_contract}"
-            if cache_key in self._asset_cache:
-                self.logger.debug(f"Asset info found in cache for contract {asset_contract}")
-                # Return cached basic info, but still query for full details
-                
-            result = self.client.execute(
+            result = self.client.command(
                 """
                 SELECT 
                     asset_symbol,
@@ -311,9 +238,10 @@ class AssetManager:
             return None
             
         except Exception as e:
-            self.logger.error(
-                f"Failed to get asset info for contract {asset_contract}: {str(e)}",
-                exc_info=True
+            logger.error(
+                f"Failed to get asset info for contract {asset_contract}",
+                error=e,
+                traceback=traceback.format_exc()
             )
             return None
             
@@ -369,25 +297,18 @@ class AssetManager:
                   AND asset_contract = %(contract)s
             """
             
-            self.client.execute(query, update_data)
+            self.client.command(query, update_data)
             
             # Update cache if asset is cached
             cache_key = f"{self.network}:{asset_contract}"
             if cache_key in self._asset_cache:
                 self._asset_cache[cache_key]['verified'] = verification_status
                 self._asset_cache[cache_key]['last_updated'] = datetime.now()
-            
-            self.logger.info(
-                f"Updated asset verification: {asset_contract} -> {verification_status} "
-                f"(network: {self.network}, by: {updated_by})"
-            )
+
             return True
             
         except Exception as e:
-            self.logger.error(
-                f"Failed to update asset verification for {asset_contract}: {str(e)}",
-                exc_info=True
-            )
+            logger.error(f"Failed to update asset verification for {asset_contract}", error=e, traceback=traceback.format_exc())
             return False
     
     def get_native_asset_symbol(self) -> str:
@@ -404,4 +325,3 @@ class AssetManager:
     def clear_cache(self) -> None:
         """Clear the asset cache."""
         self._asset_cache.clear()
-        self.logger.info(f"Cleared asset cache for network: {self.network}")
