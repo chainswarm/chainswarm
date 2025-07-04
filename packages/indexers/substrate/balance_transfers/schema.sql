@@ -9,13 +9,14 @@ CREATE TABLE IF NOT EXISTS balance_transfers (
     block_timestamp UInt64,
     from_address String,
     to_address String,
-    asset String,
+    asset_symbol String,
+    asset_contract String DEFAULT 'native',
     amount Decimal128(18),
     fee Decimal128(18),
     _version UInt64
 ) ENGINE = ReplacingMergeTree(_version)
 PARTITION BY intDiv(block_height, 100000)
-ORDER BY (extrinsic_id, event_idx, asset)
+ORDER BY (extrinsic_id, event_idx, asset_contract)
 SETTINGS index_granularity = 8192;
 
 -- CHUNK 2: Primary Indexes
@@ -23,7 +24,9 @@ ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_address from_addr
 
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_to_address to_address TYPE bloom_filter(0.01) GRANULARITY 4;
 
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset asset TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_symbol asset_symbol TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_contract asset_contract TYPE bloom_filter(0.01) GRANULARITY 4;
 
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_block_height block_height TYPE minmax GRANULARITY 4;
 
@@ -34,11 +37,11 @@ ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_date toDate(toDateTime
 
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_amount_range amount TYPE minmax GRANULARITY 4;
 
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_from_address (asset, from_address) TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_from_address (asset_contract, from_address) TYPE bloom_filter(0.01) GRANULARITY 4;
 
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_to_address (asset, to_address) TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_asset_to_address (asset_contract, to_address) TYPE bloom_filter(0.01) GRANULARITY 4;
 
-ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_to_asset (from_address, to_address, asset) TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_from_to_asset (from_address, to_address, asset_contract) TYPE bloom_filter(0.01) GRANULARITY 4;
 
 ALTER TABLE balance_transfers ADD INDEX IF NOT EXISTS idx_version _version TYPE minmax GRANULARITY 4;
 
@@ -73,13 +76,14 @@ ENGINE = SummingMergeTree((
     volume_gte_10k
 ))
 PARTITION BY toYYYYMM(period_start)
-ORDER BY (period_start, asset)
+ORDER BY (period_start, asset_symbol, asset_contract)
 SETTINGS index_granularity = 8192
 AS
 SELECT
     toDateTime(intDiv(intDiv(block_timestamp, 1000), 14400) * 14400) as period_start,
     toDateTime((intDiv(intDiv(block_timestamp, 1000), 14400) + 1) * 14400) as period_end,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as transaction_count,
     uniqExact(from_address) as unique_senders,
     uniqExact(to_address) as unique_receivers,
@@ -111,14 +115,15 @@ SELECT
     argMax(amount, block_timestamp) as max_transfer_amount,
     argMin(amount, block_timestamp) as min_transfer_amount
 FROM balance_transfers
-GROUP BY period_start, period_end, asset;
+GROUP BY period_start, period_end, asset_symbol, asset_contract;
 
 -- CHUNK 5: Simple Views
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_series_view AS
 SELECT
     period_start,
     period_end,
-    asset,
+    asset_symbol,
+    asset_contract,
     transaction_count,
     unique_senders,
     unique_receivers,
@@ -154,14 +159,15 @@ SELECT
     volume_1k_to_10k,
     volume_gte_10k
 FROM balance_transfers_volume_series_mv_internal
-ORDER BY period_start DESC, asset;
+ORDER BY period_start DESC, asset_symbol, asset_contract;
 
 -- CHUNK 6: Network Analytics Views
 CREATE VIEW IF NOT EXISTS balance_transfers_network_daily_view AS
 SELECT
     'daily' as period_type,
     toDate(toDateTime(intDiv(block_timestamp, 1000))) as period,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as transaction_count,
     sum(amount) as total_volume,
     uniqExact(from_address) as max_unique_senders,
@@ -185,14 +191,15 @@ SELECT
     median(amount) as median_transaction_size,
     stddevPop(amount) as avg_amount_std_dev
 FROM balance_transfers
-GROUP BY period, asset
-ORDER BY period DESC, asset;
+GROUP BY period, asset_symbol, asset_contract
+ORDER BY period DESC, asset_symbol, asset_contract;
 
 CREATE VIEW IF NOT EXISTS balance_transfers_network_weekly_view AS
 SELECT
     'weekly' as period_type,
     toStartOfWeek(toDateTime(intDiv(block_timestamp, 1000))) as period,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as transaction_count,
     sum(amount) as total_volume,
     uniqExact(from_address) as max_unique_senders,
@@ -216,14 +223,15 @@ SELECT
     median(amount) as median_transaction_size,
     stddevPop(amount) as avg_amount_std_dev
 FROM balance_transfers
-GROUP BY period, asset
-ORDER BY period DESC, asset;
+GROUP BY period, asset_symbol, asset_contract
+ORDER BY period DESC, asset_symbol, asset_contract;
 
 CREATE VIEW IF NOT EXISTS balance_transfers_network_monthly_view AS
 SELECT
     'monthly' as period_type,
     toStartOfMonth(toDateTime(intDiv(block_timestamp, 1000))) as period,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as transaction_count,
     sum(amount) as total_volume,
     uniqExact(from_address) as max_unique_senders,
@@ -250,14 +258,15 @@ SELECT
     max(block_height) as period_end_block,
     max(block_height) - min(block_height) + 1 as blocks_in_period
 FROM balance_transfers
-GROUP BY period, asset
-ORDER BY period DESC, asset;
+GROUP BY period, asset_symbol, asset_contract
+ORDER BY period DESC, asset_symbol, asset_contract;
 
 -- CHUNK 7: Volume Views
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_daily_view AS
 SELECT
     toDate(toDateTime(intDiv(block_timestamp, 1000))) as date,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as daily_transaction_count,
     uniqExact(from_address) as max_unique_senders,
     uniqExact(to_address) as max_unique_receivers,
@@ -287,13 +296,14 @@ SELECT
     min(block_height) as daily_start_block,
     max(block_height) as daily_end_block
 FROM balance_transfers
-GROUP BY date, asset
-ORDER BY date DESC, asset;
+GROUP BY date, asset_symbol, asset_contract
+ORDER BY date DESC, asset_symbol, asset_contract;
 
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_weekly_view AS
 SELECT
     toStartOfWeek(toDateTime(intDiv(block_timestamp, 1000))) as week_start,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as weekly_transaction_count,
     uniqExact(from_address) as max_unique_senders,
     uniqExact(to_address) as max_unique_receivers,
@@ -319,13 +329,14 @@ SELECT
     min(block_height) as weekly_start_block,
     max(block_height) as weekly_end_block
 FROM balance_transfers
-GROUP BY week_start, asset
-ORDER BY week_start DESC, asset;
+GROUP BY week_start, asset_symbol, asset_contract
+ORDER BY week_start DESC, asset_symbol, asset_contract;
 
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_monthly_view AS
 SELECT
     toStartOfMonth(toDateTime(intDiv(block_timestamp, 1000))) as month_start,
-    asset,
+    asset_symbol,
+    asset_contract,
     count() as monthly_transaction_count,
     uniqExact(from_address) as max_unique_senders,
     uniqExact(to_address) as max_unique_receivers,
@@ -351,15 +362,15 @@ SELECT
     min(block_height) as monthly_start_block,
     max(block_height) as monthly_end_block
 FROM balance_transfers
-GROUP BY month_start, asset
-ORDER BY month_start DESC, asset;
+GROUP BY month_start, asset_symbol, asset_contract
+ORDER BY month_start DESC, asset_symbol, asset_contract;
 
 -- CHUNK 8: Address Analytics View
 CREATE VIEW IF NOT EXISTS balance_transfers_address_analytics_view AS
 WITH outgoing_metrics AS (
     SELECT
         from_address as address,
-        asset,
+        asset_symbol,
         asset_contract,
         count() as outgoing_count,
         sum(amount) as total_sent,
@@ -381,23 +392,23 @@ WITH outgoing_metrics AS (
         countIf(amount >= 10000) as tx_count_gte_10k,
         varPop(amount) as sent_amount_variance
     FROM balance_transfers
-    GROUP BY from_address, asset, asset_contract
+    GROUP BY from_address, asset_symbol, asset_contract
 ),
 incoming_metrics AS (
     SELECT
         to_address as address,
-        asset,
+        asset_symbol,
         asset_contract,
         count() as incoming_count,
         sum(amount) as total_received,
         uniq(from_address) as unique_senders,
         varPop(amount) as received_amount_variance
     FROM balance_transfers
-    GROUP BY to_address, asset, asset_contract
+    GROUP BY to_address, asset_symbol, asset_contract
 )
 SELECT
     COALESCE(out.address, inc.address) as address,
-    COALESCE(out.asset, inc.asset) as asset,
+    COALESCE(out.asset_symbol, inc.asset_symbol) as asset_symbol,
     COALESCE(out.asset_contract, inc.asset_contract) as asset_contract,
     a.asset_verified,
     a.asset_name,
@@ -439,7 +450,7 @@ SELECT
         ELSE 'Regular User'
     END as address_type
 FROM outgoing_metrics out
-FULL OUTER JOIN incoming_metrics inc ON out.address = inc.address AND out.asset = inc.asset AND out.asset_contract = inc.asset_contract
+FULL OUTER JOIN incoming_metrics inc ON out.address = inc.address AND out.asset_symbol = inc.asset_symbol AND out.asset_contract = inc.asset_contract
 LEFT JOIN assets a ON COALESCE(out.asset_contract, inc.asset_contract) = a.asset_contract AND a.network = '{network}'
 WHERE COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) > 0;
 
@@ -447,14 +458,15 @@ WHERE COALESCE(out.outgoing_count, 0) + COALESCE(inc.incoming_count, 0) > 0;
 CREATE VIEW IF NOT EXISTS balance_transfers_volume_trends_view AS
 SELECT
     period_start,
-    asset,
+    asset_symbol,
+    asset_contract,
     total_volume,
     transaction_count,
-    avg(total_volume) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_volume,
-    avg(transaction_count) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_tx_count,
-    avg(total_volume) OVER (PARTITION BY asset ORDER BY period_start ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as rolling_30_period_avg_volume
+    avg(total_volume) OVER (PARTITION BY asset_symbol, asset_contract ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_volume,
+    avg(transaction_count) OVER (PARTITION BY asset_symbol, asset_contract ORDER BY period_start ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7_period_avg_tx_count,
+    avg(total_volume) OVER (PARTITION BY asset_symbol, asset_contract ORDER BY period_start ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as rolling_30_period_avg_volume
 FROM balance_transfers_volume_series_mv_internal
-ORDER BY period_start DESC, asset;
+ORDER BY period_start DESC, asset_symbol, asset_contract;
 
 -- CHUNK 10: Address-Level Time Series Views
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_address_daily_internal
@@ -466,12 +478,13 @@ ENGINE = SummingMergeTree((
     fees_paid
 ))
 PARTITION BY toYYYYMM(date)
-ORDER BY (address, asset, date)
+ORDER BY (address, asset_symbol, asset_contract, date)
 SETTINGS index_granularity = 8192
 AS
 SELECT
     arrayJoin([from_address, to_address]) as address,
-    asset,
+    asset_symbol,
+    asset_contract,
     toDate(toDateTime(intDiv(block_timestamp, 1000))) as date,
     multiIf(address = to_address, amount, 0) as volume_in,
     multiIf(address = from_address, amount, 0) as volume_out,
@@ -483,7 +496,8 @@ FROM balance_transfers;
 CREATE VIEW IF NOT EXISTS balance_transfers_address_daily_view AS
 SELECT
     address,
-    asset,
+    asset_symbol,
+    asset_contract,
     date,
     volume_in,
     volume_out,
@@ -495,7 +509,7 @@ SELECT
     fees_paid,
     CASE WHEN transaction_count_out > 0 THEN fees_paid / transaction_count_out ELSE 0 END as avg_fee_per_tx
 FROM balance_transfers_address_daily_internal
-ORDER BY address, asset, date DESC;
+ORDER BY address, asset_symbol, asset_contract, date DESC;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_address_weekly_internal
 ENGINE = SummingMergeTree((
@@ -506,12 +520,13 @@ ENGINE = SummingMergeTree((
     fees_paid
 ))
 PARTITION BY toYYYYMM(week_start)
-ORDER BY (address, asset, week_start)
+ORDER BY (address, asset_symbol, asset_contract, week_start)
 SETTINGS index_granularity = 8192
 AS
 SELECT
     arrayJoin([from_address, to_address]) as address,
-    asset,
+    asset_symbol,
+    asset_contract,
     toStartOfWeek(toDateTime(intDiv(block_timestamp, 1000))) as week_start,
     multiIf(address = to_address, amount, 0) as volume_in,
     multiIf(address = from_address, amount, 0) as volume_out,
@@ -523,7 +538,8 @@ FROM balance_transfers;
 CREATE VIEW IF NOT EXISTS balance_transfers_address_weekly_view AS
 SELECT
     address,
-    asset,
+    asset_symbol,
+    asset_contract,
     week_start,
     volume_in,
     volume_out,
@@ -535,7 +551,7 @@ SELECT
     fees_paid,
     CASE WHEN transaction_count_out > 0 THEN fees_paid / transaction_count_out ELSE 0 END as avg_fee_per_tx
 FROM balance_transfers_address_weekly_internal
-ORDER BY address, asset, week_start DESC;
+ORDER BY address, asset_symbol, asset_contract, week_start DESC;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS balance_transfers_address_monthly_internal
 ENGINE = SummingMergeTree((
@@ -546,12 +562,13 @@ ENGINE = SummingMergeTree((
     fees_paid
 ))
 PARTITION BY toYYYYMM(month_start)
-ORDER BY (address, asset, month_start)
+ORDER BY (address, asset_symbol, asset_contract, month_start)
 SETTINGS index_granularity = 8192
 AS
 SELECT
     arrayJoin([from_address, to_address]) as address,
-    asset,
+    asset_symbol,
+    asset_contract,
     toStartOfMonth(toDateTime(intDiv(block_timestamp, 1000))) as month_start,
     multiIf(address = to_address, amount, 0) as volume_in,
     multiIf(address = from_address, amount, 0) as volume_out,
@@ -563,7 +580,8 @@ FROM balance_transfers;
 CREATE VIEW IF NOT EXISTS balance_transfers_address_monthly_view AS
 SELECT
     address,
-    asset,
+    asset_symbol,
+    asset_contract,
     month_start,
     volume_in,
     volume_out,
@@ -575,4 +593,4 @@ SELECT
     fees_paid,
     CASE WHEN transaction_count_out > 0 THEN fees_paid / transaction_count_out ELSE 0 END as avg_fee_per_tx
 FROM balance_transfers_address_monthly_internal
-ORDER BY address, asset, month_start DESC;
+ORDER BY address, asset_symbol, asset_contract, month_start DESC;

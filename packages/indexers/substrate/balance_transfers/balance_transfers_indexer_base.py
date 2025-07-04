@@ -58,6 +58,9 @@ class BalanceTransfersIndexerBase:
 
             # Replace partition size placeholder if it exists
             schema_sql = schema_sql.replace('{PARTITION_SIZE}', str(self.partitioner.range_size))
+            
+            # Replace network placeholder if it exists
+            schema_sql = schema_sql.replace('{network}', self.network)
 
             # Define logical chunks based on SQL sections
             chunks = []
@@ -312,7 +315,7 @@ class BalanceTransfersIndexerBase:
                 self.client.insert('balance_transfers',
                                   all_balance_transfers,
                                   column_names=['extrinsic_id', 'event_idx', 'block_height', 'block_timestamp',
-                                               'from_address', 'to_address', 'asset', 'asset_contract', 'amount', 'fee', '_version'])
+                                               'from_address', 'to_address', 'asset_symbol', 'asset_contract', 'amount', 'fee', '_version'])
 
                 # Record database insert metrics
                 insert_duration = time.time() - insert_start_time

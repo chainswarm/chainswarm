@@ -346,9 +346,8 @@ if __name__ == "__main__":
     metrics_registry = setup_metrics(service_name, start_server=True)
     metrics = IndexerMetrics(metrics_registry, args.network, "balance_transfers")
 
-    # Create AssetManager and initialize native assets
     asset_manager = AssetManager(args.network, connection_params)
-    asset_manager.initialize_native_assets()
+    asset_manager.init_tables()
     logger.info(f"Initialized AssetManager and native assets for {args.network}")
 
     partitioner = get_partitioner(args.network)
