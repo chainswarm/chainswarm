@@ -1,34 +1,28 @@
 services:
   infra-bittensor-node:
     container_name: infra-bittensor-node
-    image: ghcr.io/opentensor/subtensor:v2.0.2
+    image: ghcr.io/opentensor/subtensor:v3.1.7
     restart: unless-stopped
     ports:
-      - "9944:9944"  # RPC Port
-      - "30333:30333"  # P2P Port
-      - "9615:9615"  # Prometheus Monitoring
+      - "59944:9944"  # RPC Port
+      - "50333:30333"  # P2P Port
+      - "59615:9615"  # Prometheus Monitoring
     command:
-      - /bin/bash
-      - -c
-      - |
-        node-subtensor \
-          --base-path /chain-data \
-          --keystore-path /keystore \
-          --chain raw_spec_finney.json \
-          --database=rocksdb \
-          --state-pruning=archive \
-          --rpc-external --rpc-cors all --unsafe-rpc-external --rpc-port=9944 --rpc-methods=unsafe --rpc-max-connections=10000 --rpc-max-response-size=2048 \
-        
-          --no-mdns \
-          --max-parallel-requests 1000 \
-          --pool-limit 10240 \
-          --pool-kbytes 102400 \
-          --in-peers=64 --out-peers=64 \
-          --bootnodes /dns/bootnode.finney.chain.opentensor.ai/tcp/30333/ws/p2p/12D3KooWRwbMb85RWnT8DSXSYMWQtuDwh4LJzndoRrTDotTR5gDC \
-          --public-addr=/ip4/${EXTERNAL_IP:-0.0.0.0}/tcp/${RELAY_CHAIN_P2P_PORT:-30333} \
-          --listen-addr=/ip4/0.0.0.0/tcp/30333 \
+     - --base-path /data
+     - --keystore-path /keystore
+     - --chain /chainspecs/raw_spec_finney.json
+     - --database=rocksdb
+     - --state-pruning=archive
+     - --rpc-external --rpc-cors all --unsafe-rpc-external --rpc-port=9944 --rpc-methods=unsafe --rpc-max-connections=10000 --rpc-max-response-size=2048
+     - --no-mdns
+     - --pool-limit 10240
+     - --pool-kbytes 102400
+     - --in-peers=64 --out-peers=64
+     - --bootnodes /dns/bootnode.finney.chain.opentensor.ai/tcp/30333/ws/p2p/12D3KooWRwbMb85RWnT8DSXSYMWQtuDwh4LJzndoRrTDotTR5gDC
+     - --public-addr=/ip4/${EXTERNAL_IP:-0.0.0.0}/tcp/${RELAY_CHAIN_P2P_PORT:-30333}
+     - --listen-addr=/ip4/0.0.0.0/tcp/30333
     volumes:
-      - ./bittensor-specs:/chain-data/specs
+      - ./bittensor-specs:/chainspecs
       - infra-bittensor-chain-data:/chain-data
       - infra-bittensor-keystore:/keystore
     networks:
