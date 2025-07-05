@@ -30,18 +30,21 @@
   "response": {
     "status_code": 200,
     "headers": {
-      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "date": "Fri, 04 Jul 2025 21:00:01 GMT",
       "server": "uvicorn",
-      "content-length": "1194",
+      "content-length": "1276",
       "content-type": "application/json",
-      "x-correlation-id": "req_11ff831f6531"
+      "x-correlation-id": "req_741befd7668b"
     },
     "content_type": "application/json",
     "data": {
       "items": [
         {
           "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
-          "asset": "TOR",
+          "asset_symbol": "TOR",
+          "asset_contract": "native",
+          "asset_verified": "verified",
+          "asset_name": "Torus",
           "total_transactions": 15,
           "outgoing_count": 12,
           "incoming_count": 3,

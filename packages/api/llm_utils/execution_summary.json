@@ -1,9 +1,9 @@
 {
   "execution_summary": {
-    "total_endpoints": 20,
-    "successful": 19,
+    "total_endpoints": 21,
+    "successful": 20,
     "failed": 1,
-    "success_rate": 95.0
+    "success_rate": 95.23809523809523
   },
   "successful_endpoints": [
     {
@@ -89,6 +89,11 @@
     {
       "endpoint": "GET /substrate/{network}/known-addresses",
       "file": "known_addresses_known_addresses.json",
+      "status": 200
+    },
+    {
+      "endpoint": "GET /substrate/{network}/assets",
+      "file": "substrate_assets.json",
       "status": 200
     },
     {

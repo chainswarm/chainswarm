@@ -264,8 +264,8 @@ def validate_asset_for_network(network: str, asset: str) -> bool:
     """
     try:
         # Import here to avoid circular imports
-        from packages.indexers.substrate import get_network_asset
-        expected_asset = get_network_asset(network)
+        from packages.indexers.substrate import get_native_network_asset
+        expected_asset = get_native_network_asset(network)
         return asset.upper() == expected_asset.upper()
     except (ImportError, ValueError):
         # Fallback validation using direct mapping

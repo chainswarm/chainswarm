@@ -4,7 +4,7 @@ from loguru import logger
 
 from packages.api.services.balance_transfers_service import BalanceTransferService
 from packages.indexers.base import get_clickhouse_connection_string
-from packages.indexers.substrate import get_network_asset
+from packages.indexers.substrate import get_native_network_asset
 from packages.api.middleware.correlation_middleware import get_request_context, sanitize_params
 import os
 
@@ -50,7 +50,7 @@ async def get_address_transactions(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -123,7 +123,7 @@ async def get_balance_transfers_volume_series(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     # Validate period_type
     if period_type not in ["4hour", "daily", "weekly", "monthly"]:
@@ -194,7 +194,7 @@ async def get_network_analytics(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -263,7 +263,7 @@ async def get_address_analytics(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -329,7 +329,7 @@ async def get_volume_aggregations(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -398,7 +398,7 @@ async def get_volume_trends(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -465,7 +465,7 @@ async def get_addresses_analytics(
 ):
     # Handle assets parameter - default to network's native asset if not provided
     if assets is None:
-        assets = [get_network_asset(network)]
+        assets = [get_native_network_asset(network)]
 
     # Validate addresses parameter
     if not addresses:

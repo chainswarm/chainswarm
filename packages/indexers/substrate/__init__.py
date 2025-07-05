@@ -69,27 +69,27 @@ class Network(Enum):
 networks = [Network.POLKADOT.value, Network.TORUS.value, Network.TORUS_TESTNET.value, Network.BITTENSOR.value]
 
 
-def get_network_asset(network: str) -> str:
+def get_native_network_asset(network: str) -> str:
     """
     Get the native asset symbol for the specified network.
-    
+
     This is a convenience function that delegates to Network.get_network_asset().
     It provides a simple interface for getting asset information without needing
     to reference the Network enum directly.
-    
+
     Args:
         network (str): The blockchain network identifier
-        
+
     Returns:
         str: The native asset symbol for the network
-        
+
     Raises:
         ValueError: If the network is not supported
-        
+
     Examples:
-        >>> get_network_asset("torus")
+        >>> get_native_network_asset("torus")
         'TOR'
-        >>> get_network_asset("bittensor")
+        >>> get_native_network_asset("bittensor")
         'TAO'
     """
     return Network.get_network_asset(network)

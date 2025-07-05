@@ -27,29 +27,30 @@
   "response": {
     "status_code": 200,
     "headers": {
-      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "date": "Fri, 04 Jul 2025 21:00:01 GMT",
       "server": "uvicorn",
-      "content-length": "326",
+      "content-length": "360",
       "content-type": "application/json",
-      "x-correlation-id": "req_2b040e35d67c"
+      "x-correlation-id": "req_2cfc4967bcbe"
     },
     "content_type": "application/json",
     "data": {
       "items": [
         {
-          "period_start": "2025-07-01T00:00:00",
-          "asset": "TOR",
-          "total_volume": 6037.918734184138,
-          "transaction_count": 21,
-          "rolling_7_period_avg_volume": 231112.445378104,
-          "rolling_7_period_avg_tx_count": 9.857142857142858,
-          "rolling_30_period_avg_volume": 108469.64363051741
+          "period_start": "2025-07-04T08:00:00",
+          "asset_symbol": "TOR",
+          "asset_contract": "native",
+          "total_volume": 6956.279932066438,
+          "transaction_count": 5,
+          "rolling_7_period_avg_volume": 16244.728067005542,
+          "rolling_7_period_avg_tx_count": 6.285714285714286,
+          "rolling_30_period_avg_volume": 109664.94253784041
         }
       ],
       "page": 1,
       "page_size": 1,
-      "total_pages": 217,
-      "total_items": 217
+      "total_pages": 221,
+      "total_items": 221
     }
   }
 }

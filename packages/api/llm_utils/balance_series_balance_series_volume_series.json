@@ -27,30 +27,30 @@
   "response": {
     "status_code": 200,
     "headers": {
-      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "date": "Fri, 04 Jul 2025 21:00:01 GMT",
       "server": "uvicorn",
-      "content-length": "367",
+      "content-length": "366",
       "content-type": "application/json",
-      "x-correlation-id": "req_a3b23f13d859"
+      "x-correlation-id": "req_84e67ec0ac23"
     },
     "content_type": "application/json",
     "data": {
       "items": [
         {
-          "period_start_timestamp": 1751385600000,
-          "period_end_timestamp": 1751400000000,
+          "period_start_timestamp": 1751628240000,
+          "period_end_timestamp": 1751642640000,
           "asset": "TOR",
-          "active_addresses_count": 336,
-          "total_balance_changes": 2026.6362447707397,
-          "total_free_balance_changes": 506.6966083337432,
+          "active_addresses_count": 335,
+          "total_balance_changes": 675.5472849595429,
+          "total_free_balance_changes": 168.9007408069041,
           "total_reserved_balance_changes": 0.0,
-          "total_staked_balance_changes": 1519.939636436997
+          "total_staked_balance_changes": 506.6465441526389
         }
       ],
       "page": 1,
       "page_size": 1,
-      "total_pages": 597,
-      "total_items": 597
+      "total_pages": 613,
+      "total_items": 613
     }
   }
 }

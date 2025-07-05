@@ -8,7 +8,7 @@ from decimal import Decimal
 from loguru import logger
 from packages.indexers.substrate.block_range_partitioner import BlockRangePartitioner
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
-from packages.indexers.substrate import get_network_asset
+from packages.indexers.substrate import get_native_network_asset
 from packages.indexers.base import IndexerMetrics
 from packages.indexers.substrate.assets.asset_manager import AssetManager
 
@@ -25,7 +25,7 @@ class BalanceTransfersIndexerBase:
             asset_manager: AssetManager instance for managing assets
         """
         self.network = network
-        self.asset = get_network_asset(network)
+        self.asset = get_native_network_asset(network)
         self.partitioner = partitioner
         self.metrics = metrics
         self.asset_manager = asset_manager

@@ -1,0 +1,46 @@
+{
+  "endpoint": {
+    "url": "http://localhost:8000/substrate/torus/assets",
+    "method": "GET",
+    "path": "/substrate/{network}/assets",
+    "operation_id": "get_all_assets_substrate__network__assets_get",
+    "summary": "Get all assets without pagination",
+    "tags": [
+      "assets"
+    ]
+  },
+  "request": {
+    "query_params": {},
+    "path_params": {
+      "network": "torus"
+    },
+    "body": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Fri, 04 Jul 2025 21:00:04 GMT",
+      "server": "uvicorn",
+      "content-length": "289",
+      "content-type": "application/json",
+      "x-correlation-id": "req_df07d1f25576"
+    },
+    "content_type": "application/json",
+    "data": [
+      {
+        "network": "torus",
+        "asset_symbol": "TOR",
+        "asset_contract": "native",
+        "asset_verified": "verified",
+        "asset_name": "Torus",
+        "asset_type": "native",
+        "decimals": 18,
+        "first_seen_block": 0,
+        "first_seen_timestamp": "2025-07-04T17:04:18",
+        "last_updated": "2025-07-04T17:04:18",
+        "updated_by": "system",
+        "notes": ""
+      }
+    ]
+  }
+}

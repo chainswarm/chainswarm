@@ -27,11 +27,11 @@
   "response": {
     "status_code": 200,
     "headers": {
-      "date": "Wed, 02 Jul 2025 19:48:34 GMT",
+      "date": "Fri, 04 Jul 2025 21:00:01 GMT",
       "server": "uvicorn",
-      "content-length": "456",
+      "content-length": "531",
       "content-type": "application/json",
-      "x-correlation-id": "req_cb81120d2cc4"
+      "x-correlation-id": "req_4c42613b3281"
     },
     "content_type": "application/json",
     "data": {
@@ -42,6 +42,9 @@
           "block_height": 53998,
           "address": "5C4n8kb3mno7i8vQmqNgsQbwZozHvPyou8TAfZfZ7msTkS5f",
           "asset": "TOR",
+          "asset_contract": "native",
+          "asset_verified": "verified",
+          "asset_name": "Torus",
           "total_balance": 33943.197529858844,
           "free_balance_change": 29999.39964720841,
           "reserved_balance_change": 0.0,

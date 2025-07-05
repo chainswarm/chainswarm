@@ -2233,6 +2233,56 @@
         }
       }
     },
+    "/substrate/{network}/assets": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Get all assets without pagination",
+        "description": "Returns all assets from the assets dictionary table without pagination. This endpoint provides complete asset information including symbols, contracts, verification status, and metadata. Optionally filter by network.",
+        "operationId": "get_all_assets_substrate__network__assets_get",
+        "parameters": [
+          {
+            "name": "network",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The blockchain network identifier",
+              "title": "Network"
+            },
+            "description": "The blockchain network identifier",
+            "example": "torus"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/metrics": {
       "get": {
         "summary": "Aggregated Metrics Endpoint",

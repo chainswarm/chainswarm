@@ -6,7 +6,7 @@ import clickhouse_connect
 from decimal import Decimal
 from loguru import logger
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
-from packages.indexers.substrate import get_network_asset
+from packages.indexers.substrate import get_native_network_asset
 from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.assets.asset_manager import AssetManager
 
@@ -23,7 +23,7 @@ class BalanceSeriesIndexerBase:
             period_hours: Number of hours in each period (default: 4)
         """
         self.network = network
-        self.asset = get_network_asset(network)
+        self.asset = get_native_network_asset(network)
         self.period_hours = period_hours
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.first_block_timestamp = None  # Will be set by the consumer if available
