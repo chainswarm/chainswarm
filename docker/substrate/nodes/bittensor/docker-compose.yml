@@ -32,7 +32,7 @@ volumes:
   infra-bittensor-chain-data:
     name: infra-bittensor-chain-data
   infra-bittensor-keystore:
-    name: bittensor-keystore
+    name: infra-bittensor-keystore
 
 networks:
   bittensor-network:

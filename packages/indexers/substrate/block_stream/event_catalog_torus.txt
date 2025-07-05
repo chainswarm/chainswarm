@@ -1,4 +1,4 @@
-__LAST_PROCESSED_HEIGHT__: 1355509
+__LAST_PROCESSED_HEIGHT__: 1969048
 
 Balances:BalanceSet
   who: 5DXCUY5p5Hfm5eSP32pvG3c5Uu34peNBtGjBa2x2Z8fPkNg9
@@ -124,6 +124,9 @@ System:NewAccount
 Torus0:AgentRegistered
   value: 5EYCAe5jXm8DLvvQ2YjbsmnoMpDHAfokKZfg12KzGSSAzM4D
 
+Torus0:AgentUnregistered
+  value: 5GvBntw5j45K7kMwj9XahfwEW7ByJHRNPrSFmBzUyHcnaYNT
+
 Torus0:StakeAdded
   0: 5CoS1LXeGQDiXxZ8TcdiMuzyFKu9Ku7XAihu9iS2tCACxf4n
   1: 5DoVVgN7R6vHw4mvPX8s4EkkR8fgN1UJ5TDfKzab8eW9z89b
@@ -140,7 +143,7 @@ TransactionPayment:TransactionFeePaid
   tip: 0
 
 __METADATA__
-  last_processed_height: 1355509
-  processed_blocks: 1355513
-  unique_events: 35
+  last_processed_height: 1969048
+  processed_blocks: 1969056
+  unique_events: 36
 

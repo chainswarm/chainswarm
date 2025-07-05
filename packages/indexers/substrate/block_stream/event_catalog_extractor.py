@@ -6,9 +6,13 @@ import traceback
 from loguru import logger
 from typing import Dict, Any
 
-from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, terminate_event
-from packages.indexers.substrate import networks
+from packages.indexers.base import setup_logger, get_clickhouse_connection_string, create_clickhouse_database, \
+    terminate_event, setup_metrics, IndexerMetrics
+from packages.indexers.substrate import networks, get_substrate_node_url
+from packages.indexers.substrate.block_range_partitioner import get_partitioner
+from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
+from packages.indexers.substrate.node.substrate_node import SubstrateNode
 
 
 class EventCatalogExtractor:
@@ -39,8 +43,15 @@ class EventCatalogExtractor:
             output_file: Output file path (default: event_catalog_<network>.txt)
             service_name: Service name for logging
         """
+
         # Initialize connection
-        self.block_stream_manager = BlockStreamManager(connection_params)
+        metrics_registry = setup_metrics(service_name, start_server=True)
+        metrics = IndexerMetrics(metrics_registry, args.network, "block_stream")
+        partitioner = get_partitioner(args.network)
+        block_stream_indexer = BlockStreamIndexer(partitioner, metrics, connection_params, args.network)
+        substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
+
+        self.block_stream_manager = BlockStreamManager(block_stream_indexer, substrate_node, partitioner, connection_params, network, terminate_event)
         self.network = network
         self.batch_size = batch_size
         self.output_file = output_file or f"event_catalog_{network}.txt"

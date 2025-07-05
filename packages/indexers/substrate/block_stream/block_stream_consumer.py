@@ -306,7 +306,7 @@ if __name__ == "__main__":
 
     partitioner = get_partitioner(args.network)
     substrate_node = SubstrateNode(args.network, get_substrate_node_url(args.network), terminate_event)
-    block_stream_indexer = BlockStreamIndexer(partitioner, metrics, connection_params,args.network)
+    block_stream_indexer = BlockStreamIndexer(partitioner, metrics, connection_params, args.network)
 
     if args.partition is not None and args.start_height is None:
         chain_height = substrate_node.get_current_block_height()
