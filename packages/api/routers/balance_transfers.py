@@ -3,8 +3,8 @@ from fastapi import APIRouter, Query, Path, HTTPException, Request
 from loguru import logger
 
 from packages.api.services.balance_transfers_service import BalanceTransferService
+from packages.api.services.assets_service import AssetsService
 from packages.indexers.base import get_clickhouse_connection_string
-from packages.indexers.substrate import get_native_network_asset
 from packages.api.middleware.correlation_middleware import get_request_context, sanitize_params
 import os
 
@@ -42,15 +42,22 @@ async def get_address_transactions(
         target_address: Optional[str] = Query(None, description="Filter transactions to/from this address"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of transactions per page", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -71,7 +78,7 @@ async def get_address_transactions(
                 "target_address": target_address,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets
+                "asset_contract": asset_contract
             }))
 
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -99,10 +106,10 @@ async def get_balance_transfers_volume_series(
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of volume series records per page", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         ),
         start_timestamp: Optional[int] = Query(
             None,
@@ -121,9 +128,16 @@ async def get_balance_transfers_volume_series(
             example="4hour"
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     # Validate period_type
     if period_type not in ["4hour", "daily", "weekly", "monthly"]:
@@ -147,7 +161,7 @@ async def get_balance_transfers_volume_series(
                 "network": network,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets,
+                "asset_contract": asset_contract,
                 "start_timestamp": start_timestamp,
                 "end_timestamp": end_timestamp,
                 "period_type": period_type
@@ -176,10 +190,10 @@ async def get_network_analytics(
         period: str = Path(..., description="Analytics period", regex="^(daily|weekly|monthly)$", example="daily"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of analytics records per page", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         ),
         start_date: Optional[str] = Query(
             None,
@@ -192,9 +206,16 @@ async def get_network_analytics(
             example="2026-01-31"
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -218,7 +239,7 @@ async def get_network_analytics(
                 "period": period,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets,
+                "asset_contract": asset_contract,
                 "start_date": start_date,
                 "end_date": end_date
             })
@@ -245,10 +266,10 @@ async def get_address_analytics(
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of address analytics records per page", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         ),
         address_type: Optional[str] = Query(
             None,
@@ -261,9 +282,16 @@ async def get_address_analytics(
             example=1000.0
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -282,7 +310,7 @@ async def get_address_analytics(
                 "network": network,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets,
+                "asset_contract": asset_contract,
                 "address_type": address_type,
                 "min_volume": min_volume
             })
@@ -311,10 +339,10 @@ async def get_volume_aggregations(
         period: str = Path(..., description="Aggregation period", regex="^(daily|weekly|monthly)$", example="daily"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of aggregation records per page", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         ),
         start_date: Optional[str] = Query(
             None,
@@ -327,9 +355,16 @@ async def get_volume_aggregations(
             example="2026-01-31"
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -353,7 +388,7 @@ async def get_volume_aggregations(
                 "period": period,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets,
+                "asset_contract": asset_contract,
                 "start_date": start_date,
                 "end_date": end_date
             })
@@ -380,10 +415,10 @@ async def get_volume_trends(
         network: str = Path(..., description="The blockchain network identifier", example="torus"),
         page: int = Query(1, description="Page number for pagination", ge=1),
         page_size: int = Query(20, description="Number of trend records per page", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         ),
         start_timestamp: Optional[int] = Query(
             None,
@@ -396,9 +431,16 @@ async def get_volume_trends(
             example=1840995200000
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -417,7 +459,7 @@ async def get_volume_trends(
                 "network": network,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets,
+                "asset_contract": asset_contract,
                 "start_timestamp": start_timestamp,
                 "end_timestamp": end_timestamp
             })
@@ -452,10 +494,10 @@ async def get_addresses_analytics(
         ),
         page: int = Query(1, description="Page number for pagination (ignored if return_all=true)", ge=1),
         page_size: int = Query(20, description="Number of analytics records per page (ignored if return_all=true)", ge=1, le=100),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for the network's native asset, or a specific asset contract address. Defaults to network's native asset.",
+            example="native"
         ),
         return_all: bool = Query(
             False,
@@ -463,9 +505,16 @@ async def get_addresses_analytics(
             example=False
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_native_network_asset(network)]
+    # Validate asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
 
     # Validate addresses parameter
     if not addresses:
@@ -489,7 +538,7 @@ async def get_addresses_analytics(
                 "addresses": addresses,
                 "page": page,
                 "page_size": page_size,
-                "assets": assets,
+                "asset_contract": asset_contract,
                 "return_all": return_all
             }))
 

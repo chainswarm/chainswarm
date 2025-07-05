@@ -313,14 +313,83 @@ class AssetManager:
     
     def get_native_asset_symbol(self) -> str:
         """
-        Get the native asset symbol for the current network.
+        Get the native asset symbol for the current network by querying the database.
         
         Returns:
-            str: The native asset symbol (e.g., 'TOR', 'TAO', 'DOT')
+            str: The native asset symbol
+            
+        Raises:
+            ValueError: If no native asset is found for the network
         """
-        if self.network in self.NATIVE_ASSETS:
-            return self.NATIVE_ASSETS[self.network]['symbol']
-        raise ValueError(f"No native asset configured for network: {self.network}")
+        try:
+            result = self.client.command(
+                """
+                SELECT asset_symbol
+                FROM assets
+                WHERE network = %(network)s
+                AND asset_type = 'native'
+                LIMIT 1
+                """,
+                {
+                    'network': self.network
+                }
+            )
+            
+            if not result:
+                raise ValueError(f"No native asset found in database for network: {self.network}")
+                
+            return result[0][0]
+            
+        except Exception as e:
+            logger.error(f"Failed to get native asset symbol for network {self.network}", error=e)
+            raise
+    
+    def ensure_native_asset_exists(self) -> bool:
+        """
+        Ensure the native asset exists in the database for the current network.
+        If it doesn't exist, create it using the hardcoded values as a fallback.
+        This method should only be used during indexer initialization.
+        
+        Returns:
+            bool: True if the asset was created, False if it already existed
+            
+        Raises:
+            ValueError: If the network is not supported
+        """
+        try:
+            # Check if native asset already exists
+            result = self.client.command(
+                """
+                SELECT asset_symbol
+                FROM assets
+                WHERE network = %(network)s
+                AND asset_type = 'native'
+                LIMIT 1
+                """,
+                {
+                    'network': self.network
+                }
+            )
+            
+            if result:
+                return False  # Native asset already exists
+                
+            # Native asset doesn't exist, create it using hardcoded values as fallback
+            if self.network not in self.NATIVE_ASSETS:
+                raise ValueError(f"No native asset configured for network: {self.network}")
+                
+            native_asset = self.NATIVE_ASSETS[self.network]
+            
+            return self.ensure_asset_exists(
+                asset_symbol=native_asset['symbol'],
+                asset_type='native',
+                decimals=native_asset['decimals'],
+                asset_name=native_asset['name']
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to ensure native asset exists for network {self.network}", error=e)
+            raise
     
     def clear_cache(self) -> None:
         """Clear the asset cache."""

@@ -12,11 +12,11 @@ from packages.api.tools.balance_transfers import BalanceTransfersTool
 from packages.api.tools.money_flow import MoneyFlowTool
 from packages.api.tools.similarity_search import SimilaritySearchTool
 from packages.api.tools.assets import AssetsTool
+from packages.api.services.assets_service import AssetsService
 from packages.indexers.base import (
     get_clickhouse_connection_string, setup_metrics, get_metrics_registry,
     setup_enhanced_logger, ErrorContextManager, log_service_start, log_service_stop, classify_error
 )
-from packages.indexers.substrate import get_network_asset
 from packages.api.middleware.mcp_session_rate_limiting import (
     session_rate_limit,
 )
@@ -179,27 +179,60 @@ async def get_assets_from_clickhouse(network: str) -> List[str]:
         client.close()
 
         # Ensure native asset is included
-        native_asset = get_network_asset(network)
-        if native_asset not in assets:
-            assets.insert(0, native_asset)
+        assets_service = AssetsService(connection_params)
+        try:
+            native_asset = assets_service.get_native_asset_symbol(network)
+            if native_asset not in assets:
+                assets.insert(0, native_asset)
+        except Exception as e:
+            logger.error(f"Failed to get native asset symbol for network {network}: {str(e)}")
+            # If we can't get the native asset, just return the assets we have
+        finally:
+            assets_service.close()
 
         return assets
     except Exception as e:
         # ENHANCED: Error logging with context
-        error_ctx.log_error(
-            "Failed to query available assets from ClickHouse",
-            error=e,
-            operation="get_assets_from_clickhouse",
-            network=network,
-            fallback_asset=get_network_asset(network),
-            error_category=classify_error(e)
-        )
-        return [get_network_asset(network)]
+        connection_params = get_clickhouse_connection_string(network)
+        assets_service = AssetsService(connection_params)
+        try:
+            native_asset = assets_service.get_native_asset_symbol(network)
+            error_ctx.log_error(
+                "Failed to query available assets from ClickHouse",
+                error=e,
+                operation="get_assets_from_clickhouse",
+                network=network,
+                fallback_asset=native_asset,
+                error_category=classify_error(e)
+            )
+            return [native_asset]
+        except Exception as inner_e:
+            logger.error(f"Failed to get native asset symbol for network {network}: {str(inner_e)}")
+            error_ctx.log_error(
+                "Failed to query available assets from ClickHouse and failed to get native asset",
+                error=e,
+                inner_error=inner_e,
+                operation="get_assets_from_clickhouse",
+                network=network,
+                error_category=classify_error(e)
+            )
+            # If we can't get the native asset, return an empty list
+            return []
+        finally:
+            assets_service.close()
 
 
 async def get_user_guide():
     """User-facing documentation for MCP server capabilities"""
-    assets = get_network_asset(network)
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.get_native_asset_symbol(network)
+    except Exception as e:
+        logger.error(f"Failed to get native asset symbol for network {network}: {str(e)}")
+        assets = "native asset"
+    finally:
+        assets_service.close()
 
     return f"""
 
@@ -387,7 +420,15 @@ async def get_instructions():
     """
 
     # Get network configuration
-    assets = get_network_asset(network)
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.get_native_asset_symbol(network)
+    except Exception as e:
+        logger.error(f"Failed to get native asset symbol for network {network}: {str(e)}")
+        assets = "native asset"
+    finally:
+        assets_service.close()
 
     # Initialize database connections
     memgraph_driver = get_memgraph_driver(network)

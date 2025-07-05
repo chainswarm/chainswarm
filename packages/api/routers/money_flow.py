@@ -4,9 +4,10 @@ from packages.api.routers import get_memgraph_driver
 from packages.api.services.balance_series_service import BalanceSeriesService
 from packages.api.services.balance_transfers_service import BalanceTransferService
 from packages.api.services.money_flow_service import MoneyFlowService, Direction
+from packages.api.services.assets_service import AssetsService
 from packages.indexers.base import get_clickhouse_connection_string
 from packages.api.utils.money_flow_utils import add_searched_badge_to_nodes, enrich_nodes_with_balances
-from packages.indexers.substrate import get_network_asset
+from loguru import logger
 
 router = APIRouter(
     prefix="/substrate",
@@ -46,16 +47,25 @@ async def get_money_flow_by_path_shortest(
             description="The target address to query",
             example="5FZdduraHpWTVFBehbH4yqsfi7LabXFQkmqc2vKqbQTaspwM"
         ),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for network's native asset, or a specific asset contract address. Defaults to native asset.",
+            example="native"
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_network_asset(network)]
-    
+    # Handle asset_contract parameter - validate and get corresponding assets
+
+    # Validate and get assets based on asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
+
     memgraph_driver = get_memgraph_driver(network)
     try:
         money_flow_service = MoneyFlowService(memgraph_driver)
@@ -102,15 +112,23 @@ async def get_money_flow_by_path_explore_address(
         ),
         depth_level: int = Query(3, description="The depth level to explore", example=3),
         direction: Direction = Query(Direction.out_, description="The direction of the money flow", example="all"),
-        assets: List[str] = Query(
+        asset_contract: str = Query(
             None,
-            description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-            example=["TOR"]
+            description="Asset contract to filter by. Use 'all' for all assets, 'native' for network's native asset, or a specific asset contract address. Defaults to native asset.",
+            example="native"
         )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_network_asset(network)]
+    # Handle asset_contract parameter - validate and get corresponding assets
+    # Validate and get assets based on asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
     
     memgraph_driver = get_memgraph_driver(network)
     try:
@@ -155,15 +173,23 @@ async def get_money_flow_by_path_explore_transaction_id(
     network: Annotated[str, Path(description="The blockchain network identifier", example="torus")],
     transaction_id: str = Query(description="The transaction ID", example="308-0001"),
     depth_level: int = Query(3, description="The depth level to explore", example=3),
-    assets: List[str] = Query(
+    asset_contract: str = Query(
         None,
-        description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-        example=["TOR"]
+        description="Asset contract to filter by. Use 'all' for all assets, 'native' for network's native asset, or a specific asset contract address. Defaults to native asset.",
+        example="native"
     )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_network_asset(network)]
+    # Handle asset_contract parameter - validate and get corresponding assets
+    # Validate and get assets based on asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
     
     block_height, padded_idx = transaction_id.split("-")
     un_padded_idx = str(int(padded_idx))
@@ -210,15 +236,23 @@ async def get_money_flow_by_block(
     network: Annotated[str, Path(description="The blockchain network identifier", example="torus")],
     block_height: int = Query(description="The block height", example=308),
     depth_level: int = Query(3, description="The depth level to explore", example=3),
-    assets: List[str] = Query(
+    asset_contract: str = Query(
         None,
-        description="List of assets to filter by. Use ['all'] for all assets. Defaults to network's native asset.",
-        example=["TOR"]
+        description="Asset contract to filter by. Use 'all' for all assets, 'native' for network's native asset, or a specific asset contract address. Defaults to native asset.",
+        example="native"
     )
 ):
-    # Handle assets parameter - default to network's native asset if not provided
-    if assets is None:
-        assets = [get_network_asset(network)]
+    # Handle asset_contract parameter - validate and get corresponding assets
+    # Validate and get assets based on asset_contract parameter
+    connection_params = get_clickhouse_connection_string(network)
+    assets_service = AssetsService(connection_params)
+    try:
+        assets = assets_service.validate_asset_contract(network, asset_contract)
+    except Exception as e:
+        logger.error(f"Failed to validate asset contract for network {network}", error=e)
+        raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
+    finally:
+        assets_service.close()
     
     balance_transfer_service = BalanceTransferService(get_clickhouse_connection_string(network))
     addresses = balance_transfer_service.get_addresses_from_block_height(block_height, assets)

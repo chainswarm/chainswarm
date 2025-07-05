@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional
 from loguru import logger
 from neo4j import Driver
-from packages.indexers.substrate import get_network_asset
 from enum import Enum
 
 

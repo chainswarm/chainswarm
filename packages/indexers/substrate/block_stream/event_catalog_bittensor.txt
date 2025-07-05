@@ -1,4 +1,4 @@
-__LAST_PROCESSED_HEIGHT__: 33768
+__LAST_PROCESSED_HEIGHT__: 56368
 
 Balances:Deposit
   who: 5FCM3DBXWiGcwYYQtT8z4ZD93TqYpYxjaAfgv6aMStV1FTCT
@@ -123,7 +123,7 @@ TransactionPayment:TransactionFeePaid
   tip: 0
 
 __METADATA__
-  last_processed_height: 33768
-  processed_blocks: 33824
+  last_processed_height: 56368
+  processed_blocks: 56384
   unique_events: 31
 

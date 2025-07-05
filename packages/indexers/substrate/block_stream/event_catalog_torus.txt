@@ -1,4 +1,4 @@
-__LAST_PROCESSED_HEIGHT__: 1969048
+__LAST_PROCESSED_HEIGHT__: 1969342
 
 Balances:BalanceSet
   who: 5DXCUY5p5Hfm5eSP32pvG3c5Uu34peNBtGjBa2x2Z8fPkNg9
@@ -143,7 +143,7 @@ TransactionPayment:TransactionFeePaid
   tip: 0
 
 __METADATA__
-  last_processed_height: 1969048
-  processed_blocks: 1969056
+  last_processed_height: 1969342
+  processed_blocks: 1969350
   unique_events: 36
 

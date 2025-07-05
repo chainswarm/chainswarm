@@ -490,20 +490,16 @@ class BaseMoneyFlowIndexer:
             asset_symbol, asset_contract = self._extract_asset_info(event)
             
             # Ensure asset exists in assets table
-            if asset_contract == 'native':
-                decimals = self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
-                asset_type = 'native'
-            else:
+            if asset_contract != 'native':
                 # For tokens, we'd need to get decimals from chain or default
                 decimals = 18  # Default for most tokens
                 asset_type = 'token'
-            
-            self.asset_manager.ensure_asset_exists(
-                asset_symbol=asset_symbol,
-                asset_contract=asset_contract,
-                asset_type=asset_type,
-                decimals=decimals
-            )
+                self.asset_manager.ensure_asset_exists(
+                    asset_symbol=asset_symbol,
+                    asset_contract=asset_contract,
+                    asset_type=asset_type,
+                    decimals=decimals
+                )
             
             query = """
             MERGE (addr:Address { address: $account })
@@ -531,20 +527,16 @@ class BaseMoneyFlowIndexer:
             asset_symbol, asset_contract = self._extract_asset_info(event)
             
             # Ensure asset exists in assets table
-            if asset_contract == 'native':
-                decimals = self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
-                asset_type = 'native'
-            else:
-                # For tokens, we'd need to get decimals from chain or default
+            if asset_contract != 'native':
                 decimals = 18  # Default for most tokens
                 asset_type = 'token'
             
-            self.asset_manager.ensure_asset_exists(
-                asset_symbol=asset_symbol,
-                asset_contract=asset_contract,
-                asset_type=asset_type,
-                decimals=decimals
-            )
+                self.asset_manager.ensure_asset_exists(
+                    asset_symbol=asset_symbol,
+                    asset_contract=asset_contract,
+                    asset_type=asset_type,
+                    decimals=decimals
+                )
             
             amount = float(convert_to_decimal_units(
                 attrs['amount'],

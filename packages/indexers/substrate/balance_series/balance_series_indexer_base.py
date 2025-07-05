@@ -6,7 +6,6 @@ import clickhouse_connect
 from decimal import Decimal
 from loguru import logger
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
-from packages.indexers.substrate import get_native_network_asset
 from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.assets.asset_manager import AssetManager
 
@@ -23,13 +22,13 @@ class BalanceSeriesIndexerBase:
             period_hours: Number of hours in each period (default: 4)
         """
         self.network = network
-        self.asset = get_native_network_asset(network)
         self.period_hours = period_hours
         self.period_ms = period_hours * 60 * 60 * 1000  # Convert hours to milliseconds
         self.first_block_timestamp = None  # Will be set by the consumer if available
         self.metrics = metrics
         self.asset_manager = asset_manager
-        
+        self.asset = self.asset_manager.get_native_asset_symbol()
+
         self.client = clickhouse_connect.get_client(
             host=connection_params['host'],
             port=int(connection_params['port']),
@@ -130,14 +129,6 @@ class BalanceSeriesIndexerBase:
         start_time = time.time()
 
         try:
-            # Ensure native asset exists in the assets table
-            self.asset_manager.ensure_asset_exists(
-                asset_symbol=self.asset,
-                asset_contract='native',  # Native assets use 'native' as contract
-                asset_type='native',
-                decimals=self.asset_manager.NATIVE_ASSETS.get(self.network, {}).get('decimals', 0)
-            )
-            
             # Prepare data for insertion
             balance_data = []
             for address, balances in address_balances.items():
@@ -185,7 +176,7 @@ class BalanceSeriesIndexerBase:
                     period_end_timestamp,
                     block_height,
                     address,
-                    self.asset,
+                    self.asset,  # Use the native asset symbol
                     'native',  # Add asset_contract value for native assets
                     free_balance,
                     reserved_balance,

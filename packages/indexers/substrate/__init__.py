@@ -25,74 +25,8 @@ class Network(Enum):
             return 12
         raise ValueError(f"Unsupported network: {network}")
 
-    @classmethod
-    def get_network_asset(cls, network: str) -> str:
-        """
-        Get the native asset symbol for the specified network.
-        
-        This function provides centralized mapping between blockchain networks
-        and their native asset symbols. The asset information is used throughout
-        the indexing system to properly categorize and track different tokens.
-        
-        Args:
-            network (str): The blockchain network identifier (case-insensitive)
-                         Supported networks: torus, torus_testnet, bittensor,
-                         bittensor_testnet, polkadot
-        
-        Returns:
-            str: The native asset symbol for the network
-                - TOR for torus and torus_testnet networks
-                - TAO for bittensor and bittensor_testnet networks
-                - DOT for polkadot network
-        
-        Raises:
-            ValueError: If the network is not supported
-            
-        Examples:
-            >>> Network.get_network_asset("torus")
-            'TOR'
-            >>> Network.get_network_asset("bittensor")
-            'TAO'
-            >>> Network.get_network_asset("polkadot")
-            'DOT'
-        """
-        network = network.lower()
-        if network == cls.TORUS.value or network == cls.TORUS_TESTNET.value:
-            return "TOR"
-        elif network == cls.BITTENSOR.value or network == cls.BITTENSOR_TESTNET.value:
-            return "TAO"
-        elif network == cls.POLKADOT.value:
-            return "DOT"
-        raise ValueError(f"Unsupported network: {network}")
-
 
 networks = [Network.POLKADOT.value, Network.TORUS.value, Network.TORUS_TESTNET.value, Network.BITTENSOR.value]
-
-
-def get_native_network_asset(network: str) -> str:
-    """
-    Get the native asset symbol for the specified network.
-
-    This is a convenience function that delegates to Network.get_network_asset().
-    It provides a simple interface for getting asset information without needing
-    to reference the Network enum directly.
-
-    Args:
-        network (str): The blockchain network identifier
-
-    Returns:
-        str: The native asset symbol for the network
-
-    Raises:
-        ValueError: If the network is not supported
-
-    Examples:
-        >>> get_native_network_asset("torus")
-        'TOR'
-        >>> get_native_network_asset("bittensor")
-        'TAO'
-    """
-    return Network.get_network_asset(network)
 
 
 def retry_with_backoff(retries=100, backoff_in_seconds=10):
@@ -143,8 +77,3 @@ def get_substrate_node_url(network):
         raise ValueError(f"Node WebSocket URL not set for network: {network}. Please check your environment variables.")
 
     return node_ws_url
-
-
-
-
-
