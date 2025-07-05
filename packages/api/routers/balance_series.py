@@ -53,7 +53,6 @@ async def get_address_balance_history(
             example=1842815440000
         )
 ):
-    # Validate asset_contract parameter and get corresponding asset symbols
     connection_params = get_clickhouse_connection_string(network)
     assets_service = AssetsService(connection_params)
     try:
@@ -61,8 +60,6 @@ async def get_address_balance_history(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
@@ -108,8 +105,6 @@ async def get_address_current_balance(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
@@ -161,8 +156,6 @@ async def get_address_balance_changes(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))
@@ -223,8 +216,6 @@ async def get_balance_aggregations(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -285,8 +276,6 @@ async def get_balance_volume_series(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     try:
         balance_service = BalanceSeriesService(get_clickhouse_connection_string(network))

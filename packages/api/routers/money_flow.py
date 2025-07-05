@@ -63,8 +63,6 @@ async def get_money_flow_by_path_shortest(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     memgraph_driver = get_memgraph_driver(network)
     try:
@@ -127,9 +125,7 @@ async def get_money_flow_by_path_explore_address(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
-    
+
     memgraph_driver = get_memgraph_driver(network)
     try:
         money_flow_service = MoneyFlowService(memgraph_driver)
@@ -188,9 +184,7 @@ async def get_money_flow_by_path_explore_transaction_id(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
-    
+
     block_height, padded_idx = transaction_id.split("-")
     un_padded_idx = str(int(padded_idx))
     extrinsic_id = f"{block_height}-{un_padded_idx}"
@@ -242,8 +236,6 @@ async def get_money_flow_by_block(
         example="native"
     )
 ):
-    # Handle asset_contract parameter - validate and get corresponding assets
-    # Validate and get assets based on asset_contract parameter
     connection_params = get_clickhouse_connection_string(network)
     assets_service = AssetsService(connection_params)
     try:
@@ -251,9 +243,7 @@ async def get_money_flow_by_block(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
-    
+
     balance_transfer_service = BalanceTransferService(get_clickhouse_connection_string(network))
     addresses = balance_transfer_service.get_addresses_from_block_height(block_height, assets)
 

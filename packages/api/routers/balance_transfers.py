@@ -136,8 +136,6 @@ async def get_balance_transfers_volume_series(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     # Validate period_type
     if period_type not in ["4hour", "daily", "weekly", "monthly"]:
@@ -214,8 +212,6 @@ async def get_network_analytics(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -290,8 +286,6 @@ async def get_address_analytics(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -363,8 +357,6 @@ async def get_volume_aggregations(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     # Validate period
     if period not in ["daily", "weekly", "monthly"]:
@@ -439,8 +431,6 @@ async def get_volume_trends(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     try:
         balance_service = BalanceTransferService(get_clickhouse_connection_string(network))
@@ -513,8 +503,6 @@ async def get_addresses_analytics(
     except Exception as e:
         logger.error(f"Failed to validate asset contract for network {network}", error=e)
         raise HTTPException(status_code=404, detail=f"Asset not found: {str(e)}")
-    finally:
-        assets_service.close()
 
     # Validate addresses parameter
     if not addresses:

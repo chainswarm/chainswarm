@@ -180,15 +180,9 @@ async def get_assets_from_clickhouse(network: str) -> List[str]:
 
         # Ensure native asset is included
         assets_service = AssetsService(connection_params)
-        try:
-            native_asset = assets_service.get_native_asset_symbol(network)
-            if native_asset not in assets:
-                assets.insert(0, native_asset)
-        except Exception as e:
-            logger.error(f"Failed to get native asset symbol for network {network}: {str(e)}")
-            # If we can't get the native asset, just return the assets we have
-        finally:
-            assets_service.close()
+        native_asset = assets_service.get_native_asset_symbol(network)
+        if native_asset not in assets:
+            assets.insert(0, native_asset)
 
         return assets
     except Exception as e:
@@ -218,21 +212,13 @@ async def get_assets_from_clickhouse(network: str) -> List[str]:
             )
             # If we can't get the native asset, return an empty list
             return []
-        finally:
-            assets_service.close()
 
 
 async def get_user_guide():
     """User-facing documentation for MCP server capabilities"""
     connection_params = get_clickhouse_connection_string(network)
     assets_service = AssetsService(connection_params)
-    try:
-        assets = assets_service.get_native_asset_symbol(network)
-    except Exception as e:
-        logger.error(f"Failed to get native asset symbol for network {network}: {str(e)}")
-        assets = "native asset"
-    finally:
-        assets_service.close()
+    assets = assets_service.get_native_asset_symbol(network)
 
     return f"""
 
@@ -422,13 +408,7 @@ async def get_instructions():
     # Get network configuration
     connection_params = get_clickhouse_connection_string(network)
     assets_service = AssetsService(connection_params)
-    try:
-        assets = assets_service.get_native_asset_symbol(network)
-    except Exception as e:
-        logger.error(f"Failed to get native asset symbol for network {network}: {str(e)}")
-        assets = "native asset"
-    finally:
-        assets_service.close()
+    assets = assets_service.get_native_asset_symbol(network)
 
     # Initialize database connections
     memgraph_driver = get_memgraph_driver(network)
