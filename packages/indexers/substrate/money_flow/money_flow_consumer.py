@@ -16,7 +16,6 @@ from packages.indexers.substrate import networks, data, Network, get_substrate_n
 from packages.indexers.substrate.block_range_partitioner import get_partitioner
 from packages.indexers.substrate.block_stream.block_stream_indexer import BlockStreamIndexer
 from packages.indexers.substrate.block_stream.block_stream_manager import BlockStreamManager
-from packages.indexers.substrate.money_flow import populate_genesis_balances
 from packages.indexers.substrate.money_flow.money_flow_indexer import BaseMoneyFlowIndexer
 from packages.indexers.substrate.money_flow.money_flow_indexer_torus import TorusMoneyFlowIndexer
 from packages.indexers.substrate.money_flow.money_flow_indexer_bittensor import BittensorMoneyFlowIndexer

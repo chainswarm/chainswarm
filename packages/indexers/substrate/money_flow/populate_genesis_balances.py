@@ -5,7 +5,7 @@ from loguru import logger
 from neo4j import GraphDatabase
 from packages.indexers.base import setup_logger, get_memgraph_connection_string, get_clickhouse_connection_string
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
-from packages.indexers.substrate import get_network_asset
+from packages.indexers.substrate import Network
 from packages.indexers.substrate.assets.asset_manager import AssetManager
 
 
@@ -49,11 +49,8 @@ def run(file: str, network: str, asset_manager: AssetManager):
         logger.info(f"Loading genesis balances from {file}")
         balances = load_genesis_balances(file)
         logger.info(f"Loaded {len(balances)} genesis balances")
-        
-        # Get the asset for this network
-        asset_symbol = get_network_asset(network)
-        logger.info(f"Using asset: {asset_symbol} for network: {network}")
-        
+        asset_symbol = "TOR"
+
         # Ensure native asset exists
         decimals = asset_manager.NATIVE_ASSETS.get(network, {}).get('decimals', 0)
         asset_manager.ensure_asset_exists(

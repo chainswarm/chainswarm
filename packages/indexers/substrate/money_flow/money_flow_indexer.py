@@ -7,7 +7,6 @@ from loguru import logger
 from neo4j import Driver
 from packages.indexers.base import terminate_event
 from packages.indexers.base.decimal_utils import convert_to_decimal_units
-from packages.indexers.substrate import get_network_asset
 from packages.indexers.base.metrics import IndexerMetrics
 from packages.indexers.substrate.assets.asset_manager import AssetManager
 
@@ -459,27 +458,8 @@ class BaseMoneyFlowIndexer:
         Returns:
             Tuple of (asset_symbol, asset_contract)
         """
-        # For native transfers (Balances.Transfer)
-        if event['module_id'] == 'Balances' and event['event_id'] == 'Transfer':
-            return get_network_asset(self.network), 'native'
-        
-        # For native endowed events
-        if event['module_id'] == 'Balances' and event['event_id'] == 'Endowed':
-            return get_network_asset(self.network), 'native'
-        
-        # For token transfers - this needs to be implemented per network
-        # Example for Assets pallet (common in Substrate chains):
-        if event['module_id'] == 'Assets' and event['event_id'] == 'Transferred':
-            # Extract asset_id from event attributes
-            attrs = event.get('attributes', {})
-            asset_id = attrs.get('asset_id', '')
-            if asset_id:
-                # For now, use asset_id as both symbol and contract
-                # In production, might need to query chain for asset metadata
-                return f"TOKEN_{asset_id}", str(asset_id)
-        
-        # Default to native if unknown
-        return get_network_asset(self.network), 'native'
+
+        return "TOR", 'native'
 
     def _process_endowed_events(self, transaction, timestamp, events):
         """Process Balances.Endowed events"""
